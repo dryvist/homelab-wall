@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mission Control</title>
+<link rel="stylesheet" href="/lib/wall.css">
+<link rel="stylesheet" href="/mc1/mc1.css">
+</head>
+<body>
+<div id="stage" class="stage">
+  <header>
+    <canvas id="estateRing" width="128" height="128"></canvas>
+    <div class="brand"><span id="title">HOMELAB</span> <span style="color:var(--cyan)">//</span> MISSION CONTROL<small id="subtitle">—</small></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="clock num" id="clock">--:--:--<small>--</small></div>
+  </header>
+
+  <section class="panel" id="nodes"><h2>Nodes <span id="quorum">—</span></h2><div class="list" id="nodelist"></div></section>
+
+  <section class="panel" id="topo">
+    <h2>Network fabric · topology <span id="topostate">LIVE</span></h2>
+    <canvas id="gl"></canvas>
+    <div id="labels"></div>
+    <div class="ovl" id="wan">WAN ↓ <b id="wdn">—</b> Mb/s &nbsp; ↑ <b id="wup">—</b> Mb/s<canvas id="wanc" width="600" height="140"></canvas></div>
+    <div class="ovl" id="fstats"></div>
+    <div class="ovl" id="legend"></div>
+    <div class="ovl" id="llm"><div class="lh">LLM FABRIC · <span id="llmsum">—</span></div><div id="llmrows"></div></div>
+  </section>
+
+  <section class="panel" id="apps"><h2>Service health <span id="appsum">—</span></h2><canvas id="hex"></canvas></section>
+
+  <section class="panel" id="storage"><h2>Storage <span id="sttot">—</span></h2><div class="rows" id="strows"></div></section>
+
+  <section class="panel" id="fw"><div class="fwsplit">
+    <div class="fwcol"><h3 class="bh">⛔ Blocked at the edge <span id="blkrate">—</span></h3><div class="fwrows" id="blkrows"></div></div>
+    <div class="fwcol"><h3>Live firewall · flows <span id="fwrate">—</span></h3><div class="fwrows" id="fwrows"></div></div>
+  </div></section>
+</div>
+<script src="/vendor/three.min.js"></script>
+<script type="module" src="/mc1/mc1.js"></script>
+</body>
+</html>
