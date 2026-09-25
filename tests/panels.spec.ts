@@ -82,3 +82,43 @@ for (const pageSpec of PAGES) {
     });
   }
 }
+
+// A canvas read its own rendered size back into its own backing-store resolution (#hex,
+// mc1.js drawHex — fixed by giving it a CSS-only size, mc1.css), which grew its grid cell
+// without bound. No single-screenshot test at DPR 1 caught it. This checks both DPRs the
+// operator's real hardware runs at; reduced motion isolates it from the panels' intentional
+// decorative sway (mc1.css swayL/swayR), so any remaining drift is a real regression.
+for (const deviceScaleFactor of [1, 2] as const) {
+  test.describe(`mc1 layout stability at DPR ${deviceScaleFactor}`, () => {
+    test.use({ deviceScaleFactor, reducedMotion: 'reduce' });
+
+    test('panel boxes stay fixed and the stage never overflows the viewport', async ({ page }) => {
+      if (!wallUrl) await mockFeeds(page);
+      await page.goto('/mc1/');
+      const panels = page.locator('[data-panel]');
+      await expect(panels).not.toHaveCount(0);
+
+      const boxes = () => panels.evaluateAll((els) =>
+        els.map((el) => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height }; }));
+
+      const before = await boxes();
+      await page.waitForTimeout(4000); // several ticks of the 30fps draw loop that drives the panel canvases
+      const after = await boxes();
+      before.forEach((b, i) => {
+        expect(Math.abs(after[i].w - b.w), `panel ${i} width grew from ${b.w} to ${after[i].w}`).toBeLessThanOrEqual(1);
+        expect(Math.abs(after[i].h - b.h), `panel ${i} height grew from ${b.h} to ${after[i].h}`).toBeLessThanOrEqual(1);
+      });
+
+      // scrollHeight/scrollWidth report pre-clip content size even under overflow:hidden, so
+      // they are not proof of what's on screen. The stage's own post-transform box is: it must
+      // sit inside the viewport at (0,0) since fitStage (lib/stage.js) scales from that origin.
+      const stage = await page.locator('#stage').boundingBox();
+      expect(stage, 'stage element missing').not.toBeNull();
+      expect(stage!.x, 'stage left edge outside the viewport').toBeGreaterThanOrEqual(-1);
+      expect(stage!.y, 'stage top edge outside the viewport').toBeGreaterThanOrEqual(-1);
+      const viewport = page.viewportSize()!;
+      expect(stage!.x + stage!.width, 'stage overflows the viewport width').toBeLessThanOrEqual(viewport.width + 1);
+      expect(stage!.y + stage!.height, 'stage overflows the viewport height').toBeLessThanOrEqual(viewport.height + 1);
+    });
+  });
+}
