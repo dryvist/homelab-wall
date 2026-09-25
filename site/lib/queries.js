@@ -3,10 +3,10 @@
 // expression as homelab:app_health_score, which Q.appScore prefers once it exists.
 const CATALOG = 'group=~"catalog-.+",group!="catalog-authed"';
 const NODE = 'job="pve_node_exporter"';
-// A network mount of another node's own pool (e.g. an HA-evacuation NFS re-export) reports the
-// same bytes as that pool's own local reading under a different device+mountpoint, so it must
-// be excluded here rather than deduped after the fact — the storage panel would otherwise count
-// that capacity twice (D3 covers the true-shared-device case: one mountpoint, several hosts).
+// A network mount of another node's own pool reports the same bytes as that pool's own local
+// reading under a different device+mountpoint, so it must be excluded here rather than deduped
+// after the fact — the storage panel would otherwise count that capacity twice (D3 covers the
+// true-shared-device case: one mountpoint, several hosts).
 const FS = `${NODE},fstype!~"tmpfs|devtmpfs|overlay|squashfs|ramfs|fuse.*|nsfs|efivarfs|vfat|nfs.?|cifs|smb3|ceph.*|glusterfs"`;
 
 export const APP_HEALTH_SCORE = `100
