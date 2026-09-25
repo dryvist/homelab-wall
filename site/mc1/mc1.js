@@ -1,11 +1,9 @@
 // Mission Control 1: estate overview, driven by live Prometheus data.
 import { query, range, settle, shortHost } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { clamp, hue, lerp, esc, fitStage, hardwareGL, loop, loadConfig, setState } from '/lib/stage.js';
+import { clamp, hue, lerp, esc, observeCanvas, hardwareGL, loop, loadConfig, setState } from '/lib/stage.js';
 
 const $ = (id) => document.getElementById(id);
-const stage = $('stage');
-fitStage(stage);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e', '#ff3b5c', '#e8f4ff', '#8ab8ff', '#ffd23e'];
 
@@ -221,13 +219,15 @@ function renderLlm() {
 
 /* ---------------- honeycomb ---------------- */
 const hx = $('hex');
+// #hex is CSS-sized (position:absolute;inset:0;width:100%;height:100%, mc1.css) — its layout
+// size never depends on its own attribute. The backing store is sized from the #apps CELL via
+// a ResizeObserver (lib/stage.js observeCanvas), so drawHex below only ever reads hx.width/
+// hx.height, never writes them — that self-reference (read the canvas's own rendered size,
+// write it back as its resolution, which is itself part of what determines the rendered size)
+// is what grew the panel without bound.
+observeCanvas($('apps'), hx);
 function drawHex(t) {
-  // #hex is CSS-sized (position:absolute;inset:0;width:100%;height:100%, mc1.css) — its layout
-  // size never depends on this attribute. clientWidth/clientHeight only ever reads that fixed
-  // CSS size, so writing the backing-store resolution here cannot feed back into it.
-  const dpr = Math.min(devicePixelRatio || 1, 2);
-  const W = Math.round(hx.clientWidth * dpr), H = Math.round(hx.clientHeight * dpr);
-  if (hx.width !== W || hx.height !== H) { hx.width = W; hx.height = H; }
+  const W = hx.width, H = hx.height;
   const c = hx.getContext('2d'); c.clearRect(0, 0, W, H);
   for (const a of apps) a.d = lerp(a.d, a.s ?? 0, 0.1);
   const n = Math.max(apps.length, 1), cols = n > 56 ? 9 : n > 42 ? 8 : 7;
@@ -312,8 +312,16 @@ if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
     flows.push({ g, curve, pos, pg, ph: Array.from({ length: N }, () => ({ t: Math.random(), dir: Math.random() < 0.5 ? 1 : -1 })) });
     hubs.push({ hub, ring, el: labelEls[i] });
   });
-  const resize = () => { const w = topo.clientWidth, h = topo.clientHeight; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); };
-  resize(); addEventListener('resize', resize);
+  // Reads the #topo CELL's size (fr-grid, never affected by #gl's own attribute) and writes
+  // only to #gl — never back to #topo, so this cannot loop. A ResizeObserver on the cell
+  // catches every layout change, not just a window resize.
+  const resize = () => {
+    const w = topo.clientWidth, h = topo.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix();
+  };
+  new ResizeObserver(resize).observe(topo);
+  resize();
   const v3 = new THREE.Vector3();
   drawTopo = (now, dt) => {
     const tt = now / 1000, ang = RM ? 0.6 : tt * 0.06;

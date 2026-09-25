@@ -1,4 +1,8 @@
-#stage{display:grid;grid-template-columns:430px minmax(0,1fr) 540px;grid-template-rows:78px minmax(0,1fr) 260px;gap:14px;padding:16px 18px;box-sizing:border-box;
+/* Pure fr/minmax(0,1fr) tracks: the grid always sums to exactly the stage's box, so it can
+   never overflow it regardless of what any cell's content does. Ratios approximate the
+   original 430/886/540 and 78/682/260 px design at 1920x1080. */
+#stage{display:grid;grid-template-columns:minmax(0,23fr) minmax(0,48fr) minmax(0,29fr);grid-template-rows:minmax(0,8fr) minmax(0,67fr) minmax(0,25fr);
+  gap:var(--gap);padding:var(--pad-y) var(--pad-x);box-sizing:border-box;
   background:radial-gradient(1200px 700px at 50% 45%,#0a1a2a 0%,var(--void) 70%)}
 #stage::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}
@@ -7,29 +11,29 @@
 .panel{position:relative;min-width:0;min-height:0;overflow:hidden;contain:layout size;
   background:linear-gradient(180deg,rgba(12,26,40,.78),rgba(6,12,20,.78));border:1px solid var(--edge);
   clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
-.panel>h2{margin:0;padding:8px 14px 6px;font:600 12px/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);
+.panel>h2{margin:0;padding:var(--pad-y) var(--pad-x) calc(var(--pad-y)*.75);font:600 var(--fs-sm)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);
   display:flex;justify-content:space-between;border-bottom:1px solid var(--grid)}
 .panel>h2 span{color:var(--dim);letter-spacing:.1em}
-.panel [data-panel-message]{color:var(--amber);font:600 9px/1 var(--mono);letter-spacing:.1em;white-space:nowrap}
+.panel [data-panel-message]{color:var(--amber);font:600 var(--fs-xs)/1 var(--mono);letter-spacing:.1em;white-space:nowrap}
 .panel[data-state="error"] [data-panel-message]{color:var(--red)}
-#fw [data-panel-message]{position:absolute;right:14px;bottom:10px;color:var(--amber);z-index:2}
+#fw [data-panel-message]{position:absolute;right:var(--pad-x);bottom:10px;color:var(--amber);z-index:2}
 .num{font-variant-numeric:tabular-nums}
 
 /* header */
-header{grid-column:1/-1;display:flex;align-items:center;gap:26px;padding:0 20px}
-.brand{font:700 30px/1 var(--disp);letter-spacing:.14em;color:#fff;text-shadow:0 0 18px rgba(62,230,255,.55)}
-.brand small{display:block;font:400 11px/1.6 var(--mono);letter-spacing:.3em;color:var(--dim)}
-.kpis{display:flex;gap:26px;flex:1;justify-content:center}
-.kpi{display:flex;flex-direction:column;gap:3px;min-width:92px}
-.kpi b{font:600 24px/1 var(--disp);color:#fff}
-.kpi b i{font-style:normal;font-size:13px;color:var(--dim);margin-left:3px}
-.kpi span{font-size:10px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase}
-.clock{text-align:right;font:600 34px/1 var(--disp);color:#fff}
-.clock small{display:block;font:400 11px/1.6 var(--mono);color:var(--dim);letter-spacing:.2em}
-#estateRing{width:64px;height:64px}
+header{grid-column:1/-1;min-width:0;min-height:0;overflow:hidden;display:flex;align-items:center;gap:var(--gap);padding:0 var(--pad-x)}
+.brand{font:700 var(--fs-xl)/1 var(--disp);letter-spacing:.14em;color:#fff;text-shadow:0 0 18px rgba(62,230,255,.55);white-space:nowrap}
+.brand small{display:block;font:400 var(--fs-xs)/1.6 var(--mono);letter-spacing:.3em;color:var(--dim)}
+.kpis{display:flex;gap:var(--gap);flex:1;justify-content:center;min-width:0;overflow:hidden}
+.kpi{display:flex;flex-direction:column;gap:3px;min-width:0}
+.kpi b{font:600 var(--fs-lg)/1 var(--disp);color:#fff}
+.kpi b i{font-style:normal;font-size:var(--fs-xs);color:var(--dim);margin-left:3px}
+.kpi span{font-size:var(--fs-xs);letter-spacing:.2em;color:var(--dim);text-transform:uppercase}
+.clock{text-align:right;font:600 var(--fs-2xl)/1 var(--disp);color:#fff}
+.clock small{display:block;font:400 var(--fs-xs)/1.6 var(--mono);color:var(--dim);letter-spacing:.2em}
+#estateRing{width:clamp(40px,5vmin,64px);height:clamp(40px,5vmin,64px);flex:none}
 
 /* nodes */
-#nodes{grid-row:2;display:flex;flex-direction:column}
+#nodes{grid-row:2;min-width:0;min-height:0;display:flex;flex-direction:column}
 #nodes .list{flex:1;display:grid;grid-template-rows:repeat(5,1fr);gap:6px;padding:8px 10px}
 .node{display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:auto 1fr auto;gap:2px 6px;padding:8px 10px;
   border-left:2px solid var(--cyan);background:rgba(62,230,255,.03)}
