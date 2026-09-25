@@ -1,11 +1,9 @@
 // Mission Control 1: estate overview, driven by live Prometheus data.
 import { query, range, settle, shortHost } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { clamp, hue, lerp, esc, fitStage, hardwareGL, loop, loadConfig, setState } from '/lib/stage.js';
+import { clamp, hue, lerp, esc, observeCanvas, hardwareGL, loop, loadConfig, setState } from '/lib/stage.js';
 
 const $ = (id) => document.getElementById(id);
-const stage = $('stage');
-fitStage(stage);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e', '#ff3b5c', '#e8f4ff', '#8ab8ff', '#ffd23e'];
 
@@ -39,6 +37,10 @@ async function refresh() {
     llmTok: () => query(Q.llmTokRate),
   });
 
+  // settle() (lib/prom.js) yields null for a query that rejected (bad status, timeout, bad
+  // body) — distinct from a query that succeeded with zero rows. A failed score query must
+  // never render as "0 OK / 54 NO DATA"; it renders as an explicit error instead.
+  model.scoreFailed = r.score === null;
   if (r.score) {
     const seen = new Set();
     for (const row of r.score) {
@@ -70,6 +72,7 @@ async function refresh() {
     }
   }
 
+  model.storageFailed = r.fsSize === null || r.fsAvail === null;
   if (r.fsSize && r.fsAvail) {
     const avail = Object.fromEntries(r.fsAvail.map((x) => [`${x.labels.instance}|${x.labels.device}`, x.value]));
     const best = new Map(), hosts = new Map();
@@ -90,6 +93,7 @@ async function refresh() {
       .sort((a, b) => b.size - a.size).slice(0, 12);
   }
 
+  model.llmFailed = r.llmState === null;
   if (r.llmState) {
     const tok = Object.fromEntries((r.llmTok || []).map((x) => [x.labels.model, x.value]));
     model.llmAll = r.llmState.map((x) => {
@@ -215,11 +219,15 @@ function renderLlm() {
 
 /* ---------------- honeycomb ---------------- */
 const hx = $('hex');
+// #hex is CSS-sized (position:absolute;inset:0;width:100%;height:100%, mc1.css) — its layout
+// size never depends on its own attribute. The backing store is sized from the #apps CELL via
+// a ResizeObserver (lib/stage.js observeCanvas), so drawHex below only ever reads hx.width/
+// hx.height, never writes them — that self-reference (read the canvas's own rendered size,
+// write it back as its resolution, which is itself part of what determines the rendered size)
+// is what grew the panel without bound.
+observeCanvas($('apps'), hx);
 function drawHex(t) {
-  const rect = hx.getBoundingClientRect(), s = rect.width / hx.offsetWidth || 1;
-  const W = Math.round(hx.offsetWidth * 2), H = Math.round(hx.offsetHeight * 2);
-  if (hx.width !== W || hx.height !== H) { hx.width = W; hx.height = H; }
-  void s;
+  const W = hx.width, H = hx.height;
   const c = hx.getContext('2d'); c.clearRect(0, 0, W, H);
   for (const a of apps) a.d = lerp(a.d, a.s ?? 0, 0.1);
   const n = Math.max(apps.length, 1), cols = n > 56 ? 9 : n > 42 ? 8 : 7;
@@ -243,6 +251,11 @@ function drawHex(t) {
     c.textAlign = 'center'; c.fillStyle = '#fff'; c.font = `600 ${r * 0.4}px "Chakra Petch",sans-serif`; c.fillText(unknown ? '?' : Math.round(a.d), x, y + r * 0.06);
     c.fillStyle = '#cfe9f5'; c.font = `${Math.min(r * 0.22, 22)}px "JetBrains Mono",monospace`; c.fillText(a.n.length > 11 ? a.n.slice(0, 10) + '…' : a.n, x, y + r * 0.38);
   });
+  // A failed score query (model.scoreFailed, renderStatic) leaves every app's .s null — the
+  // same shape as "no data yet" — so this summary must not compute OK/DEGRADED/DOWN/NO DATA
+  // counts from it on a failure; that's the "0 OK ... 42 NO DATA" the panel's own error state
+  // (data-panel-message) is there to replace, not sit beside.
+  if (model.scoreFailed) { $('appsum').textContent = '—'; return; }
   const ok = apps.filter((a) => a.s != null && a.s >= 90).length, warn = apps.filter((a) => a.s != null && a.s >= 50 && a.s < 90).length;
   const bad = apps.filter((a) => a.s != null && a.s < 50).length, unk = apps.filter((a) => a.s == null).length;
   $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>${unk ? ` · <span style="color:var(--dim)">${unk} NO DATA</span>` : ''}`;
@@ -304,8 +317,16 @@ if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
     flows.push({ g, curve, pos, pg, ph: Array.from({ length: N }, () => ({ t: Math.random(), dir: Math.random() < 0.5 ? 1 : -1 })) });
     hubs.push({ hub, ring, el: labelEls[i] });
   });
-  const resize = () => { const w = topo.clientWidth, h = topo.clientHeight; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); };
-  resize(); addEventListener('resize', resize);
+  // Reads the #topo CELL's size (fr-grid, never affected by #gl's own attribute) and writes
+  // only to #gl — never back to #topo, so this cannot loop. A ResizeObserver on the cell
+  // catches every layout change, not just a window resize.
+  const resize = () => {
+    const w = topo.clientWidth, h = topo.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix();
+  };
+  new ResizeObserver(resize).observe(topo);
+  resize();
   const v3 = new THREE.Vector3();
   drawTopo = (now, dt) => {
     const tt = now / 1000, ang = RM ? 0.6 : tt * 0.06;
@@ -352,11 +373,15 @@ function renderStatic() {
   setState($('topo'), 'pending', 'WAN EXPORTER PENDING');
   // D5: an app with no Gatus series at all is "no data" for that one cell (see drawHex/appsum),
   // never reason to pend the whole panel — only a total scoring failure does.
+  // A query that failed outright (settle() -> null) is 'error', never silently "no data".
   const scored = apps.some((app) => app.s != null);
-  setState($('apps'), scored ? 'ok' : 'empty', scored ? '' : 'NO SERVICE DATA');
-  setState($('storage'), model.storage.length ? 'ok' : 'empty', model.storage.length ? '' : 'STORAGE METRICS EMPTY');
+  setState($('apps'), model.scoreFailed ? 'error' : scored ? 'ok' : 'empty',
+    model.scoreFailed ? 'SCORE QUERY FAILED' : scored ? '' : 'NO SERVICE DATA');
+  setState($('storage'), model.storageFailed ? 'error' : model.storage.length ? 'ok' : 'empty',
+    model.storageFailed ? 'STORAGE QUERY FAILED' : model.storage.length ? '' : 'STORAGE METRICS EMPTY');
   setState($('fw'), 'pending', 'SPLUNK FEED PENDING');
-  setState($('llm'), model.llm.length ? 'ok' : 'pending', model.llm.length ? '' : 'ROUTER METRICS PENDING');
+  setState($('llm'), model.llmFailed ? 'error' : model.llm.length ? 'ok' : 'pending',
+    model.llmFailed ? 'ROUTER QUERY FAILED' : model.llm.length ? '' : 'ROUTER METRICS PENDING');
   const up = model.nodes.filter((n) => !n.pending).length;
   $('fstats').innerHTML = `NODES UP<b>${up}</b><br>APPS SCORED<b>${apps.filter((a) => a.s != null).length}/${apps.length}</b><br>MODELS UP<b>${model.llm.filter((m) => m.state < 2).length}</b><br>UPDATED<b>${new Date(model.updated).toTimeString().slice(0, 8)}</b>`;
 }
