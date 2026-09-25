@@ -68,15 +68,16 @@ function urlReachable(layer, url) {
   });
 }
 
-async function resolveSlide(layer, startIndex) {
-  for (let tries = 0; tries < slides.length; tries += 1) {
-    const idx = wrap(startIndex + tries);
-    // eslint-disable-next-line no-await-in-loop
-    const ok = await urlReachable(layer, slides[idx].url);
-    if (ok) return idx;
-    showSkipped(slides[idx].name);
-  }
-  return null;
+// Recursive, not a for-loop: each candidate must be probed in order and the search must stop at
+// the first reachable one (a probe has side effects — it sets layer.src on success), so the
+// attempts are inherently sequential rather than parallelizable via Promise.all.
+async function resolveSlide(layer, startIndex, tries = 0) {
+  if (tries >= slides.length) return null;
+  const idx = wrap(startIndex + tries);
+  const ok = await urlReachable(layer, slides[idx].url);
+  if (ok) return idx;
+  showSkipped(slides[idx].name);
+  return resolveSlide(layer, startIndex, tries + 1);
 }
 
 function showSkipped(name) {

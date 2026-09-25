@@ -1,13 +1,13 @@
 // Mission Control 1: estate overview, driven by live Prometheus data.
 import { query, range, settle, shortHost } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { clamp, hue, lerp, esc, fitStage, hardwareGL, loop, loadConfig, setState } from '/lib/stage.js';
+import { clamp, hue, lerp, esc, observeCanvas, hardwareGL, loop, loadConfig, setState } from '/lib/stage.js';
+import { lastGoodGet, lastGoodSet } from '/lib/lastGood.js';
 
 const $ = (id) => document.getElementById(id);
-const stage = $('stage');
-fitStage(stage);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e', '#ff3b5c', '#e8f4ff', '#8ab8ff', '#ffd23e'];
+const STALE_MS = 5 * 60 * 1000;
 
 const cfg = await loadConfig();
 $('title').textContent = cfg.title || 'HOMELAB';
@@ -15,6 +15,10 @@ const groups = (cfg.groups || []).map((g, i) => ({ ...g, c: PALETTE[i % PALETTE.
 const apps = [...new Set(groups.flatMap((g) => g.apps))].sort().map((n) => ({ n, s: null, d: 0 }));
 const appIndex = Object.fromEntries(apps.map((a) => [a.n, a]));
 const model = { nodes: [], storage: [], llm: [], llmAll: [], uptime: null, updated: 0 };
+// D-mc1-2: the node card list must be driven by which nodes are CONFIGURED, never by which
+// series a single poll happened to return — a node that drops out of Prometheus for one poll
+// (a scrape gap, a restart) must keep its card, not vanish from it.
+const nodeOrder = Object.keys(cfg.nodeRoles || {});
 
 /* ---------------- data ---------------- */
 function byHost(rows) {
@@ -39,6 +43,10 @@ async function refresh() {
     llmTok: () => query(Q.llmTokRate),
   });
 
+  // settle() (lib/prom.js) yields null for a query that rejected (bad status, timeout, bad
+  // body) — distinct from a query that succeeded with zero rows. A failed score query must
+  // never render as "0 OK / 54 NO DATA"; it renders as an explicit error instead.
+  model.scoreFailed = r.score === null;
   if (r.score) {
     const seen = new Set();
     for (const row of r.score) {
@@ -52,24 +60,36 @@ async function refresh() {
   if (r.cpu) {
     const [cores, mem, memT, load, temp, upt] = [r.cores, r.mem, r.memTotal, r.load, r.temp, r.upt].map(byHost);
     const hist = Object.fromEntries((r.hist || []).map((h) => [shortHost(h.labels.instance), h.values]));
-    const live = r.cpu.map((row) => shortHost(row.labels.instance)).sort();
-    model.nodes = live.map((name) => {
+    const liveNow = new Set(r.cpu.map((row) => shortHost(row.labels.instance)));
+    model.nodes = nodeOrder.map((name) => {
       const prev = model.nodes.find((n) => n.name === name) || {};
+      // D2: a role mapping that just echoes the node's own name back is not information —
+      // the subtitle omits it rather than showing "node-c · node-c".
+      const role = cfg.nodeRoles?.[name] === name ? '' : (cfg.nodeRoles?.[name] || '');
+      if (liveNow.has(name)) {
+        const fresh = {
+          cpu: byHost(r.cpu)[name], mem: mem[name], load: load[name], cores: cores[name] || 1,
+          ram: memT[name] || 0, temp: temp[name], up: upt[name], hist: hist[name] || [],
+        };
+        lastGoodSet(`node:${name}`, fresh);
+        return { ...prev, name, role, ...fresh, stale: false, lastSeen: Date.now(), d: prev.d || { cpu: 0, mem: 0, load: 0 } };
+      }
+      // Missing from this poll — a scrape gap or restart, not gone. Fall back to the last good
+      // reading (this session, or a prior page load via localStorage) and mark the card stale
+      // instead of dropping it.
+      const last = lastGoodGet(`node:${name}`);
       return {
-        ...prev, name,
-        // D2: a role mapping that just echoes the node's own name back is not information —
-        // the subtitle omits it rather than showing "node-c · node-c".
-        role: cfg.nodeRoles?.[name] === name ? '' : (cfg.nodeRoles?.[name] || ''),
-        cpu: byHost(r.cpu)[name], mem: mem[name], load: load[name], cores: cores[name] || 1,
-        ram: memT[name] || 0, temp: temp[name], up: upt[name], hist: hist[name] || [],
+        ...prev, name, role, ...(last?.value || {}),
+        stale: true, lastSeen: last?.at ?? prev.lastSeen ?? null,
         d: prev.d || { cpu: 0, mem: 0, load: 0 },
       };
     });
     for (const x of cfg.extraNodes || []) {
-      if (!live.includes(x.name)) model.nodes.push({ name: x.name, role: x.role, pending: true, d: { cpu: 0, mem: 0, load: 0 } });
+      if (!nodeOrder.includes(x.name) && !liveNow.has(x.name)) model.nodes.push({ name: x.name, role: x.role, pending: true, d: { cpu: 0, mem: 0, load: 0 } });
     }
   }
 
+  model.storageFailed = r.fsSize === null || r.fsAvail === null;
   if (r.fsSize && r.fsAvail) {
     const avail = Object.fromEntries(r.fsAvail.map((x) => [`${x.labels.instance}|${x.labels.device}`, x.value]));
     const best = new Map(), hosts = new Map();
@@ -90,6 +110,7 @@ async function refresh() {
       .sort((a, b) => b.size - a.size).slice(0, 12);
   }
 
+  model.llmFailed = r.llmState === null;
   if (r.llmState) {
     const tok = Object.fromEntries((r.llmTok || []).map((x) => [x.labels.model, x.value]));
     model.llmAll = r.llmState.map((x) => {
@@ -139,11 +160,13 @@ function buildNodes() {
   if (key === nodeKey) return;
   nodeKey = key;
   $('nodelist').style.gridTemplateRows = `repeat(${Math.max(model.nodes.length, 1)},1fr)`;
-  $('nodelist').innerHTML = model.nodes.map((n, i) => `<div class="node${n.pending ? ' mac' : ''}"><div class="nm">${esc(n.name.toUpperCase())}<em id="nm${i}"></em></div>
+  $('nodelist').innerHTML = model.nodes.map((n, i) => `<div class="node${n.pending ? ' mac' : ''}" id="node${i}"><div class="nm">${esc(n.name.toUpperCase())}<em id="nm${i}"></em></div>
     ${[0, 1, 2, 3].map((g) => `<canvas class="g" id="g${i}${g}" width="240" height="168"></canvas>`).join('')}
     <canvas class="sp" id="sp${i}" width="780" height="52"></canvas></div>`).join('');
-  const up = model.nodes.filter((n) => !n.pending).length;
-  $('quorum').textContent = `${up}/${model.nodes.length} UP`;
+}
+function ageLabel(atMs) {
+  const s = Math.max(0, Math.floor((Date.now() - atMs) / 1000));
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m`;
 }
 function gauge(id, val, max, label, unit, col) {
   const el = $(id); if (!el) return;
@@ -181,9 +204,16 @@ function drawNodes() {
     gauge(`g${i}3`, null, 100, n.pending ? 'PENDING' : 'NO GPU', '%', '#2a4556');
     spark(`sp${i}`, n.hist || []);
     const meta = n.pending ? `${n.role} · exporter pending`
-      : `${n.role ? n.role + ' · ' : ''}${n.temp != null ? Math.round(n.temp) + '°C · ' : ''}${n.up != null ? 'up ' + Math.floor(n.up / 86400) + 'd' : ''}`;
+      : n.stale
+        ? (n.lastSeen == null ? 'NO DATA'
+          : Date.now() - n.lastSeen < STALE_MS ? `STALE ${ageLabel(n.lastSeen)}`
+          : `NO DATA since ${new Date(n.lastSeen).toTimeString().slice(0, 8)}`)
+        : `${n.role ? n.role + ' · ' : ''}${n.temp != null ? Math.round(n.temp) + '°C · ' : ''}${n.up != null ? 'up ' + Math.floor(n.up / 86400) + 'd' : ''}`;
     const el = $('nm' + i); if (el && el.textContent !== meta) el.textContent = meta;
+    const card = $('node' + i); if (card) card.classList.toggle('stale', !!n.stale);
   });
+  const up = model.nodes.filter((n) => !n.pending && !n.stale).length;
+  $('quorum').textContent = `${up}/${model.nodes.length} UP`;
 }
 
 /* ---------------- storage ---------------- */
@@ -215,11 +245,15 @@ function renderLlm() {
 
 /* ---------------- honeycomb ---------------- */
 const hx = $('hex');
+// #hex is CSS-sized (position:absolute;inset:0;width:100%;height:100%, mc1.css) — its layout
+// size never depends on its own attribute. The backing store is sized from the #apps CELL via
+// a ResizeObserver (lib/stage.js observeCanvas), so drawHex below only ever reads hx.width/
+// hx.height, never writes them — that self-reference (read the canvas's own rendered size,
+// write it back as its resolution, which is itself part of what determines the rendered size)
+// is what grew the panel without bound.
+observeCanvas($('apps'), hx);
 function drawHex(t) {
-  const rect = hx.getBoundingClientRect(), s = rect.width / hx.offsetWidth || 1;
-  const W = Math.round(hx.offsetWidth * 2), H = Math.round(hx.offsetHeight * 2);
-  if (hx.width !== W || hx.height !== H) { hx.width = W; hx.height = H; }
-  void s;
+  const W = hx.width, H = hx.height;
   const c = hx.getContext('2d'); c.clearRect(0, 0, W, H);
   for (const a of apps) a.d = lerp(a.d, a.s ?? 0, 0.1);
   const n = Math.max(apps.length, 1), cols = n > 56 ? 9 : n > 42 ? 8 : 7;
@@ -243,6 +277,11 @@ function drawHex(t) {
     c.textAlign = 'center'; c.fillStyle = '#fff'; c.font = `600 ${r * 0.4}px "Chakra Petch",sans-serif`; c.fillText(unknown ? '?' : Math.round(a.d), x, y + r * 0.06);
     c.fillStyle = '#cfe9f5'; c.font = `${Math.min(r * 0.22, 22)}px "JetBrains Mono",monospace`; c.fillText(a.n.length > 11 ? a.n.slice(0, 10) + '…' : a.n, x, y + r * 0.38);
   });
+  // A failed score query (model.scoreFailed, renderStatic) leaves every app's .s null — the
+  // same shape as "no data yet" — so this summary must not compute OK/DEGRADED/DOWN/NO DATA
+  // counts from it on a failure; that's the "0 OK ... 42 NO DATA" the panel's own error state
+  // (data-panel-message) is there to replace, not sit beside.
+  if (model.scoreFailed) { $('appsum').textContent = '—'; return; }
   const ok = apps.filter((a) => a.s != null && a.s >= 90).length, warn = apps.filter((a) => a.s != null && a.s >= 50 && a.s < 90).length;
   const bad = apps.filter((a) => a.s != null && a.s < 50).length, unk = apps.filter((a) => a.s == null).length;
   $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>${unk ? ` · <span style="color:var(--dim)">${unk} NO DATA</span>` : ''}`;
@@ -304,8 +343,16 @@ if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
     flows.push({ g, curve, pos, pg, ph: Array.from({ length: N }, () => ({ t: Math.random(), dir: Math.random() < 0.5 ? 1 : -1 })) });
     hubs.push({ hub, ring, el: labelEls[i] });
   });
-  const resize = () => { const w = topo.clientWidth, h = topo.clientHeight; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); };
-  resize(); addEventListener('resize', resize);
+  // Reads the #topo CELL's size (fr-grid, never affected by #gl's own attribute) and writes
+  // only to #gl — never back to #topo, so this cannot loop. A ResizeObserver on the cell
+  // catches every layout change, not just a window resize.
+  const resize = () => {
+    const w = topo.clientWidth, h = topo.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix();
+  };
+  new ResizeObserver(resize).observe(topo);
+  resize();
   const v3 = new THREE.Vector3();
   drawTopo = (now, dt) => {
     const tt = now / 1000, ang = RM ? 0.6 : tt * 0.06;
@@ -352,11 +399,15 @@ function renderStatic() {
   setState($('topo'), 'pending', 'WAN EXPORTER PENDING');
   // D5: an app with no Gatus series at all is "no data" for that one cell (see drawHex/appsum),
   // never reason to pend the whole panel — only a total scoring failure does.
+  // A query that failed outright (settle() -> null) is 'error', never silently "no data".
   const scored = apps.some((app) => app.s != null);
-  setState($('apps'), scored ? 'ok' : 'empty', scored ? '' : 'NO SERVICE DATA');
-  setState($('storage'), model.storage.length ? 'ok' : 'empty', model.storage.length ? '' : 'STORAGE METRICS EMPTY');
+  setState($('apps'), model.scoreFailed ? 'error' : scored ? 'ok' : 'empty',
+    model.scoreFailed ? 'SCORE QUERY FAILED' : scored ? '' : 'NO SERVICE DATA');
+  setState($('storage'), model.storageFailed ? 'error' : model.storage.length ? 'ok' : 'empty',
+    model.storageFailed ? 'STORAGE QUERY FAILED' : model.storage.length ? '' : 'STORAGE METRICS EMPTY');
   setState($('fw'), 'pending', 'SPLUNK FEED PENDING');
-  setState($('llm'), model.llm.length ? 'ok' : 'pending', model.llm.length ? '' : 'ROUTER METRICS PENDING');
+  setState($('llm'), model.llmFailed ? 'error' : model.llm.length ? 'ok' : 'pending',
+    model.llmFailed ? 'ROUTER QUERY FAILED' : model.llm.length ? '' : 'ROUTER METRICS PENDING');
   const up = model.nodes.filter((n) => !n.pending).length;
   $('fstats').innerHTML = `NODES UP<b>${up}</b><br>APPS SCORED<b>${apps.filter((a) => a.s != null).length}/${apps.length}</b><br>MODELS UP<b>${model.llm.filter((m) => m.state < 2).length}</b><br>UPDATED<b>${new Date(model.updated).toTimeString().slice(0, 8)}</b>`;
 }
