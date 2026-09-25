@@ -2,8 +2,26 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="0; url=/mc1/">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Homelab Wall</title>
+<style>
+  html,body{margin:0;height:100%;width:100%;overflow:hidden;background:#04070c}
+  .layer{position:fixed;inset:0;width:100%;height:100%;border:0;opacity:0;transition:opacity .8s ease;background:#04070c;pointer-events:none}
+  .layer.active{opacity:1}
+  #dots{position:fixed;left:0;right:0;bottom:16px;display:flex;justify-content:center;align-items:center;gap:10px;margin:0;padding:0;opacity:0;transition:opacity .5s ease;pointer-events:none}
+  #dots.visible{opacity:1;pointer-events:auto}
+  .dot{width:12px;height:12px;padding:0;border:0;background:none;cursor:pointer}
+  .dot svg{width:100%;height:100%;display:block;transform:rotate(-90deg)}
+  .dot circle.bg{fill:rgba(255,255,255,.2)}
+  .dot.current circle.bg{fill:rgba(255,255,255,.55)}
+  .dot circle.ring{fill:none;stroke:#3ee6ff;stroke-width:2}
+  #skip{color:rgba(255,255,255,.6);font:11px "JetBrains Mono",Menlo,monospace;letter-spacing:.05em;text-transform:uppercase;margin-left:6px}
+</style>
 </head>
-<body></body>
+<body>
+<iframe id="layerA" class="layer" title="slide"></iframe>
+<iframe id="layerB" class="layer" title="slide"></iframe>
+<nav id="dots"></nav>
+<script type="module" src="/rotator/rotator.js"></script>
+</body>
 </html>

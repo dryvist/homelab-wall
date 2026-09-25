@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 
 // WALL_URL points the suite at a live site instead of the local fixture server.
 // WALL_PROXY (e.g. socks5://127.0.0.1:1088) routes the browser through it.
@@ -14,6 +14,12 @@ export default defineConfig({
     ...(process.env.WALL_PROXY ? { launchOptions: { proxy: { server: process.env.WALL_PROXY } } } : {}),
     ...(process.env.WALL_STATE ? { storageState: process.env.WALL_STATE } : {}),
   },
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Scoped to the rotator spec only — it targets Chromium and WebKit by spec; the rest of the
+    // suite hasn't been vetted against WebKit yet.
+    { name: 'webkit', use: { ...devices['Desktop Safari'] }, testMatch: /rotator\.spec\.ts$/ },
+  ],
   webServer: wallUrl ? undefined : {
     command: 'python3 -m http.server 4173 --bind 127.0.0.1 --directory site',
     url: 'http://127.0.0.1:4173/mc1/',
