@@ -150,3 +150,37 @@ for (const vp of STABILITY_MATRIX) {
     });
   });
 }
+
+// The operator saw the page grow taller than the viewport in Safari — a WebKit-only feedback
+// loop (a canvas reading its own rendered size back into its backing store, which then grew its
+// grid cell). document.scrollingElement.scrollHeight is the direct measure of that: the page
+// must never exceed the viewport, on any project, and must stay put once settled.
+for (const pageSpec of PAGES) {
+  test(`${pageSpec.id} page height never exceeds the viewport and stays stable`, async ({ page }) => {
+    if (!wallUrl) await mockFeeds(page);
+    await page.goto(pageSpec.path);
+    const viewport = page.viewportSize()!;
+    const heights: number[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      heights.push(await page.evaluate(() => document.scrollingElement!.scrollHeight));
+      if (i < 4) await page.waitForTimeout(1000);
+    }
+    heights.forEach((h, i) => {
+      expect(h, `scrollHeight ${h}px exceeds viewport height ${viewport.height}px at t=${i}s`).toBeLessThanOrEqual(viewport.height);
+    });
+    expect(new Set(heights).size, `scrollHeight was not stable over 5s: ${heights.join(', ')}`).toBe(1);
+  });
+}
+
+// settle() (lib/prom.js) turns a rejected query into null, and mc1.js renders that as an
+// explicit error panel — never as "0 OK / 54 NO DATA" (the bug the operator saw). Forces the
+// score query to fail outright and asserts the panel says so.
+test('a failed health query renders an explicit error, never a silent zero count', async ({ page }) => {
+  test.skip(!!wallUrl, 'forces a query failure against the fixture server only');
+  await mockFeeds(page, { failQuery: (q) => q.includes('gatus_results_total') && q.includes('by (name)') });
+  await page.goto('/mc1/');
+  const apps = page.locator('[data-panel="apps"]');
+  await expect(apps).toHaveAttribute('data-state', 'error');
+  await expect(apps.locator('[data-panel-message]')).toHaveText('SCORE QUERY FAILED');
+  await expect(page.locator('#appsum')).not.toContainText(/\d/);
+});
