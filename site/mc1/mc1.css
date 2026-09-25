@@ -1,13 +1,17 @@
-#stage{display:grid;grid-template-columns:430px 1fr 540px;grid-template-rows:78px 1fr 260px;gap:14px;padding:16px 18px;box-sizing:border-box;
+#stage{display:grid;grid-template-columns:430px minmax(0,1fr) 540px;grid-template-rows:78px minmax(0,1fr) 260px;gap:14px;padding:16px 18px;box-sizing:border-box;
   background:radial-gradient(1200px 700px at 50% 45%,#0a1a2a 0%,var(--void) 70%)}
 #stage::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}
-.panel{position:relative;background:linear-gradient(180deg,rgba(12,26,40,.78),rgba(6,12,20,.78));border:1px solid var(--edge);
+/* Every grid cell gets an explicit, content-independent size (contain:size) and clips anything
+   that would otherwise overflow it — no cell's box can be grown by what's drawn inside it. */
+.panel{position:relative;min-width:0;min-height:0;overflow:hidden;contain:layout size;
+  background:linear-gradient(180deg,rgba(12,26,40,.78),rgba(6,12,20,.78));border:1px solid var(--edge);
   clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
 .panel>h2{margin:0;padding:8px 14px 6px;font:600 12px/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);
   display:flex;justify-content:space-between;border-bottom:1px solid var(--grid)}
 .panel>h2 span{color:var(--dim);letter-spacing:.1em}
 .panel [data-panel-message]{color:var(--amber);font:600 9px/1 var(--mono);letter-spacing:.1em;white-space:nowrap}
+.panel[data-state="error"] [data-panel-message]{color:var(--red)}
 #fw [data-panel-message]{position:absolute;right:14px;bottom:10px;color:var(--amber);z-index:2}
 .num{font-variant-numeric:tabular-nums}
 
@@ -56,9 +60,11 @@ header{grid-column:1/-1;display:flex;align-items:center;gap:26px;padding:0 20px}
 #legend{bottom:12px;left:14px;display:grid;grid-template-columns:repeat(4,auto);gap:4px 18px}
 #legend i{display:inline-block;width:8px;height:8px;margin-right:6px;box-shadow:0 0 6px currentColor;background:currentColor}
 
-/* apps */
-#apps{grid-row:2;grid-column:3;display:flex;flex-direction:column}
-#hex{flex:1;width:100%}
+/* apps — #hex is taken out of flow so its backing-store resolution can never feed back into
+   the panel's own layout size (the D-mc1-1 bug: a canvas sized from its own container, sizing
+   its container, sizing itself, forever). Same pattern already used by #topo canvas#gl. */
+#apps{grid-row:2;grid-column:3}
+#hex{position:absolute;inset:0;width:100%;height:100%}
 
 /* storage */
 #storage{grid-row:3;grid-column:1}

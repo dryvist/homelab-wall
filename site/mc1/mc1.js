@@ -39,6 +39,10 @@ async function refresh() {
     llmTok: () => query(Q.llmTokRate),
   });
 
+  // settle() (lib/prom.js) yields null for a query that rejected (bad status, timeout, bad
+  // body) — distinct from a query that succeeded with zero rows. A failed score query must
+  // never render as "0 OK / 54 NO DATA"; it renders as an explicit error instead.
+  model.scoreFailed = r.score === null;
   if (r.score) {
     const seen = new Set();
     for (const row of r.score) {
@@ -70,6 +74,7 @@ async function refresh() {
     }
   }
 
+  model.storageFailed = r.fsSize === null || r.fsAvail === null;
   if (r.fsSize && r.fsAvail) {
     const avail = Object.fromEntries(r.fsAvail.map((x) => [`${x.labels.instance}|${x.labels.device}`, x.value]));
     const best = new Map(), hosts = new Map();
@@ -90,6 +95,7 @@ async function refresh() {
       .sort((a, b) => b.size - a.size).slice(0, 12);
   }
 
+  model.llmFailed = r.llmState === null;
   if (r.llmState) {
     const tok = Object.fromEntries((r.llmTok || []).map((x) => [x.labels.model, x.value]));
     model.llmAll = r.llmState.map((x) => {
@@ -216,10 +222,12 @@ function renderLlm() {
 /* ---------------- honeycomb ---------------- */
 const hx = $('hex');
 function drawHex(t) {
-  const rect = hx.getBoundingClientRect(), s = rect.width / hx.offsetWidth || 1;
-  const W = Math.round(hx.offsetWidth * 2), H = Math.round(hx.offsetHeight * 2);
+  // #hex is CSS-sized (position:absolute;inset:0;width:100%;height:100%, mc1.css) — its layout
+  // size never depends on this attribute. clientWidth/clientHeight only ever reads that fixed
+  // CSS size, so writing the backing-store resolution here cannot feed back into it.
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const W = Math.round(hx.clientWidth * dpr), H = Math.round(hx.clientHeight * dpr);
   if (hx.width !== W || hx.height !== H) { hx.width = W; hx.height = H; }
-  void s;
   const c = hx.getContext('2d'); c.clearRect(0, 0, W, H);
   for (const a of apps) a.d = lerp(a.d, a.s ?? 0, 0.1);
   const n = Math.max(apps.length, 1), cols = n > 56 ? 9 : n > 42 ? 8 : 7;
@@ -352,11 +360,15 @@ function renderStatic() {
   setState($('topo'), 'pending', 'WAN EXPORTER PENDING');
   // D5: an app with no Gatus series at all is "no data" for that one cell (see drawHex/appsum),
   // never reason to pend the whole panel — only a total scoring failure does.
+  // A query that failed outright (settle() -> null) is 'error', never silently "no data".
   const scored = apps.some((app) => app.s != null);
-  setState($('apps'), scored ? 'ok' : 'empty', scored ? '' : 'NO SERVICE DATA');
-  setState($('storage'), model.storage.length ? 'ok' : 'empty', model.storage.length ? '' : 'STORAGE METRICS EMPTY');
+  setState($('apps'), model.scoreFailed ? 'error' : scored ? 'ok' : 'empty',
+    model.scoreFailed ? 'SCORE QUERY FAILED' : scored ? '' : 'NO SERVICE DATA');
+  setState($('storage'), model.storageFailed ? 'error' : model.storage.length ? 'ok' : 'empty',
+    model.storageFailed ? 'STORAGE QUERY FAILED' : model.storage.length ? '' : 'STORAGE METRICS EMPTY');
   setState($('fw'), 'pending', 'SPLUNK FEED PENDING');
-  setState($('llm'), model.llm.length ? 'ok' : 'pending', model.llm.length ? '' : 'ROUTER METRICS PENDING');
+  setState($('llm'), model.llmFailed ? 'error' : model.llm.length ? 'ok' : 'pending',
+    model.llmFailed ? 'ROUTER QUERY FAILED' : model.llm.length ? '' : 'ROUTER METRICS PENDING');
   const up = model.nodes.filter((n) => !n.pending).length;
   $('fstats').innerHTML = `NODES UP<b>${up}</b><br>APPS SCORED<b>${apps.filter((a) => a.s != null).length}/${apps.length}</b><br>MODELS UP<b>${model.llm.filter((m) => m.state < 2).length}</b><br>UPDATED<b>${new Date(model.updated).toTimeString().slice(0, 8)}</b>`;
 }

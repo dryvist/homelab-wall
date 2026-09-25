@@ -14,10 +14,13 @@ export function setState(panel, state, message = '') {
   if (notice) notice.textContent = message;
 }
 
+// The stage is a fixed 1920x1080 box (see .stage in wall.css, transform-origin:0 0); this is
+// the only thing that ever sets its size on screen. Nothing else may read a rendered size and
+// write a size back — that's the feedback loop that grew a panel without bound.
 export function fitStage(el) {
   const fit = () => {
     const s = Math.min(innerWidth / 1920, innerHeight / 1080);
-    el.style.transform = `translate(${(innerWidth - 1920 * s) / 2}px,${(innerHeight - 1080 * s) / 2}px) scale(${s})`;
+    el.style.transform = `scale(${s})`;
   };
   addEventListener('resize', fit);
   fit();
