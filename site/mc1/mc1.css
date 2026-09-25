@@ -7,6 +7,8 @@
 .panel>h2{margin:0;padding:8px 14px 6px;font:600 12px/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);
   display:flex;justify-content:space-between;border-bottom:1px solid var(--grid)}
 .panel>h2 span{color:var(--dim);letter-spacing:.1em}
+.panel [data-panel-message]{color:var(--amber);font:600 9px/1 var(--mono);letter-spacing:.1em;white-space:nowrap}
+#fw [data-panel-message]{position:absolute;right:14px;bottom:10px;color:var(--amber);z-index:2}
 .num{font-variant-numeric:tabular-nums}
 
 /* header */
@@ -47,9 +49,6 @@ header{grid-column:1/-1;display:flex;align-items:center;gap:26px;padding:0 20px}
 #wan b{color:var(--ink);font-weight:600}
 #fstats{top:40px;right:14px;text-align:right;line-height:1.8}
 #fstats b{color:#fff;font:600 16px var(--disp);margin-left:8px}
-#llm{bottom:12px;right:14px;width:370px;background:rgba(4,7,12,.7);border:1px solid rgba(255,79,216,.35);padding:8px 10px;letter-spacing:.04em;
-  box-shadow:0 0 24px rgba(255,79,216,.15);transform:perspective(700px) rotateY(-14deg);transform-origin:right center}
-#llm .lh{color:#ff4fd8;letter-spacing:.2em;margin-bottom:6px;font:600 11px var(--disp)}
 .lr{display:grid;grid-template-columns:12px 1fr 58px 56px 58px;gap:6px;align-items:center;font-size:11px;color:var(--ink);line-height:1.7}
 .lr i{width:7px;height:7px;border-radius:50%}
 .lr .tk{color:#fff;font-weight:600;text-align:right}.lr .h{color:var(--dim)}
@@ -71,7 +70,7 @@ header{grid-column:1/-1;display:flex;align-items:center;gap:26px;padding:0 20px}
 #storage .rows{padding-top:6px}
 
 /* firewall */
-#fw{grid-row:3;grid-column:2/4;display:flex;flex-direction:column}
+#fw{grid-row:3;grid-column:2;display:flex;flex-direction:column}
 .fwsplit{flex:1;display:grid;grid-template-columns:1fr 1fr;min-height:0}
 .fwcol{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--grid)}
 .fwcol h3{margin:0;padding:8px 14px 6px;font:600 12px/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);display:flex;justify-content:space-between;border-bottom:1px solid var(--grid)}
@@ -93,11 +92,16 @@ header{grid-column:1/-1;display:flex;align-items:center;gap:26px;padding:0 20px}
 @keyframes in{from{background:rgba(62,230,255,.25);transform:translateX(-12px);opacity:0}to{opacity:1}}
 @media (prefers-reduced-motion:reduce){.fr,.br{animation:none}}
 
+/* llm fabric — its own grid cell (D7): no longer an overlay on top of the topology panel */
+#llm{grid-row:3;grid-column:3;display:flex;flex-direction:column;overflow:hidden;
+  border-color:rgba(255,79,216,.35);box-shadow:0 0 24px rgba(255,79,216,.15)}
+#llm>h2{color:#ff4fd8}
+#llm #llmrows{flex:1;overflow:auto;padding:6px 10px}
+
 /* 3D stage + ambient motion */
 #stage{perspective:1600px;perspective-origin:50% 45%}
 #nodes,#storage{transform:rotateY(9deg);transform-origin:left center;animation:swayL 9s ease-in-out infinite}
-#apps,#fw{transform:rotateY(-9deg);transform-origin:right center;animation:swayR 9s ease-in-out infinite}
-#fw{transform-origin:70% center}
+#apps,#fw,#llm{transform:rotateY(-9deg);transform-origin:right center;animation:swayR 9s ease-in-out infinite}
 @keyframes swayL{50%{transform:rotateY(6deg) rotateX(1deg)}}
 @keyframes swayR{50%{transform:rotateY(-6deg) rotateX(-1deg)}}
 .panel{box-shadow:0 0 0 1px rgba(62,230,255,.05),0 30px 60px -20px rgba(0,0,0,.9),inset 0 0 40px rgba(62,230,255,.05)}
@@ -115,6 +119,6 @@ header{grid-column:1/-1;display:flex;align-items:center;gap:26px;padding:0 20px}
 @keyframes flick{0%,96%,100%{opacity:1}97%{opacity:.55}98%{opacity:1}99%{opacity:.7}}
 .fwrows{transform:perspective(900px) rotateX(16deg);transform-origin:bottom center;
   -webkit-mask-image:linear-gradient(0deg,#000 60%,transparent);mask-image:linear-gradient(0deg,#000 60%,transparent)}
-@media (prefers-reduced-motion:reduce){#nodes,#storage,#apps,#fw,.panel::before,.st .bar div::after,.brand{animation:none}}
+@media (prefers-reduced-motion:reduce){#nodes,#storage,#apps,#fw,#llm,.panel::before,.st .bar div::after,.brand{animation:none}}
 .st>span:first-child,.lr>span:nth-of-type(1){overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .st em{font-style:normal;color:var(--dim)}

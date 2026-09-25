@@ -1,7 +1,7 @@
 // Mission Control 1: estate overview, driven by live Prometheus data.
 import { query, range, settle, shortHost } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { clamp, hue, lerp, esc, fitStage, hardwareGL, loop, loadConfig } from '/lib/stage.js';
+import { clamp, hue, lerp, esc, fitStage, hardwareGL, loop, loadConfig, setState } from '/lib/stage.js';
 
 const $ = (id) => document.getElementById(id);
 const stage = $('stage');
@@ -57,7 +57,9 @@ async function refresh() {
       const prev = model.nodes.find((n) => n.name === name) || {};
       return {
         ...prev, name,
-        role: cfg.nodeRoles?.[name] || '',
+        // D2: a role mapping that just echoes the node's own name back is not information —
+        // the subtitle omits it rather than showing "node-c · node-c".
+        role: cfg.nodeRoles?.[name] === name ? '' : (cfg.nodeRoles?.[name] || ''),
         cpu: byHost(r.cpu)[name], mem: mem[name], load: load[name], cores: cores[name] || 1,
         ram: memT[name] || 0, temp: temp[name], up: upt[name], hist: hist[name] || [],
         d: prev.d || { cpu: 0, mem: 0, load: 0 },
@@ -70,17 +72,22 @@ async function refresh() {
 
   if (r.fsSize && r.fsAvail) {
     const avail = Object.fromEntries(r.fsAvail.map((x) => [`${x.labels.instance}|${x.labels.device}`, x.value]));
-    const best = new Map();
+    const best = new Map(), hosts = new Map();
     for (const x of r.fsSize) {
       const zfs = x.labels.fstype === 'zfs';
       const host = shortHost(x.labels.instance);
       const name = zfs ? x.labels.device.split('/')[0] : x.labels.mountpoint;
       const size = x.value, used = size - (avail[`${x.labels.instance}|${x.labels.device}`] ?? size);
-      const key = `${host}|${zfs ? 'zfs:' + name : x.labels.device}`;
-      // The largest dataset in a pool is the closest to the pool's own figure.
-      if (size > 1e9 && !(best.get(key)?.size >= size)) best.set(key, { host, name, size, used });
+      const key = zfs ? `zfs:${name}` : `${x.labels.device}|${x.labels.mountpoint}`;
+      if (size <= 1e9) continue;
+      // D3: the same device + mountpoint reported by several nodes is one shared mount, not
+      // several — keep the largest reading and remember every host that reported it.
+      if (!(best.get(key)?.size >= size)) best.set(key, { host, name, size, used });
+      if (!hosts.has(key)) hosts.set(key, new Set());
+      hosts.get(key).add(host);
     }
-    model.storage = [...best.values()].sort((a, b) => b.size - a.size).slice(0, 12);
+    model.storage = [...best].map(([key, v]) => ({ ...v, host: hosts.get(key).size > 1 ? 'shared' : v.host }))
+      .sort((a, b) => b.size - a.size).slice(0, 12);
   }
 
   if (r.llmState) {
@@ -258,7 +265,7 @@ let drawTopo;
 const forced = new URLSearchParams(location.search).get('gl');
 if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
   const THREE = window.THREE;
-  const renderer = new THREE.WebGLRenderer({ canvas: $('gl'), antialias: true, alpha: true });
+  const renderer = new THREE.WebGLRenderer({ canvas: $('gl'), antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   const scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x04070c, 0.0065);
   const cam = new THREE.PerspectiveCamera(48, 1, 1, 1000);
@@ -337,11 +344,19 @@ if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
 /* ---------------- firewall + WAN (feed arrives with the Splunk app) ---------------- */
 $('blkrows').innerHTML = '<div class="pending" style="padding:14px">edge block feed pending</div>';
 $('fwrows').innerHTML = '<div class="pending" style="padding:14px">flow feed pending</div>';
-$('wdn').textContent = '—'; $('wup').textContent = '—';
 
 /* ---------------- boot ---------------- */
 function renderStatic() {
   buildNodes(); renderHeader(); renderStorage(); renderLlm(); updateLabels();
+  setState($('nodes'), 'pending', 'NO GPU EXPORTER');
+  setState($('topo'), 'pending', 'WAN EXPORTER PENDING');
+  // D5: an app with no Gatus series at all is "no data" for that one cell (see drawHex/appsum),
+  // never reason to pend the whole panel — only a total scoring failure does.
+  const scored = apps.some((app) => app.s != null);
+  setState($('apps'), scored ? 'ok' : 'empty', scored ? '' : 'NO SERVICE DATA');
+  setState($('storage'), model.storage.length ? 'ok' : 'empty', model.storage.length ? '' : 'STORAGE METRICS EMPTY');
+  setState($('fw'), 'pending', 'SPLUNK FEED PENDING');
+  setState($('llm'), model.llm.length ? 'ok' : 'pending', model.llm.length ? '' : 'ROUTER METRICS PENDING');
   const up = model.nodes.filter((n) => !n.pending).length;
   $('fstats').innerHTML = `NODES UP<b>${up}</b><br>APPS SCORED<b>${apps.filter((a) => a.s != null).length}/${apps.length}</b><br>MODELS UP<b>${model.llm.filter((m) => m.state < 2).length}</b><br>UPDATED<b>${new Date(model.updated).toTimeString().slice(0, 8)}</b>`;
 }

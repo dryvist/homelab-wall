@@ -5,6 +5,15 @@ export const lerp = (a, b, t) => a + (b - a) * t;
 // Metric labels and config strings are data; escape before any innerHTML use.
 export const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
+const STATES = new Set(['ok', 'empty', 'pending', 'error']);
+
+export function setState(panel, state, message = '') {
+  if (!STATES.has(state)) throw new Error(`unknown panel state: ${state}`);
+  panel.dataset.state = state;
+  const notice = panel.querySelector('[data-panel-message]');
+  if (notice) notice.textContent = message;
+}
+
 export function fitStage(el) {
   const fit = () => {
     const s = Math.min(innerWidth / 1920, innerHeight / 1080);
