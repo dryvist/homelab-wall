@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mission Control · Pipeline</title>
+<link rel="stylesheet" href="/lib/wall.css">
+<link rel="stylesheet" href="/mc5/mc5.css">
+</head>
+<body>
+<div id="mc5" class="mc5">
+  <header>
+    <canvas id="ring" width="128" height="128"></canvas>
+    <div class="brand"><span id="title">HOMELAB</span> <span class="acc">//</span> PIPELINE <span class="acc">//</span> GITOPS<small id="subtitle">—</small></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="clock num" id="clock">--:--:--<small>--</small></div>
+  </header>
+
+  <section class="panel" id="apps" data-panel="apps" data-state="pending">
+    <h2>Service health <span id="appsum">—</span><span data-panel-message></span></h2>
+    <canvas id="appgrid"></canvas>
+  </section>
+
+  <section class="panel" id="github" data-panel="github" data-state="pending">
+    <h2>GitHub · Actions &amp; PRs<span data-panel-message></span></h2>
+    <div class="body"></div>
+  </section>
+
+  <section class="panel" id="pipeline" data-panel="pipeline" data-state="pending">
+    <h2>Pipeline stages<span data-panel-message></span></h2>
+    <canvas id="pipecanvas"></canvas>
+  </section>
+
+  <section class="panel" id="infra" data-panel="infra" data-state="pending">
+    <h2>Terrakube &amp; Semaphore<span data-panel-message></span></h2>
+    <div class="body"></div>
+  </section>
+
+  <section class="panel" id="activity" data-panel="activity" data-state="pending">
+    <h2>Pipeline activity<span data-panel-message></span></h2>
+    <div class="body"></div>
+  </section>
+</div>
+<script type="module" src="/mc5/mc5.js"></script>
+</body>
+</html>
