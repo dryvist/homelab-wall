@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
-import pending from './expected-pending.json' with { type: 'json' };
+import pendingJson from './expected-pending.json' with { type: 'json' };
 import { mockFeeds } from './fixture';
+
+// Record<string, string[]> keyed by page id (not just mc1's own keys) so a page id not yet in
+// the fixture still typechecks — it simply has no allowed-pending panels.
+const pending = pendingJson as { panels: Record<string, string[]>; queries: string[] };
 
 const PAGES = [{ id: 'mc1', path: '/mc1/' }] as const;
 const MODES = ['2d', '3d'] as const;
@@ -25,9 +29,9 @@ for (const pageSpec of PAGES) {
       await page.goto(`${pageSpec.path}?gl=${mode}`);
       const panels = page.locator('[data-panel]');
       await expect(panels).not.toHaveCount(0);
-      await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
-      await expect(page.locator('#appsum')).not.toContainText('—');
 
+      // Every panel on the page must be 'ok' unless this page's expected-pending.json entry
+      // lists it — generic across pages, no panel id (e.g. mc1's "apps") is special-cased here.
       const allowed = new Set(pending.panels[pageSpec.id] ?? []);
       const count = await panels.count();
       for (let index = 0; index < count; index += 1) {
@@ -40,7 +44,10 @@ for (const pageSpec of PAGES) {
           await expect(panel).toContainText(/[A-Z]{2,}/);
         } else {
           expect(state).toBe('ok');
-          expect(await panel.innerText()).not.toMatch(invalidMetric);
+          // Poll, not a one-shot read: a panel can flip to data-state="ok" (set synchronously
+          // by renderStatic) a frame before its own rAF-scheduled repaint (e.g. mc1's #appsum)
+          // has actually painted over its placeholder "—".
+          await expect.poll(() => panel.innerText()).not.toMatch(invalidMetric);
         }
       }
 
@@ -61,6 +68,12 @@ for (const pageSpec of PAGES) {
       // storage row, not one per node. Fixture-shaped, so only checked against the fixture.
       if (!wallUrl && pageSpec.id === 'mc1') {
         expect(await page.locator('#strows .st').count(), 'a shared mount must be deduped to a single row').toBe(7);
+      }
+
+      // mc1-only: the service-health strip's own summary line is content, not just panel
+      // state — the generic loop above already requires [data-panel="apps"] to be 'ok'.
+      if (pageSpec.id === 'mc1') {
+        await expect(page.locator('#appsum')).not.toContainText('—');
       }
 
       await expect.poll(() => page.locator('canvas').evaluateAll((canvases) => Array.from(canvases).every((canvas) =>
