@@ -2,10 +2,12 @@
 import { query, range, settle, shortHost } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import { clamp, hue, lerp, esc, observeCanvas, hardwareGL, loop, loadConfig, setState } from '/lib/stage.js';
+import { lastGoodGet, lastGoodSet } from '/lib/lastGood.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e', '#ff3b5c', '#e8f4ff', '#8ab8ff', '#ffd23e'];
+const STALE_MS = 5 * 60 * 1000;
 
 const cfg = await loadConfig();
 $('title').textContent = cfg.title || 'HOMELAB';
@@ -13,6 +15,10 @@ const groups = (cfg.groups || []).map((g, i) => ({ ...g, c: PALETTE[i % PALETTE.
 const apps = [...new Set(groups.flatMap((g) => g.apps))].sort().map((n) => ({ n, s: null, d: 0 }));
 const appIndex = Object.fromEntries(apps.map((a) => [a.n, a]));
 const model = { nodes: [], storage: [], llm: [], llmAll: [], uptime: null, updated: 0 };
+// D-mc1-2: the node card list must be driven by which nodes are CONFIGURED, never by which
+// series a single poll happened to return — a node that drops out of Prometheus for one poll
+// (a scrape gap, a restart) must keep its card, not vanish from it.
+const nodeOrder = Object.keys(cfg.nodeRoles || {});
 
 /* ---------------- data ---------------- */
 function byHost(rows) {
@@ -54,21 +60,32 @@ async function refresh() {
   if (r.cpu) {
     const [cores, mem, memT, load, temp, upt] = [r.cores, r.mem, r.memTotal, r.load, r.temp, r.upt].map(byHost);
     const hist = Object.fromEntries((r.hist || []).map((h) => [shortHost(h.labels.instance), h.values]));
-    const live = r.cpu.map((row) => shortHost(row.labels.instance)).sort();
-    model.nodes = live.map((name) => {
+    const liveNow = new Set(r.cpu.map((row) => shortHost(row.labels.instance)));
+    model.nodes = nodeOrder.map((name) => {
       const prev = model.nodes.find((n) => n.name === name) || {};
+      // D2: a role mapping that just echoes the node's own name back is not information —
+      // the subtitle omits it rather than showing "node-c · node-c".
+      const role = cfg.nodeRoles?.[name] === name ? '' : (cfg.nodeRoles?.[name] || '');
+      if (liveNow.has(name)) {
+        const fresh = {
+          cpu: byHost(r.cpu)[name], mem: mem[name], load: load[name], cores: cores[name] || 1,
+          ram: memT[name] || 0, temp: temp[name], up: upt[name], hist: hist[name] || [],
+        };
+        lastGoodSet(`node:${name}`, fresh);
+        return { ...prev, name, role, ...fresh, stale: false, lastSeen: Date.now(), d: prev.d || { cpu: 0, mem: 0, load: 0 } };
+      }
+      // Missing from this poll — a scrape gap or restart, not gone. Fall back to the last good
+      // reading (this session, or a prior page load via localStorage) and mark the card stale
+      // instead of dropping it.
+      const last = lastGoodGet(`node:${name}`);
       return {
-        ...prev, name,
-        // D2: a role mapping that just echoes the node's own name back is not information —
-        // the subtitle omits it rather than showing "node-c · node-c".
-        role: cfg.nodeRoles?.[name] === name ? '' : (cfg.nodeRoles?.[name] || ''),
-        cpu: byHost(r.cpu)[name], mem: mem[name], load: load[name], cores: cores[name] || 1,
-        ram: memT[name] || 0, temp: temp[name], up: upt[name], hist: hist[name] || [],
+        ...prev, name, role, ...(last?.value || {}),
+        stale: true, lastSeen: last?.at ?? prev.lastSeen ?? null,
         d: prev.d || { cpu: 0, mem: 0, load: 0 },
       };
     });
     for (const x of cfg.extraNodes || []) {
-      if (!live.includes(x.name)) model.nodes.push({ name: x.name, role: x.role, pending: true, d: { cpu: 0, mem: 0, load: 0 } });
+      if (!nodeOrder.includes(x.name) && !liveNow.has(x.name)) model.nodes.push({ name: x.name, role: x.role, pending: true, d: { cpu: 0, mem: 0, load: 0 } });
     }
   }
 
@@ -143,11 +160,13 @@ function buildNodes() {
   if (key === nodeKey) return;
   nodeKey = key;
   $('nodelist').style.gridTemplateRows = `repeat(${Math.max(model.nodes.length, 1)},1fr)`;
-  $('nodelist').innerHTML = model.nodes.map((n, i) => `<div class="node${n.pending ? ' mac' : ''}"><div class="nm">${esc(n.name.toUpperCase())}<em id="nm${i}"></em></div>
+  $('nodelist').innerHTML = model.nodes.map((n, i) => `<div class="node${n.pending ? ' mac' : ''}" id="node${i}"><div class="nm">${esc(n.name.toUpperCase())}<em id="nm${i}"></em></div>
     ${[0, 1, 2, 3].map((g) => `<canvas class="g" id="g${i}${g}" width="240" height="168"></canvas>`).join('')}
     <canvas class="sp" id="sp${i}" width="780" height="52"></canvas></div>`).join('');
-  const up = model.nodes.filter((n) => !n.pending).length;
-  $('quorum').textContent = `${up}/${model.nodes.length} UP`;
+}
+function ageLabel(atMs) {
+  const s = Math.max(0, Math.floor((Date.now() - atMs) / 1000));
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m`;
 }
 function gauge(id, val, max, label, unit, col) {
   const el = $(id); if (!el) return;
@@ -185,9 +204,16 @@ function drawNodes() {
     gauge(`g${i}3`, null, 100, n.pending ? 'PENDING' : 'NO GPU', '%', '#2a4556');
     spark(`sp${i}`, n.hist || []);
     const meta = n.pending ? `${n.role} · exporter pending`
-      : `${n.role ? n.role + ' · ' : ''}${n.temp != null ? Math.round(n.temp) + '°C · ' : ''}${n.up != null ? 'up ' + Math.floor(n.up / 86400) + 'd' : ''}`;
+      : n.stale
+        ? (n.lastSeen == null ? 'NO DATA'
+          : Date.now() - n.lastSeen < STALE_MS ? `STALE ${ageLabel(n.lastSeen)}`
+          : `NO DATA since ${new Date(n.lastSeen).toTimeString().slice(0, 8)}`)
+        : `${n.role ? n.role + ' · ' : ''}${n.temp != null ? Math.round(n.temp) + '°C · ' : ''}${n.up != null ? 'up ' + Math.floor(n.up / 86400) + 'd' : ''}`;
     const el = $('nm' + i); if (el && el.textContent !== meta) el.textContent = meta;
+    const card = $('node' + i); if (card) card.classList.toggle('stale', !!n.stale);
   });
+  const up = model.nodes.filter((n) => !n.pending && !n.stale).length;
+  $('quorum').textContent = `${up}/${model.nodes.length} UP`;
 }
 
 /* ---------------- storage ---------------- */

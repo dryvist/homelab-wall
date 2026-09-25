@@ -5,7 +5,10 @@ export const lerp = (a, b, t) => a + (b - a) * t;
 // Metric labels and config strings are data; escape before any innerHTML use.
 export const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-const STATES = new Set(['ok', 'empty', 'pending', 'error']);
+// 'stale': the panel has real data, but it is a held-over last-good value rather than a fresh
+// read (a source that dropped out of the current poll) — distinct from 'pending' (no source
+// wired up yet) and 'error' (the query itself failed).
+const STATES = new Set(['ok', 'empty', 'pending', 'error', 'stale']);
 
 export function setState(panel, state, message = '') {
   if (!STATES.has(state)) throw new Error(`unknown panel state: ${state}`);

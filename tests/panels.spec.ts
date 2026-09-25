@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import type { Route } from '@playwright/test';
 import pendingJson from './expected-pending.json' with { type: 'json' };
 import { mockFeeds } from './fixture';
 
@@ -196,4 +197,57 @@ test('a failed health query renders an explicit error, never a silent zero count
   await expect(apps).toHaveAttribute('data-state', 'error');
   await expect(apps.locator('[data-panel-message]')).toHaveText('SCORE QUERY FAILED');
   await expect(page.locator('#appsum')).not.toContainText(/\d/);
+});
+
+// D-mc1-2: a node that drops out of a single poll (a scrape gap, a restart) must keep its card
+// with its last known values, marked stale — never disappear. The operator's report was exactly
+// this: a real 4th PVE node (80 cores, like pve-r540) vanished from the panel entirely during a
+// transient metrics gap. This test runs its own fixture (4 nodes, config-driven) rather than the
+// shared 3-node one above, since that fixture's node count is load-bearing for unrelated
+// assertions (D3's shared-mount row count).
+test('a node missing from a later poll stays rendered, marked stale, with its last values', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture poll-drop sequence only');
+  const nodeNames = ['pve-r540', 'pve-r710', 'pve-w1700', 'pve-w5900'];
+  const dropped = 'pve-r540';
+  const inst = (n: string) => ({ instance: `${n}.example.test:9100`, job: 'pve_node_exporter' });
+  const vec = (rows: Array<[Record<string, string>, number]>) => rows.map(([metric, v]) => ({ metric, value: [Date.now() / 1000, String(v)] }));
+  const cores = (n: string) => (n === dropped ? 80 : 16);
+
+  let cpuPolls = 0;
+  await page.route('**/config.json', (r: Route) => r.fulfill({
+    json: {
+      title: 'HOMELAB', refreshSeconds: 1, guestCount: 4,
+      nodeRoles: Object.fromEntries(nodeNames.map((n) => [n, n])), extraNodes: [],
+      groups: [{ name: 'apps', apps: ['alpha'] }],
+    },
+  }));
+  await page.route('**/api/prom/**', (r: Route) => {
+    const url = new URL(r.request().url());
+    const q = url.searchParams.get('query') || '';
+    let live = nodeNames;
+    if (url.pathname.endsWith('/query') && q.includes('mode="idle"') && !q.startsWith('count')) {
+      cpuPolls += 1;
+      if (cpuPolls > 1) live = nodeNames.filter((n) => n !== dropped);
+    }
+    const rows = q.includes('mode="idle"') && q.startsWith('count') ? vec(nodeNames.map((n) => [inst(n), cores(n)]))
+      : q.includes('mode="idle"') ? vec(live.map((n) => [inst(n), 30]))
+      : q.includes('MemAvailable') || q.includes('MemTotal') || q.includes('node_load1') || q.includes('hwmon') || q.includes('boot_time') ? vec(nodeNames.map((n) => [inst(n), 1]))
+      : [];
+    const result = url.pathname.endsWith('query_range') ? rows.map((x) => ({ metric: x.metric, values: [[0, '10']] })) : rows;
+    return r.fulfill({ json: { status: 'success', data: { resultType: 'vector', result } } });
+  });
+
+  await page.goto('/mc1/');
+  const cards = page.locator('#nodelist .node');
+  await expect(cards).toHaveCount(4);
+
+  await page.waitForTimeout(2500); // one more 1s refresh cycle lands and drops pve-r540's series
+  await expect(cards).toHaveCount(4); // still 4 cards — the node was never removed
+
+  // nodeRoles preserves insertion order, so #node0 is pve-r540 (the dropped one).
+  const staleCard = page.locator('#node0');
+  await expect(staleCard).toHaveClass(/stale/);
+  // "STALE <age>" only ever renders from a held-over lastGood entry (mc1.js drawNodes) — it
+  // could not appear unless the node's earlier good reading was kept and reused.
+  await expect(staleCard.locator('.nm em')).toContainText('STALE');
 });
