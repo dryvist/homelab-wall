@@ -14,7 +14,7 @@ $('title').textContent = cfg.title || 'HOMELAB';
 const groups = (cfg.groups || []).map((g, i) => ({ ...g, c: PALETTE[i % PALETTE.length] }));
 const apps = [...new Set(groups.flatMap((g) => g.apps))].sort().map((n) => ({ n, s: null, d: 0 }));
 const appIndex = Object.fromEntries(apps.map((a) => [a.n, a]));
-const model = { nodes: [], storage: [], llm: [], uptime: null, updated: 0 };
+const model = { nodes: [], storage: [], llm: [], llmAll: [], uptime: null, updated: 0 };
 
 /* ---------------- data ---------------- */
 function byHost(rows) {
@@ -70,22 +70,28 @@ async function refresh() {
 
   if (r.fsSize && r.fsAvail) {
     const avail = Object.fromEntries(r.fsAvail.map((x) => [`${x.labels.instance}|${x.labels.device}`, x.value]));
-    const seen = new Set();
-    model.storage = r.fsSize
-      .map((x) => ({ host: shortHost(x.labels.instance), mp: x.labels.mountpoint, dev: x.labels.device, size: x.value,
-        used: x.value - (avail[`${x.labels.instance}|${x.labels.device}`] ?? x.value) }))
-      .filter((x) => x.size > 1e9 && !seen.has(`${x.host}|${x.dev}`) && seen.add(`${x.host}|${x.dev}`))
-      .sort((a, b) => b.size - a.size).slice(0, 12);
+    const best = new Map();
+    for (const x of r.fsSize) {
+      const zfs = x.labels.fstype === 'zfs';
+      const host = shortHost(x.labels.instance);
+      const name = zfs ? x.labels.device.split('/')[0] : x.labels.mountpoint;
+      const size = x.value, used = size - (avail[`${x.labels.instance}|${x.labels.device}`] ?? size);
+      const key = `${host}|${zfs ? 'zfs:' + name : x.labels.device}`;
+      // The largest dataset in a pool is the closest to the pool's own figure.
+      if (size > 1e9 && !(best.get(key)?.size >= size)) best.set(key, { host, name, size, used });
+    }
+    model.storage = [...best.values()].sort((a, b) => b.size - a.size).slice(0, 12);
   }
 
   if (r.llmState) {
     const tok = Object.fromEntries((r.llmTok || []).map((x) => [x.labels.model, x.value]));
-    model.llm = r.llmState.map((x) => {
+    model.llmAll = r.llmState.map((x) => {
       const n = x.labels.litellm_model_name;
-      const prev = model.llm.find((m) => m.n === n);
+      const prev = model.llmAll?.find((m) => m.n === n);
       const t = tok[n] ?? 0;
       return { n, state: x.value, tok: t, hist: [...(prev?.hist || Array(29).fill(0)), t].slice(-30) };
-    }).sort((a, b) => a.n.localeCompare(b.n)).slice(0, 9);
+    }).sort((a, b) => b.state - a.state || b.tok - a.tok || a.n.localeCompare(b.n));
+    model.llm = model.llmAll.slice(0, 9);
   }
   model.updated = Date.now();
   renderStatic();
@@ -178,7 +184,7 @@ function renderStorage() {
   const fmt = (b) => (b >= TB ? (b / TB).toFixed(1) + 'T' : Math.round(b / GB) + 'G');
   $('strows').innerHTML = model.storage.length ? model.storage.map((s) => {
     const p = s.used / s.size * 100, col = hue(100 - p);
-    return `<div class="st"><span>${esc(s.host)}${s.mp === '/' ? '' : esc(s.mp)}</span><div class="bar"><div style="width:${p}%;background:linear-gradient(90deg,${col.replace('hsl', 'hsla').replace(')', ',.2)')},${col});box-shadow:0 0 10px ${col}"></div></div><span class="v num"><b>${p.toFixed(0)}%</b> ${fmt(s.size)}</span></div>`;
+    return `<div class="st"><span>${esc(s.host)} <em>${esc(s.name)}</em></span><div class="bar"><div style="width:${p}%;background:linear-gradient(90deg,${col.replace('hsl', 'hsla').replace(')', ',.2)')},${col});box-shadow:0 0 10px ${col}"></div></div><span class="v num"><b>${p.toFixed(0)}%</b> ${fmt(s.size)}</span></div>`;
   }).join('') : '<div class="st pending">storage metrics pending</div>';
   const tot = model.storage.reduce((a, s) => a + s.size, 0), used = model.storage.reduce((a, s) => a + s.used, 0);
   $('sttot').textContent = tot ? `${(used / TB).toFixed(1)} / ${(tot / TB).toFixed(1)} TB` : '—';
@@ -189,15 +195,15 @@ function renderLlm() {
   if (!model.llm.length) { $('llmrows').innerHTML = '<div class="pending">router metrics pending</div>'; $('llmsum').textContent = '—'; return; }
   $('llmrows').innerHTML = model.llm.map((m, i) => {
     const up = m.state < 2, col = m.state === 0 ? (m.tok > 0 ? '#38ff9c' : '#3ee6ff') : m.state === 1 ? '#ffb347' : '#ff3b5c';
-    return `<div class="lr"><i style="background:${col};box-shadow:0 0 8px ${col}"></i><span>${esc(m.n)}</span><canvas id="lc${i}" width="116" height="28"></canvas><span class="tk" style="color:${up ? '#fff' : '#ff3b5c'}">${!up ? 'DOWN' : m.tok > 0.05 ? m.tok.toFixed(0) + ' t/s' : 'idle'}</span><span class="h">${['ok', 'degraded', 'outage'][m.state] || '?'}</span></div>`;
+    return `<div class="lr"><i style="background:${col};box-shadow:0 0 8px ${col}"></i><span title="${esc(m.n)}">${esc(m.n.split('/').pop())}</span><canvas id="lc${i}" width="116" height="28"></canvas><span class="tk" style="color:${up ? '#fff' : '#ff3b5c'}">${!up ? 'DOWN' : m.tok > 0.05 ? m.tok.toFixed(0) + ' t/s' : 'idle'}</span><span class="h">${['ok', 'degraded', 'outage'][m.state] || '?'}</span></div>`;
   }).join('');
   model.llm.forEach((m, i) => {
     const c = $('lc' + i).getContext('2d'), mx = Math.max(10, ...m.hist);
     c.beginPath(); m.hist.forEach((h, k) => { const x = k / 29 * 116, y = 27 - h / mx * 26; k ? c.lineTo(x, y) : c.moveTo(x, y); });
     c.strokeStyle = m.state < 2 ? '#ff4fd8' : '#ff3b5c'; c.lineWidth = 2; c.stroke();
   });
-  const up = model.llm.filter((m) => m.state < 2).length;
-  $('llmsum').textContent = `${up}/${model.llm.length} UP · ${model.llm.reduce((a, m) => a + m.tok, 0).toFixed(0)} tok/s`;
+  const all = model.llmAll, up = all.filter((m) => m.state < 2).length;
+  $('llmsum').textContent = `${up}/${all.length} UP · ${all.reduce((a, m) => a + m.tok, 0).toFixed(0)} tok/s`;
 }
 
 /* ---------------- honeycomb ---------------- */

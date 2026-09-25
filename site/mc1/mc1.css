@@ -63,7 +63,7 @@ header{grid-column:1/-1;display:flex;align-items:center;gap:26px;padding:0 20px}
 
 /* storage */
 #storage{grid-row:3;grid-column:1}
-.st{display:grid;grid-template-columns:118px 1fr 92px;align-items:center;gap:10px;padding:0 14px;height:18.5px;font-size:11px}
+.st{display:grid;grid-template-columns:150px 1fr 92px;align-items:center;gap:10px;padding:0 14px;height:18.5px;font-size:11px}
 .st .bar{height:7px;background:#0b1b28;position:relative;overflow:hidden}
 .st .bar div{position:absolute;inset:0 auto 0 0}
 .st .v{text-align:right;color:var(--dim)}
@@ -116,3 +116,5 @@ header{grid-column:1/-1;display:flex;align-items:center;gap:26px;padding:0 20px}
 .fwrows{transform:perspective(900px) rotateX(16deg);transform-origin:bottom center;
   -webkit-mask-image:linear-gradient(0deg,#000 60%,transparent);mask-image:linear-gradient(0deg,#000 60%,transparent)}
 @media (prefers-reduced-motion:reduce){#nodes,#storage,#apps,#fw,.panel::before,.st .bar div::after,.brand{animation:none}}
+.st>span:first-child,.lr>span:nth-of-type(1){overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.st em{font-style:normal;color:var(--dim)}
