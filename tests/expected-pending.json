@@ -1,7 +1,8 @@
 {
   "panels": {
     "mc1": ["nodes", "topology", "firewall"],
-    "mc2": ["threat"]
+    "mc2": ["threat"],
+    "mc3": []
   },
   "queries": []
 }
