@@ -1,7 +1,7 @@
 name: Release assets
 
-# Attaches the static site as a tarball to every release; the wall role
-# downloads it at a pinned version.
+# Attaches the static site as a tarball, plus its sha256, to every release;
+# the wall role downloads both at a pinned version.
 on:
   release:
     types: [published]
@@ -19,6 +19,9 @@ jobs:
         with:
           persist-credentials: false
       - run: tar -czf homelab-wall-site.tar.gz -C site .
+      - run: sha256sum homelab-wall-site.tar.gz > homelab-wall-site.tar.gz.sha256
       - uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
-          files: homelab-wall-site.tar.gz
+          files: |
+            homelab-wall-site.tar.gz
+            homelab-wall-site.tar.gz.sha256
