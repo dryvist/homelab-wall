@@ -1,0 +1,6 @@
+{
+  "panels": {
+    "mc1": ["nodes", "topology", "firewall"]
+  },
+  "queries": []
+}
