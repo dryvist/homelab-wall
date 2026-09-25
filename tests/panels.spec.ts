@@ -6,7 +6,10 @@ import { mockFeeds } from './fixture';
 // the fixture still typechecks — it simply has no allowed-pending panels.
 const pending = pendingJson as { panels: Record<string, string[]>; queries: string[] };
 
-const PAGES = [{ id: 'mc1', path: '/mc1/' }] as const;
+const PAGES = [
+  { id: 'mc1', path: '/mc1/' },
+  { id: 'mc3', path: '/mc3/' },
+] as const;
 const MODES = ['2d', '3d'] as const;
 const invalidMetric = /NaN|undefined|null|Infinity|—/;
 // WALL_URL targets the live site instead of the fixture; skip the mock and its fixture-shaped assertions.
