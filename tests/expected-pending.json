@@ -2,7 +2,8 @@
   "panels": {
     "mc1": ["nodes", "topology", "firewall"],
     "mc2": ["threat"],
-    "mc3": []
+    "mc3": [],
+    "mc4": ["acquisition", "pipeline"]
   },
   "queries": []
 }

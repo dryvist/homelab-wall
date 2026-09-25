@@ -10,6 +10,7 @@ const PAGES = [
   { id: 'mc1', path: '/mc1/' },
   { id: 'mc2', path: '/mc2/' },
   { id: 'mc3', path: '/mc3/' },
+  { id: 'mc4', path: '/mc4/' },
 ] as const;
 const MODES = ['2d', '3d'] as const;
 const invalidMetric = /NaN|undefined|null|Infinity|—/;
