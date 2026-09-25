@@ -8,6 +8,7 @@ const pending = pendingJson as { panels: Record<string, string[]>; queries: stri
 
 const PAGES = [
   { id: 'mc1', path: '/mc1/' },
+  { id: 'mc2', path: '/mc2/' },
   { id: 'mc3', path: '/mc3/' },
 ] as const;
 const MODES = ['2d', '3d'] as const;
