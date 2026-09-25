@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import pending from './expected-pending.json' with { type: 'json' };
 import { mockFeeds } from './fixture';
 
-const PAGES = [{ id: 'mc1', path: '/mc1/' }] as const;
+const PAGES = [{ id: 'mc1', path: '/mc1/' }, { id: 'mc4', path: '/mc4/' }] as const; // mc4
 const MODES = ['2d', '3d'] as const;
 const invalidMetric = /NaN|undefined|null|Infinity|—/;
 // WALL_URL targets the live site instead of the fixture; skip the mock and its fixture-shaped assertions.

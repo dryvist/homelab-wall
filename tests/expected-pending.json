@@ -1,6 +1,7 @@
 {
   "panels": {
-    "mc1": ["nodes", "topology", "firewall"]
+    "mc1": ["nodes", "topology", "firewall"],
+    "mc4": ["acquisition", "pipeline"]
   },
   "queries": []
 }
