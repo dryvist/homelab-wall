@@ -1,0 +1,39 @@
+/* Fluid full-viewport grid: no fixed 1920x1080 stage. Every track is fr/clamp()-sized so the
+   grid always sums to exactly the viewport box, regardless of what's drawn inside a cell.
+   site/lib/wall.css and site/lib/stage.js are owned by another in-flight lane (the mc1 fluid
+   rewrite) and are not touched here; this page defines its own fluid root instead of the
+   shared (currently fixed-size) .stage class. */
+.mc2stage{position:relative;width:100vw;height:100vh;height:100dvh;box-sizing:border-box;
+  display:grid;grid-template-rows:clamp(48px,7vmin,86px) 1fr;gap:clamp(6px,1vmin,14px);
+  padding:clamp(8px,1.3vmin,16px) clamp(9px,1.5vmin,18px);
+  background:radial-gradient(1200px 700px at 50% 45%,#170810 0%,var(--void) 70%)}
+.mc2stage::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}
+
+/* header */
+.mc2stage>header{grid-row:1;min-width:0;min-height:0;overflow:hidden;
+  display:flex;align-items:center;gap:clamp(10px,2vmin,26px)}
+.brand{font:700 clamp(15px,2vmin,28px)/1 var(--disp);letter-spacing:.14em;color:#fff;
+  text-shadow:0 0 18px rgba(255,59,92,.55);white-space:nowrap}
+.appstrip{flex:1;min-width:0;overflow:hidden}
+.appstrip h2{margin:0;font:600 clamp(9px,1vmin,13px)/1 var(--disp);letter-spacing:.18em;text-transform:uppercase;
+  color:var(--cyan);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.appstrip h2 span{margin-left:12px;letter-spacing:.05em}
+.clock{text-align:right;font:600 clamp(14px,2.4vmin,32px)/1 var(--disp);color:#fff;white-space:nowrap}
+.clock small{display:block;font:400 clamp(7px,.7vmin,10px)/1.6 var(--mono);color:var(--dim);letter-spacing:.2em}
+
+/* threat panel */
+.panel{position:relative;grid-row:2;min-width:0;min-height:0;overflow:hidden;contain:layout size;
+  background:linear-gradient(180deg,rgba(26,8,14,.6),rgba(6,3,4,.85));border:1px solid rgba(255,59,92,.35);
+  clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
+.panel>h2{position:relative;z-index:2;margin:0;padding:clamp(8px,1.3vmin,16px) clamp(9px,1.5vmin,18px) calc(clamp(8px,1.3vmin,16px)*.75);
+  font:600 clamp(11px,1.2vmin,15px)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:#fff;
+  display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,59,92,.25)}
+.panel [data-panel-message]{color:var(--amber);font:600 clamp(7px,.7vmin,10px)/1 var(--mono);letter-spacing:.1em}
+#threat canvas{position:absolute;inset:0;width:100%;height:100%}
+.stat{position:absolute;left:clamp(14px,2vmin,32px);bottom:clamp(14px,2vmin,32px);z-index:2;
+  display:flex;gap:clamp(14px,2.4vmin,36px)}
+.stat div{font:clamp(9px,.9vmin,12px)/1.4 var(--mono);color:var(--dim);letter-spacing:.14em;text-transform:uppercase}
+.stat b{display:block;margin-top:4px;font:600 clamp(13px,1.6vmin,22px)/1 var(--disp);color:#fff;letter-spacing:.05em}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
