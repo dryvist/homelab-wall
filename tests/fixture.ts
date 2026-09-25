@@ -5,7 +5,9 @@ export const config = {
   title: 'HOMELAB',
   refreshSeconds: 15,
   guestCount: 42,
-  nodeRoles: { 'node-a': 'compute', 'node-b': 'storage', 'node-c': 'workstation' },
+  // node-c: role equals the node's own name (D2, ansible-side defect) — the page must omit
+  // the subtitle rather than echo the name back at itself.
+  nodeRoles: { 'node-a': 'compute', 'node-b': 'storage', 'node-c': 'node-c' },
   extraNodes: [{ name: 'studio', role: 'inference · not PVE' }],
   groups: [
     { name: 'apps', apps: ['alpha', 'bravo', 'charlie', 'delta', 'echo'] },
@@ -22,7 +24,9 @@ const vec = (rows: Array<[Record<string, string>, number]>) =>
 
 function answer(q: string): unknown[] {
   if (q.includes('gatus_results_total') && q.includes('by (name)')) {
-    return vec(config.groups.flatMap((g) => g.apps).map((n, i): [Record<string, string>, number] => [{ name: n }, i === 3 ? 22 : i === 6 ? 71 : 92 + (i % 8)]));
+    const rows = config.groups.flatMap((g) => g.apps).map((n, i): [Record<string, string>, number] => [{ name: n }, i === 3 ? 22 : i === 6 ? 71 : 92 + (i % 8)]);
+    // D5 (ansible-side defect): 'juliet' has no Gatus series at all — must count as "no data", not a score.
+    return vec(rows.filter(([metric]) => metric.name !== 'juliet'));
   }
   if (q.includes('gatus_results_total')) return vec([[{}, 99.93]]);
   if (q.includes('mode="idle"') && q.startsWith('count')) return vec(NODES.map((n, i) => [inst(n), [48, 24, 32][i]]));
@@ -32,11 +36,22 @@ function answer(q: string): unknown[] {
   if (q.includes('node_load1')) return vec(NODES.map((n, i) => [inst(n), [9.4, 3.1, 14.2][i]]));
   if (q.includes('hwmon')) return vec(NODES.map((n, i) => [inst(n), [44, 57, 60][i]]));
   if (q.includes('boot_time')) return vec(NODES.map((n, i) => [inst(n), (i + 1) * 20 * 86400]));
+  // D3: a shared NFS mount — same device + mountpoint reported by two nodes — must be shown
+  // once, not once per node, and must not double-count in the RAW total.
+  const SHARED_DEVICE = { device: 'nas:/export/shared', mountpoint: '/mnt/pve/shared-nfs', fstype: 'nfs4' };
   if (q.includes('filesystem_size')) {
-    return vec(NODES.flatMap((n, i) => [[{ ...inst(n), device: `pool${i}`, mountpoint: '/' }, (i + 2) * 4e12], [{ ...inst(n), device: `data${i}`, mountpoint: '/data' }, (i + 1) * 16e12]]));
+    return vec([
+      ...NODES.flatMap((n, i) => [[{ ...inst(n), device: `pool${i}`, mountpoint: '/' }, (i + 2) * 4e12], [{ ...inst(n), device: `data${i}`, mountpoint: '/data' }, (i + 1) * 16e12]]),
+      [{ ...inst('node-a'), ...SHARED_DEVICE }, 8e12],
+      [{ ...inst('node-b'), ...SHARED_DEVICE }, 8e12],
+    ] as Array<[Record<string, string>, number]>);
   }
   if (q.includes('filesystem_avail')) {
-    return vec(NODES.flatMap((n, i) => [[{ ...inst(n), device: `pool${i}`, mountpoint: '/' }, (i + 2) * 1.5e12], [{ ...inst(n), device: `data${i}`, mountpoint: '/data' }, (i + 1) * 3e12]]));
+    return vec([
+      ...NODES.flatMap((n, i) => [[{ ...inst(n), device: `pool${i}`, mountpoint: '/' }, (i + 2) * 1.5e12], [{ ...inst(n), device: `data${i}`, mountpoint: '/data' }, (i + 1) * 3e12]]),
+      [{ ...inst('node-a'), ...SHARED_DEVICE }, 3e12],
+      [{ ...inst('node-b'), ...SHARED_DEVICE }, 3e12],
+    ] as Array<[Record<string, string>, number]>);
   }
   if (q.includes('litellm_deployment_state')) return vec([[{ litellm_model_name: 'model-large' }, 0], [{ litellm_model_name: 'model-coder' }, 0], [{ litellm_model_name: 'model-small' }, 2]]);
   if (q.includes('litellm_output_tokens')) return vec([[{ model: 'model-large' }, 38], [{ model: 'model-coder' }, 91]]);
