@@ -96,9 +96,17 @@ async function refresh() {
     for (const x of r.fsSize) {
       const zfs = x.labels.fstype === 'zfs';
       const host = shortHost(x.labels.instance);
-      const name = zfs ? x.labels.device.split('/')[0] : x.labels.mountpoint;
+      // One row format for every row: <host> <pool-or-mount-basename> — a ZFS pool's own top-
+      // level name, or the last path segment of a mount (falling back to the mountpoint itself
+      // for "/").
+      const name = zfs ? x.labels.device.split('/')[0] : (x.labels.mountpoint.split('/').filter(Boolean).pop() || x.labels.mountpoint);
       const size = x.value, used = size - (avail[`${x.labels.instance}|${x.labels.device}`] ?? size);
-      const key = zfs ? `zfs:${name}` : `${x.labels.device}|${x.labels.mountpoint}`;
+      // D-mc1-3: a ZFS pool name is only unique per host (every node has an "rpool", several
+      // share "bulk") — keying by pool name alone collapsed different hosts' distinct pools
+      // into one, silently dropping the others' capacity. Host-scoped for ZFS; the shared-mount
+      // dedup below (D3) still applies to a true shared device (the same device + mountpoint
+      // reported by several hosts), which a ZFS pool per host never is.
+      const key = zfs ? `zfs:${host}:${name}` : `${x.labels.device}|${x.labels.mountpoint}`;
       if (size <= 1e9) continue;
       // D3: the same device + mountpoint reported by several nodes is one shared mount, not
       // several — keep the largest reading and remember every host that reported it.
