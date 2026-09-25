@@ -5,6 +5,8 @@ import { mockFeeds } from './fixture';
 const PAGES = [{ id: 'mc1', path: '/mc1/' }] as const;
 const MODES = ['2d', '3d'] as const;
 const invalidMetric = /NaN|undefined|null|Infinity|—/;
+// WALL_URL targets the live site instead of the fixture; skip the mock and its fixture-shaped assertions.
+const wallUrl = process.env.WALL_URL;
 
 for (const pageSpec of PAGES) {
   for (const mode of MODES) {
@@ -19,7 +21,7 @@ for (const pageSpec of PAGES) {
         if (response.status() >= 400) faults.push(`${response.status()} ${response.url()}`);
       });
 
-      await mockFeeds(page);
+      if (!wallUrl) await mockFeeds(page);
       await page.goto(`${pageSpec.path}?gl=${mode}`);
       const panels = page.locator('[data-panel]');
       await expect(panels).not.toHaveCount(0);
@@ -56,8 +58,8 @@ for (const pageSpec of PAGES) {
       });
 
       // D3: a device shared by several nodes (same device + mountpoint) collapses to one
-      // storage row, not one per node.
-      if (pageSpec.id === 'mc1') {
+      // storage row, not one per node. Fixture-shaped, so only checked against the fixture.
+      if (!wallUrl && pageSpec.id === 'mc1') {
         expect(await page.locator('#strows .st').count(), 'a shared mount must be deduped to a single row').toBe(7);
       }
 
