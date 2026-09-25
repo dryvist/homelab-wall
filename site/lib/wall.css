@@ -1,0 +1,20 @@
+@font-face{font-family:"Chakra Petch";font-weight:400;src:url(/fonts/Chakra-Petch-400.woff2) format("woff2")}
+@font-face{font-family:"Chakra Petch";font-weight:600;src:url(/fonts/Chakra-Petch-600.woff2) format("woff2")}
+@font-face{font-family:"Chakra Petch";font-weight:700;src:url(/fonts/Chakra-Petch-700.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-weight:400;src:url(/fonts/JetBrains-Mono-400.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-weight:600;src:url(/fonts/JetBrains-Mono-600.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-weight:700;src:url(/fonts/JetBrains-Mono-700.woff2) format("woff2")}
+:root{
+  color-scheme:dark;
+  --void:#04070c;--edge:#15324a;--grid:#0d2233;--ink:#cfe9f5;--dim:#5d7d90;--faint:#2a4556;
+  --cyan:#3ee6ff;--amber:#ffb347;--mag:#ff4fd8;--red:#ff3b5c;--green:#38ff9c;
+  --disp:"Chakra Petch","Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",Menlo,monospace;
+  --emoji:"Apple Color Emoji","Noto Color Emoji","Segoe UI Emoji",sans-serif;
+}
+html,body{height:100%;margin:0;background:var(--void);overflow:hidden}
+body{font-family:var(--mono);color:var(--ink)}
+.stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;box-sizing:border-box}
+.num{font-variant-numeric:tabular-nums}
+.pending{color:var(--faint);letter-spacing:.2em;text-transform:uppercase;font-size:11px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
