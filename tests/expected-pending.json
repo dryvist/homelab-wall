@@ -3,7 +3,8 @@
     "mc1": ["nodes", "topology", "firewall"],
     "mc2": ["threat"],
     "mc3": [],
-    "mc4": ["acquisition", "pipeline"]
+    "mc4": ["acquisition", "pipeline"],
+    "mc5": ["github", "pipeline", "infra", "activity"]
   },
   "queries": []
 }
