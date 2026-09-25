@@ -55,14 +55,20 @@ function answer(q: string): unknown[] {
   }
   if (q.includes('litellm_deployment_state')) return vec([[{ litellm_model_name: 'model-large' }, 0], [{ litellm_model_name: 'model-coder' }, 0], [{ litellm_model_name: 'model-small' }, 2]]);
   if (q.includes('litellm_output_tokens')) return vec([[{ model: 'model-large' }, 38], [{ model: 'model-coder' }, 91]]);
+  // mc3
+  if (q.includes('litellm_total_tokens_metric_total')) return vec([[{}, 4_810_000]]);
+  if (q.includes('litellm_proxy_total_requests_metric_total')) return vec([[{}, 142]]);
   return [];
 }
 
-export async function mockFeeds(page: Page) {
+// opts.failQuery marks a query as a hard failure (HTTP 500) instead of answering it — for
+// proving a failed query renders an explicit error, never a silent zero/empty result.
+export async function mockFeeds(page: Page, opts: { failQuery?: (q: string) => boolean } = {}) {
   await page.route('**/config.json', (r: Route) => r.fulfill({ json: config }));
   await page.route('**/api/prom/**', (r: Route) => {
     const url = new URL(r.request().url());
     const q = url.searchParams.get('query') || '';
+    if (opts.failQuery?.(q)) return r.fulfill({ status: 500, json: { status: 'error', error: 'forced failure' } });
     const rows = answer(q);
     const result = url.pathname.endsWith('query_range')
       ? rows.map((x: any) => ({ metric: x.metric, values: Array.from({ length: 60 }, (_, k) => [k, String(20 + ((k * 7) % 50))]) }))

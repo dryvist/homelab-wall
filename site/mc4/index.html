@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mission Control — Media</title>
+<link rel="stylesheet" href="/lib/wall.css">
+<link rel="stylesheet" href="/mc4/mc4.css">
+</head>
+<body>
+<div id="stage" class="stage mc4">
+  <canvas id="core" class="bgvis"></canvas>
+  <header>
+    <div class="brand"><span id="title">HOMELAB</span> <span class="acc">//</span> MEDIA <span class="acc">//</span> ACQUISITION</div>
+    <div class="vpn" id="vpn">—</div>
+    <div class="clock num" id="clock">--:--:--<small>--</small></div>
+  </header>
+
+  <section class="panel" id="acq" data-panel="acquisition" data-state="pending">
+    <h2>Download client <span data-panel-message></span></h2>
+    <div class="cardbody" id="acqbody"></div>
+  </section>
+
+  <section class="panel" id="apps" data-panel="apps" data-state="pending">
+    <h2>Service health <span id="appsum">—</span><span data-panel-message></span></h2>
+    <div class="rows" id="approws"></div>
+  </section>
+
+  <section class="panel" id="pipe" data-panel="pipeline" data-state="pending">
+    <h2>Library <span data-panel-message></span></h2>
+    <div class="cardbody" id="pipebody"></div>
+  </section>
+</div>
+<script type="module" src="/mc4/mc4.js"></script>
+</body>
+</html>

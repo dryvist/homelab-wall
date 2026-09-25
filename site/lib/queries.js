@@ -25,4 +25,7 @@ export const Q = {
   fsAvail: `node_filesystem_avail_bytes{${FS}}`,
   llmState: 'max by (litellm_model_name) (litellm_deployment_state)',
   llmTokRate: 'sum by (model) (rate(litellm_output_tokens_metric_total[5m]))',
+  // mc3
+  llmTokensToday: 'sum(increase(litellm_total_tokens_metric_total[24h]))',
+  llmReqPerMin: 'sum(rate(litellm_proxy_total_requests_metric_total[5m])) * 60',
 };

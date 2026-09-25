@@ -22,6 +22,11 @@ The page is static. It reads two things from its own origin:
   (see `homelab-wall-feed`).
 
 Sources that are not wired yet show a "pending" state rather than disappearing.
+A node that drops out of a single poll shows a "stale" state instead of
+disappearing: it keeps its last known values, dims, and is labeled "STALE
+&lt;age&gt;", then "NO DATA since &lt;time&gt;" after about 5 minutes. The node set
+itself always comes from `config.json` (`nodeRoles` + `extraNodes`), never
+from whichever series a poll happens to return.
 On a software WebGL renderer the topology drops to a 2D mode; `?gl=3d` or
 `?gl=2d` forces either.
 
