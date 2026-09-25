@@ -1,4 +1,4 @@
-// Shared page plumbing: 1920x1080 stage scaling, colour scale, GL capability.
+// Shared page plumbing: colour scale, canvas backing-store sizing, GL capability.
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const hue = (score) => `hsl(${clamp(score, 0, 100) * 1.2},95%,55%)`;
 export const lerp = (a, b, t) => a + (b - a) * t;
@@ -14,13 +14,20 @@ export function setState(panel, state, message = '') {
   if (notice) notice.textContent = message;
 }
 
-export function fitStage(el) {
-  const fit = () => {
-    const s = Math.min(innerWidth / 1920, innerHeight / 1080);
-    el.style.transform = `translate(${(innerWidth - 1920 * s) / 2}px,${(innerHeight - 1080 * s) / 2}px) scale(${s})`;
+// The page has no fixed design surface: the stage is 100vw x 100dvh (wall.css) and every grid
+// cell is fr/minmax(0,1fr)-sized, so the grid itself can never overflow its container.
+// A canvas inside a cell must size its backing store from the CELL's box, via a ResizeObserver
+// on the cell — never from the canvas's own rendered size. That self-reference (read the
+// canvas's rendered size, write it back as the backing-store resolution, which is itself part
+// of what determines the rendered size) is what grew a panel without bound.
+export function observeCanvas(cell, canvas, onResize) {
+  const apply = () => {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const w = Math.round(cell.clientWidth * dpr), h = Math.round(cell.clientHeight * dpr);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; onResize?.(w, h); }
   };
-  addEventListener('resize', fit);
-  fit();
+  new ResizeObserver(apply).observe(cell);
+  apply();
 }
 
 // True when WebGL is backed by real hardware. A software rasteriser
