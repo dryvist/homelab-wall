@@ -214,9 +214,14 @@ test('a node missing from a later poll stays rendered, marked stale, with its la
   const cores = (n: string) => (n === dropped ? 80 : 16);
 
   let cpuPolls = 0;
+  // refreshSeconds is as short as the page allows, and the assertions below poll the route's
+  // own call count / the DOM directly instead of a fixed wall-clock wait, so this test holds
+  // its page (and its 30fps WebGL/canvas draw loop) busy for as little real CI time as
+  // possible — it runs alongside other projects' pages on a shared CI runner, and a long fixed
+  // wait here previously starved an unrelated webkit test's own 5s poll deadline.
   await page.route('**/config.json', (r: Route) => r.fulfill({
     json: {
-      title: 'HOMELAB', refreshSeconds: 1, guestCount: 4,
+      title: 'HOMELAB', refreshSeconds: 0.2, guestCount: 4,
       nodeRoles: Object.fromEntries(nodeNames.map((n) => [n, n])), extraNodes: [],
       groups: [{ name: 'apps', apps: ['alpha'] }],
     },
@@ -237,11 +242,13 @@ test('a node missing from a later poll stays rendered, marked stale, with its la
     return r.fulfill({ json: { status: 'success', data: { resultType: 'vector', result } } });
   });
 
-  await page.goto('/mc1/');
+  // ?gl=2d skips the WebGL topology renderer this test doesn't need — plain canvas draws are
+  // cheaper, cutting further into this test's CI CPU footprint.
+  await page.goto('/mc1/?gl=2d');
   const cards = page.locator('#nodelist .node');
   await expect(cards).toHaveCount(4);
 
-  await page.waitForTimeout(2500); // one more 1s refresh cycle lands and drops pve-r540's series
+  await expect.poll(() => cpuPolls, { message: 'waiting for a second CPU poll to drop pve-r540' }).toBeGreaterThan(1);
   await expect(cards).toHaveCount(4); // still 4 cards — the node was never removed
 
   // nodeRoles preserves insertion order, so #node0 is pve-r540 (the dropped one).
