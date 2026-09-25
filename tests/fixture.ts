@@ -61,11 +61,14 @@ function answer(q: string): unknown[] {
   return [];
 }
 
-export async function mockFeeds(page: Page) {
+// opts.failQuery marks a query as a hard failure (HTTP 500) instead of answering it — for
+// proving a failed query renders an explicit error, never a silent zero/empty result.
+export async function mockFeeds(page: Page, opts: { failQuery?: (q: string) => boolean } = {}) {
   await page.route('**/config.json', (r: Route) => r.fulfill({ json: config }));
   await page.route('**/api/prom/**', (r: Route) => {
     const url = new URL(r.request().url());
     const q = url.searchParams.get('query') || '';
+    if (opts.failQuery?.(q)) return r.fulfill({ status: 500, json: { status: 'error', error: 'forced failure' } });
     const rows = answer(q);
     const result = url.pathname.endsWith('query_range')
       ? rows.map((x: any) => ({ metric: x.metric, values: Array.from({ length: 60 }, (_, k) => [k, String(20 + ((k * 7) % 50))]) }))

@@ -11,10 +11,21 @@
   --disp:"Chakra Petch","Segoe UI",sans-serif;
   --mono:"JetBrains Mono",Menlo,monospace;
   --emoji:"Apple Color Emoji","Noto Color Emoji","Segoe UI Emoji",sans-serif;
+  /* Type and spacing scale with the viewport (vmin-bounded) instead of a fixed 1920x1080
+     design surface — the page fills whatever screen it's on, at any size or aspect. */
+  --fs-2xl:clamp(20px,2.6vmin,34px);
+  --fs-xl:clamp(15px,2vmin,30px);
+  --fs-lg:clamp(13px,1.6vmin,24px);
+  --fs-md:clamp(10px,1.1vmin,15px);
+  --fs-sm:clamp(8px,.85vmin,12px);
+  --fs-xs:clamp(7px,.7vmin,10px);
+  --gap:clamp(6px,1vmin,14px);
+  --pad-y:clamp(8px,1.3vmin,16px);
+  --pad-x:clamp(9px,1.5vmin,18px);
 }
 html,body{height:100%;margin:0;background:var(--void);overflow:hidden}
 body{font-family:var(--mono);color:var(--ink)}
-.stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;box-sizing:border-box}
+.stage{width:100vw;height:100vh;height:100dvh;box-sizing:border-box}
 .num{font-variant-numeric:tabular-nums}
-.pending{color:var(--faint);letter-spacing:.2em;text-transform:uppercase;font-size:11px}
+.pending{color:var(--faint);letter-spacing:.2em;text-transform:uppercase;font-size:var(--fs-xs)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
