@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0](https://github.com/dryvist/homelab-wall/compare/v0.2.1...v0.3.0) (2026-09-25)
+
+
+### Features
+
+* **mc3:** add AI Core mission control page ([#10](https://github.com/dryvist/homelab-wall/issues/10)) ([e2e9d88](https://github.com/dryvist/homelab-wall/commit/e2e9d88cb78d5b66a55892cd7e9fed9f8bd8d006))
+* **mc5:** add pipeline/GitOps mission control page ([#13](https://github.com/dryvist/homelab-wall/issues/13)) ([481633f](https://github.com/dryvist/homelab-wall/commit/481633f8f6c491fa18f0c0f439bce25dc8e6d59d))
+* mission control 2, edge threat map page ([#11](https://github.com/dryvist/homelab-wall/issues/11)) ([573c780](https://github.com/dryvist/homelab-wall/commit/573c7805421e18a5ae1d9ece0ec35516010d045f))
+* mission control 4 media acquisition page ([#12](https://github.com/dryvist/homelab-wall/issues/12)) ([d96ab6d](https://github.com/dryvist/homelab-wall/commit/d96ab6de17176939afdfba0d4fd8995c5c15eb6c))
+* **rotator:** add crossfading slide rotator at the wall root ([#14](https://github.com/dryvist/homelab-wall/issues/14)) ([d430382](https://github.com/dryvist/homelab-wall/commit/d4303829b54601c2507733663bd68a60b9248bfd))
+
+
+### Bug Fixes
+
+* decouple mc1 panel canvases from their own rendered size ([#9](https://github.com/dryvist/homelab-wall/issues/9)) ([8355f64](https://github.com/dryvist/homelab-wall/commit/8355f64857338881f65ad77b93f3251f3c5ba9e1))
+* **mc1:** keep node cards when a poll drops a node's series ([#17](https://github.com/dryvist/homelab-wall/issues/17)) ([a69359a](https://github.com/dryvist/homelab-wall/commit/a69359aab1ca16cdb57a19bb3e694bf77380a74b))
+
 ## [0.2.1](https://github.com/dryvist/homelab-wall/compare/v0.2.0...v0.2.1) (2026-09-25)
 
 
