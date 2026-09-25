@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mission Control · AI Core</title>
+<link rel="stylesheet" href="/lib/wall.css">
+<link rel="stylesheet" href="/mc3/mc3.css">
+</head>
+<body>
+<div id="stage" class="stage">
+  <header>
+    <div class="brand">AI CORE <span class="sl">//</span> INFERENCE<small id="subtitle">—</small></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="clock num" id="clock">--:--:--<small>--</small></div>
+  </header>
+
+  <section class="panel" id="apps" data-panel="apps" data-state="pending">
+    <h2>Fleet health <span id="appsum">—</span><span data-panel-message></span></h2>
+    <canvas id="fleetRing" width="256" height="256"></canvas>
+    <div class="applist" id="applist"></div>
+  </section>
+
+  <section class="panel" id="cores" data-panel="cores" data-state="pending">
+    <h2>AI Core <span id="coresum">—</span><span data-panel-message></span></h2>
+    <canvas id="reactor"></canvas>
+    <div class="modeltab" id="modeltab"></div>
+  </section>
+</div>
+<script type="module" src="/mc3/mc3.js"></script>
+</body>
+</html>

@@ -55,6 +55,9 @@ function answer(q: string): unknown[] {
   }
   if (q.includes('litellm_deployment_state')) return vec([[{ litellm_model_name: 'model-large' }, 0], [{ litellm_model_name: 'model-coder' }, 0], [{ litellm_model_name: 'model-small' }, 2]]);
   if (q.includes('litellm_output_tokens')) return vec([[{ model: 'model-large' }, 38], [{ model: 'model-coder' }, 91]]);
+  // mc3
+  if (q.includes('litellm_total_tokens_metric_total')) return vec([[{}, 4_810_000]]);
+  if (q.includes('litellm_proxy_total_requests_metric_total')) return vec([[{}, 142]]);
   return [];
 }
 
