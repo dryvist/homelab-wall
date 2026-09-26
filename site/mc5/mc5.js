@@ -3,7 +3,8 @@
 // so those panels stay `pending` with an explicit missing-source message (panel contract).
 import { query } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { clamp, hue, esc, loadConfig, setState } from '/lib/stage.js';
+import { clamp, hue, esc, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge } from '/lib/stage.js';
+import { sampleAppScore } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e', '#ff3b5c'];
@@ -35,7 +36,7 @@ async function refresh() {
     const seen = new Set();
     for (const row of rows) {
       const a = appIndex[row.labels.name];
-      if (a && Number.isFinite(row.value)) { a.s = clamp(row.value, 0, 100); seen.add(a.n); }
+      if (a && Number.isFinite(row.value)) { a.s = clamp(row.value, 0, 10); seen.add(a.n); }
     }
     for (const a of apps) if (!seen.has(a.n)) a.s = null;
   }
@@ -49,8 +50,8 @@ function ring(el, score) {
   const c = el.getContext('2d'); c.clearRect(0, 0, 128, 128); c.lineWidth = 10;
   c.strokeStyle = '#171a45'; c.beginPath(); c.arc(64, 64, 52, 0, 7); c.stroke();
   if (score != null) {
-    c.strokeStyle = hue(score); c.shadowColor = hue(score); c.shadowBlur = 14;
-    c.beginPath(); c.arc(64, 64, 52, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * score / 100); c.stroke(); c.shadowBlur = 0;
+    c.strokeStyle = hue(scorePct(score)); c.shadowColor = hue(scorePct(score)); c.shadowBlur = 14;
+    c.beginPath(); c.arc(64, 64, 52, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * score / 10); c.stroke(); c.shadowBlur = 0;
   }
   c.fillStyle = '#fff'; c.font = '600 34px "Chakra Petch",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.fillText(score == null ? '—' : Math.round(score), 64, 60);
@@ -71,26 +72,33 @@ function renderHeader() {
 }
 
 /* ---------------- apps (required ok panel) ---------------- */
+let appsSample = false;
 function renderApps() {
   const scored = apps.filter((a) => a.s != null);
-  const ok = scored.filter((a) => a.s >= 90).length, warn = scored.filter((a) => a.s >= 50 && a.s < 90).length;
-  const bad = scored.filter((a) => a.s < 50).length, unk = apps.length - scored.length;
+  // A query that succeeded with zero rows has genuinely nothing to show yet — render the shared
+  // sample scores instead (badged), never layered on top of real (even partial) data.
+  appsSample = !scored.length;
+  const display = apps.map((a, i) => (appsSample ? { n: a.n, s: sampleAppScore(i) } : a));
+  const scores = display.map((a) => a.s).filter((s) => s != null);
+  const ok = scores.filter((s) => s >= SCORE_OK_MIN).length, warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
+  const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length, unk = appsSample ? 0 : apps.length - scored.length;
   $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>${unk ? ` · <span style="color:var(--dim)">${unk} NO DATA</span>` : ''}`;
+  setSampleBadge($('apps'), appsSample);
   setState($('apps'), scored.length ? 'ok' : 'empty', scored.length ? '' : 'NO SERVICE DATA');
-  drawAppGrid();
+  drawAppGrid(display);
 }
-function drawAppGrid() {
+function drawAppGrid(display = apps) {
   const canvas = $('appgrid'), c = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   c.clearRect(0, 0, W, H);
-  if (!apps.length) return;
-  const cols = Math.max(1, Math.ceil(Math.sqrt(apps.length * W / H)));
-  const rows = Math.ceil(apps.length / cols);
+  if (!display.length) return;
+  const cols = Math.max(1, Math.ceil(Math.sqrt(display.length * W / H)));
+  const rows = Math.ceil(display.length / cols);
   const cw = W / cols, ch = H / rows, pad = Math.min(cw, ch) * 0.08;
-  apps.forEach((a, i) => {
+  display.forEach((a, i) => {
     const col = i % cols, row = (i / cols) | 0;
     const x = col * cw + pad, y = row * ch + pad, w = cw - pad * 2, h = ch - pad * 2;
-    const known = a.s != null, colr = known ? hue(a.s) : '#2a2f77';
+    const known = a.s != null, colr = known ? hue(scorePct(a.s)) : '#2a2f77';
     c.fillStyle = known ? colr.replace('55%', '18%') : '#12143a'; c.fillRect(x, y, w, h);
     c.strokeStyle = colr; c.lineWidth = Math.max(1, ch * 0.02); c.strokeRect(x, y, w, h);
     c.fillStyle = '#fff'; c.textAlign = 'center'; c.font = `600 ${Math.max(9, h * 0.32)}px "Chakra Petch",sans-serif`;

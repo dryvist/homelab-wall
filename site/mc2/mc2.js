@@ -4,7 +4,8 @@
 // Gatus-derived health score as mc1.
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { hardwareGL, loop, loadConfig, setState } from '/lib/stage.js';
+import { hardwareGL, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, setSampleBadge } from '/lib/stage.js';
+import { sampleAppScore } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -21,7 +22,7 @@ async function refresh() {
     const seen = new Set();
     for (const row of r.score) {
       const a = appIndex[row.labels.name];
-      if (a && Number.isFinite(row.value)) { a.s = Math.max(0, Math.min(100, row.value)); seen.add(a.n); }
+      if (a && Number.isFinite(row.value)) { a.s = Math.max(0, Math.min(10, row.value)); seen.add(a.n); }
     }
     for (const a of apps) if (!seen.has(a.n)) a.s = null;
   }
@@ -32,11 +33,16 @@ function renderApps() {
   const panel = $('apps');
   if (!apps.length) { setState(panel, 'empty', 'NO APPS CONFIGURED'); $('appsum').textContent = '0'; return; }
   const scored = apps.filter((a) => a.s != null);
-  const ok = scored.filter((a) => a.s >= 90).length;
-  const warn = scored.filter((a) => a.s >= 50 && a.s < 90).length;
-  const bad = scored.filter((a) => a.s < 50).length;
-  const unk = apps.length - scored.length;
+  // A query that succeeded with zero rows has genuinely nothing to show yet — fall back to the
+  // shared sample scores (badged), never on top of real (even partial) data.
+  const sample = !scored.length;
+  const scores = sample ? apps.map((a, i) => sampleAppScore(i)) : scored.map((a) => a.s);
+  const ok = scores.filter((s) => s >= SCORE_OK_MIN).length;
+  const warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
+  const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
+  const unk = sample ? 0 : apps.length - scored.length;
   $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>${unk ? ` · <span style="color:var(--dim)">${unk} NO DATA</span>` : ''}`;
+  setSampleBadge(panel, sample);
   setState(panel, scored.length ? 'ok' : 'empty', scored.length ? '' : 'NO SERVICE DATA');
 }
 

@@ -205,6 +205,34 @@ test('a failed health query renders an explicit error, never a silent zero count
   await expect(page.locator('#appsum')).not.toContainText(/\d/);
 });
 
+// A score query that succeeds with zero rows (never a failure — that's the error-state test
+// above) is genuinely empty, so the apps panel falls back to the shared sample scores
+// (site/lib/sampleData.js) with a visible SAMPLE DATA badge — and the badge appears only there,
+// never on a panel that has real data.
+test('the SAMPLE DATA badge appears on a no-data apps panel and never on a live one', async ({ page }) => {
+  test.skip(!!wallUrl, 'forces an empty score response against the fixture server only');
+  await mockFeeds(page, { emptyQuery: (q) => q.includes('gatus_results_total') && q.includes('by (name)') });
+  await page.goto('/mc1/');
+  const apps = page.locator('[data-panel="apps"]');
+  await expect(apps).toHaveAttribute('data-state', 'empty');
+  await expect(apps.locator('[data-sample-badge]')).toBeVisible();
+  await expect(apps.locator('[data-sample-badge]')).toHaveText('SAMPLE DATA');
+  // The badge is real content, not just an overlay: the panel's own summary reflects the sample
+  // scores rather than sitting on "NO SERVICE DATA" with nothing else to show.
+  await expect(page.locator('#appsum')).not.toContainText('—');
+
+  await page.goto('/mc2/');
+  await expect(page.locator('[data-panel="apps"] [data-sample-badge]')).toBeVisible();
+});
+
+test('the SAMPLE DATA badge never appears on a panel that has real data', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
+  await mockFeeds(page);
+  await page.goto('/mc1/?gl=2d');
+  await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
+  await expect(page.locator('[data-panel] [data-sample-badge]')).toHaveCount(0);
+});
+
 // D-mc1-2: a node that drops out of a single poll (a scrape gap, a restart) must keep its card
 // with its last known values, marked stale — never disappear. The operator's report was exactly
 // this: a real 4th PVE node (80 cores, like pve-r540) vanished from the panel entirely during a
