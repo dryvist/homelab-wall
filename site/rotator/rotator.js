@@ -74,7 +74,17 @@ function armLayer(layer) {
   let settled = false, resolveReady;
   layer.ok = null;
   layer.readyPromise = new Promise((resolve) => { resolveReady = resolve; });
-  layer.finish = (ok) => { if (settled) return; settled = true; layer.ok = ok; resolveReady(ok); };
+  layer.finish = (ok) => {
+    if (settled) {
+      // A late 'ready' (heavy WebGL slides can post it after PROBE_TIMEOUT_MS lapsed and this
+      // layer already settled false) rejoins rotation immediately instead of waiting for the
+      // next reprobeBroken() cycle: swap in an already-resolved promise so any in-flight or
+      // future resolveSlide() call sees it as ready right away.
+      if (ok && layer.ok === false) { layer.ok = true; layer.readyPromise = Promise.resolve(true); }
+      return;
+    }
+    settled = true; layer.ok = ok; resolveReady(ok);
+  };
   clearTimeout(layer.timeoutId);
   layer.timeoutId = setTimeout(() => layer.finish(false), PROBE_TIMEOUT_MS);
 }
@@ -143,21 +153,17 @@ async function resolveSlide(startIndex, tries = 0) {
   return resolveSlide(startIndex, tries + 1);
 }
 
+// Machine-readable only — the operator's aesthetics rule bans any non-production text on the
+// wall itself, so a skip is signalled solely via `data-skipped` on the dots container, never a
+// visible note.
 function showSkipped(name) {
   clearTimeout(skipTimer);
-  let note = document.getElementById('skip');
-  if (!note) {
-    note = document.createElement('span');
-    note.id = 'skip';
-    dotsEl.appendChild(note);
-  }
-  note.textContent = `skipped: ${name || 'slide'}`;
+  dotsEl.dataset.skipped = name || 'slide';
   showDots();
-  skipTimer = setTimeout(() => note.remove(), SKIP_NOTE_MS);
+  skipTimer = setTimeout(() => { delete dotsEl.dataset.skipped; }, SKIP_NOTE_MS);
 }
 
 function renderDots() {
-  const note = document.getElementById('skip');
   dotsEl.innerHTML = '';
   slides.slice(0, layers.length).forEach((slide, i) => {
     const dot = document.createElement('button');
@@ -167,7 +173,6 @@ function renderDots() {
     dot.addEventListener('click', (e) => { e.stopPropagation(); pin(); goTo(i); });
     dotsEl.appendChild(dot);
   });
-  if (note) dotsEl.appendChild(note);
   if (holding) startRing();
 }
 
