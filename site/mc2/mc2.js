@@ -8,7 +8,7 @@ import { Q } from '/lib/queries.js';
 import { makeBloom } from '/lib/bloom.js';
 import {
   hardwareGL, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, setSampleBadge, setStandIn,
-  observeCanvas, onDispose, onContextLoss, disposeThreeScene,
+  observeCanvas, onDispose, onContextLoss, disposeThreeScene, adaptiveBloomOn,
 } from '/lib/stage.js';
 import { sampleAppScore } from '/lib/sampleData.js';
 
@@ -331,7 +331,10 @@ function buildGlobe() {
       p.ring.material.opacity = Math.max(0, 0.9 * (1 - p.t));
       if (p.t >= 1) { group.remove(p.ring); p.ring.material.dispose(); pulses.splice(i, 1); }
     }
-    bloomFx.render();
+    // Adaptive quality (site/lib/stage.js): bloom is the second thing dropped under sustained
+    // frame-time pressure, after the DPR cap — a plain renderer.render() skips the whole
+    // EffectComposer pass.
+    if (adaptiveBloomOn()) bloomFx.render(); else renderer.render(scene, cam);
   };
   return { render, renderer, scene, dispose: () => bloomFx.dispose() };
 }

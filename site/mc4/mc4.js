@@ -5,7 +5,7 @@ import { Q } from '/lib/queries.js';
 import { makeBloom } from '/lib/bloom.js';
 import {
   clamp, esc, loadConfig, setState, loop, SCORE_OK_MIN, SCORE_DEGRADED_MIN, setSampleBadge,
-  setStandIn, onDispose, onContextLoss, disposeThreeScene, hardwareGL,
+  setStandIn, onDispose, onContextLoss, disposeThreeScene, hardwareGL, adaptiveBloomOn, adaptiveDpr,
 } from '/lib/stage.js';
 import { sampleAppScore, SAMPLE_ACQ_CARDS, SAMPLE_LIBRARY_CARDS } from '/lib/sampleData.js';
 
@@ -130,7 +130,7 @@ function tickThroughput() {
 function drawThroughput() {
   const canvas = $('throughSpark');
   if (!canvas) return;
-  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const dpr = adaptiveDpr();
   const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
   if (canvas.width !== w) canvas.width = w;
   if (canvas.height !== h) canvas.height = h;
@@ -292,13 +292,16 @@ function build3DFlow() {
       });
       f.g.attributes.position.needsUpdate = true;
     });
-    bloomFx.render();
+    // Adaptive quality (site/lib/stage.js): bloom is the second thing dropped under sustained
+    // frame-time pressure, after the DPR cap — a plain renderer.render() skips the whole
+    // EffectComposer pass.
+    if (adaptiveBloomOn()) bloomFx.render(); else renderer.render(scene, cam);
   }
   return { render, renderer, scene, dispose: () => { bloomFx.dispose(); ro.disconnect(); } };
 }
 
 function fitCanvas(canvas) {
-  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const dpr = adaptiveDpr();
   const w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 }
