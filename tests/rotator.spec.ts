@@ -126,9 +126,49 @@ test('a broken slide is skipped, never shown, with no application errors', async
 
   await page.clock.fastForward(10_000); // would advance to slide-b, but it 404s
   await expect.poll(() => activeSlideUrl(page)).toContain('/slide-c');
-  await expect(page.locator('#skip')).toContainText('Slide B');
+  // Machine-readable only — the wall shows no visible non-production text (operator aesthetics
+  // rule), so the skip signal is a data attribute on the dots container, never rendered copy.
+  await expect(page.locator('#dots')).toHaveAttribute('data-skipped', 'Slide B');
+  await expect(page.locator('#dots')).not.toContainText('Slide B');
 
   expect(faults).toEqual([]);
+});
+
+// Track: heavy WebGL slides can post {wall:'ready'} after PROBE_TIMEOUT_MS lapses, settling the
+// layer false first. armLayer()'s finish must let that late success rejoin rotation immediately
+// rather than waiting out the 5-minute reprobeBroken() cycle. slide-b's fixture never posts ready
+// on its own (standing in for a render loop that hasn't painted a first frame yet); once the probe
+// window lapses and it's been skipped, the test posts the message itself directly into the
+// iframe's own frame — the same 'ready' handshake a slow real slide sends, just triggered by hand
+// instead of raced against the fake clock, which otherwise fights CDP's virtual-time network
+// queueing in ways that have nothing to do with the behavior under test.
+test('a slide whose ready arrives after the probe timeout rejoins rotation on the next cycle', async ({ page }) => {
+  await page.clock.install();
+  await mockSlides(page, 30);
+  await page.route('**/slide-b', (r) => r.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><title>Slide B</title>', // no ready handshake — simulates a slow first frame
+  }));
+  await page.goto('/');
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-a');
+
+  // slide-b's PROBE_TIMEOUT_MS (5s, fake) lapses with no 'ready' yet, so the first visit skips it.
+  await page.clock.fastForward(10_000);
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-c');
+  await expect(page.locator('#dots')).toHaveAttribute('data-skipped', 'Slide B');
+
+  // slide-b's heavy render loop finally paints and posts its late 'ready'.
+  const slideBFrame = page.frames().find((f) => f.url().includes('/slide-b'));
+  await slideBFrame?.evaluate(() => parent.postMessage({ wall: 'ready' }, '*'));
+
+  // The next cycle back around to slide-b must show it, not skip it again. Two separate
+  // fastForward calls, not one fastForward(20_000) — a timer armed *during* a fastForward call
+  // (here, the next rotateTimer, armed inside commit()) isn't guaranteed to fire within that same
+  // call's remaining budget, matching the pattern the rest of this file already uses.
+  await page.clock.fastForward(10_000); // slide-c -> slide-a
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-a');
+  await page.clock.fastForward(10_000); // slide-a -> slide-b
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-b');
 });
 
 // Track: a layer whose readyPromise settled false must not be skipped forever — every
