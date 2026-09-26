@@ -7,7 +7,7 @@ import {
   clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct,
   setSampleBadge, onDispose, onContextLoss, disposeThreeScene, hardwareGL,
 } from '/lib/stage.js';
-import { sampleAppScore } from '/lib/sampleData.js';
+import { sampleAppScore, SAMPLE_LLM } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -101,18 +101,26 @@ function renderApps() {
 }
 
 /* ---------------- AI core (models table + reactor) ---------------- */
+// The router metrics feed is real (Q.llmState), but has nothing yet on some deployments — the
+// shared LLM sample dataset (site/lib/sampleData.js), reshaped to this page's {n,up,tok}, stands
+// in instead of a blank/pending table. reactorList mirrors whichever list rendered last, so the
+// decorative reactor canvas (drawReactor below) always animates real or stand-in state, never "N/A".
+let reactorList = SAMPLE_LLM.map((m) => ({ n: m.n, up: m.state < 2, tok: m.tok }));
 function renderCore() {
-  const list = model.models;
-  $('modeltab').innerHTML = list.length ? list.map((m) => {
+  const sample = !model.models.length;
+  const list = sample ? SAMPLE_LLM.map((m) => ({ n: m.n, up: m.state < 2, tok: m.tok })) : model.models;
+  reactorList = list;
+  $('modeltab').innerHTML = list.map((m) => {
     const col = m.up ? (m.tok > 0.05 ? 'var(--green)' : 'var(--cyan)') : 'var(--red)';
     const status = m.up ? (m.tok > 0.05 ? `${m.tok.toFixed(0)} tok/s` : 'idle') : 'health check failing';
     return `<div class="mc"><div class="mch"><b title="${esc(m.n)}">${esc(m.n.split('/').pop())}</b><span style="color:${col}">${m.up ? 'UP' : 'DOWN'}</span></div>
       <div class="mcv">${status}</div>
       <div class="mcbar"><div style="width:${m.up ? clamp(m.tok * 2, 6, 100) : 100}%;background:${col}"></div></div></div>`;
-  }).join('') : '<div class="pending">router metrics pending</div>';
+  }).join('');
   const up = list.filter((m) => m.up).length;
-  $('coresum').textContent = list.length ? `${up}/${list.length} UP` : 'N/A';
-  setState($('cores'), list.length ? 'ok' : 'pending', list.length ? '' : 'ROUTER METRICS PENDING');
+  $('coresum').textContent = `${up}/${list.length} UP`;
+  setSampleBadge($('cores'), sample);
+  setState($('cores'), 'ok');
 }
 
 /* ---------------- reactor: 3D hero (sketch scene 88) or 2D fallback ---------------- */
@@ -204,7 +212,7 @@ function drawReactor(now) {
   g.addColorStop(0, 'rgba(255,79,216,.10)'); g.addColorStop(1, 'rgba(4,3,8,0)');
   c.fillStyle = g; c.fillRect(0, 0, W, H);
 
-  const list = model.models;
+  const list = reactorList;
   const upFrac = list.length ? list.filter((m) => m.up).length / list.length : 0;
   const col = list.length ? hue(upFrac * 100) : '#3a2440';
   const t = RM ? 0 : now / 1000;

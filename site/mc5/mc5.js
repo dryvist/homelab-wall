@@ -47,8 +47,10 @@ async function refresh() {
     for (const a of apps) if (!seen.has(a.n)) a.s = null;
   }
   model.updated = Date.now();
-  renderHeader();
+  // renderApps() computes appsSample (the shared-score fallback flag) before renderHeader()
+  // reads it for the estate ring.
   renderApps();
+  renderHeader();
 }
 
 /* ---------------- header ---------------- */
@@ -67,7 +69,10 @@ function renderHeader() {
   const scored = apps.filter((a) => a.s != null);
   // The fleet ring/KPI is the MINIMUM across every scored app, never an average — see mc1.js for
   // why: an average dilutes a single DOWN app to nothing once enough other apps are healthy.
-  const worst = scored.length ? Math.min(...scored.map((x) => x.s)) : null;
+  // Falls back to the shared sample average (appsSample) when nothing is scored, same as the
+  // app grid, rather than sitting on a blank ring.
+  const worst = scored.length ? Math.min(...scored.map((x) => x.s))
+    : appsSample ? apps.reduce((a, _x, i) => a + sampleAppScore(i), 0) / (apps.length || 1) : null;
   // 'repos' has no real source at all (cfg.repoCount is never set by anything) — hidden rather
   // than shown as a permanent '—' placeholder.
   const k = [
@@ -90,10 +95,10 @@ function renderApps() {
   const display = apps.map((a, i) => (appsSample ? { n: a.n, s: sampleAppScore(i) } : a));
   const scores = display.map((a) => a.s).filter((s) => s != null);
   const ok = scores.filter((s) => s >= SCORE_OK_MIN).length, warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
-  const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length, unk = appsSample ? 0 : apps.length - scored.length;
-  $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>${unk ? ` · <span style="color:var(--dim)">${unk} NO DATA</span>` : ''}`;
+  const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
+  $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`;
   setSampleBadge($('apps'), appsSample);
-  setState($('apps'), scored.length ? 'ok' : 'empty', scored.length ? '' : 'NO SERVICE DATA');
+  setState($('apps'), scored.length ? 'ok' : 'empty');
   drawAppGrid(display);
 }
 function drawAppGrid(display = apps) {

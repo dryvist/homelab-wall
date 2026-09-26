@@ -53,7 +53,11 @@ export const SAMPLE_ALLOWED = [
   { time: '14:02:50', action: 'drop', proto: 'UDP', desc: 'unsolicited', dest: 'edge', ago: '20s' },
 ];
 
-export const SAMPLE_THREAT_STATS = { blockedToday: 482, uniqueSources: 137 };
+export const SAMPLE_THREAT_STATS = { blockedToday: 482, uniqueSources: 137, topSource: 'edge-scanner' };
+
+// No GPU exporter exists yet — a deterministic per-node base the node's own gauge (mc1.js
+// drawNodes) animates around, standing in for the single flat "NO GPU" gauge it used to show.
+export const sampleGpuBase = (i) => 18 + (i % 3) * 14;
 
 export const SAMPLE_ACQ_CARDS = [
   { title: 'QBITTORRENT', note: '3 active · 42 MB/s down' },

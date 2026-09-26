@@ -45,23 +45,22 @@ function renderApps() {
   const ok = scores.filter((s) => s >= SCORE_OK_MIN).length;
   const warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
   const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
-  const unk = sample ? 0 : apps.length - scored.length;
-  $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>${unk ? ` · <span style="color:var(--dim)">${unk} NO DATA</span>` : ''}`;
+  $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`;
   setSampleBadge(panel, sample);
-  setState(panel, scored.length ? 'ok' : 'empty', scored.length ? '' : 'NO SERVICE DATA');
+  setState(panel, scored.length ? 'ok' : 'empty');
 }
 
 /* ---------------- threat panel (stand-in: no edge/geoip metrics exist yet) ---------------- */
 // No edge/geoip feed exists yet — stand-in stats, machine-flagged only (setStandIn: no visible
-// badge/pending text — see site/lib/stage.js). Never written into any live model. The numbers
-// drift gently every refresh tick (see the interval below) instead of sitting static.
+// badge/pending text — see site/lib/stage.js). Never written into any live model. The blocked/
+// unique counts drift gently every refresh tick (see the interval below) instead of sitting
+// static; the top-source label is stable (there's nothing to plausibly animate about a name).
 setState($('threat'), 'ok', '');
 setStandIn($('threat'), true);
 function renderThreatStats() {
   const drift = (base, seed) => Math.round(base * (1 + 0.08 * Math.sin(Date.now() / 5000 + seed)));
-  document.querySelectorAll('#tstats div b').forEach((b, i) => {
-    b.textContent = i === 0 ? String(drift(SAMPLE_THREAT_STATS.blockedToday, 0)) : String(drift(SAMPLE_THREAT_STATS.uniqueSources, 1));
-  });
+  const tstats = [drift(SAMPLE_THREAT_STATS.blockedToday, 0), drift(SAMPLE_THREAT_STATS.uniqueSources, 1), SAMPLE_THREAT_STATS.topSource];
+  document.querySelectorAll('#tstats div b').forEach((b, i) => { b.textContent = String(tstats[i]); });
 }
 renderThreatStats();
 const threatStatsId = setInterval(renderThreatStats, 4000);

@@ -28,9 +28,4 @@ body{font-family:var(--mono);color:var(--ink)}
 .stage{width:100vw;height:100vh;height:100dvh;box-sizing:border-box}
 .num{font-variant-numeric:tabular-nums}
 .pending{color:var(--faint);letter-spacing:.2em;text-transform:uppercase;font-size:var(--fs-xs)}
-/* Only ever present on a panel rendering site/lib/sampleData.js content in place of a real
-   source with nothing yet (site/lib/stage.js setSampleBadge) — never alongside real data. */
-.sample-badge{position:absolute;top:6px;right:8px;z-index:4;font:600 var(--fs-xs)/1 var(--mono);
-  letter-spacing:.14em;color:var(--void);background:var(--amber);padding:2px 6px;border-radius:2px;
-  box-shadow:0 0 8px rgba(255,179,71,.6)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
