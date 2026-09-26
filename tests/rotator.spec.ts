@@ -14,7 +14,14 @@ async function mockSlides(page: import('@playwright/test').Page, holdSeconds = 3
     if (i === brokenIndex) {
       await page.route(`**${s.url}`, (r) => r.fulfill({ status: 404, body: 'not found' }));
     } else {
-      await page.route(`**${s.url}`, (r) => r.fulfill({ contentType: 'text/html', body: `<!doctype html><title>${s.name}</title>` }));
+      // The rotator's ready handshake (site/rotator/rotator.js, Track G3): a same-origin slide
+      // is only counted healthy once it posts {wall:'ready'} to its parent, the same message
+      // site/lib/stage.js sends once a real MC page's first frame has painted. This fixture
+      // stands in for that.
+      await page.route(`**${s.url}`, (r) => r.fulfill({
+        contentType: 'text/html',
+        body: `<!doctype html><title>${s.name}</title><script>parent.postMessage({wall:'ready'},'*')</script>`,
+      }));
     }
   }
 }
@@ -89,14 +96,12 @@ test('P toggles an indefinite pause', async ({ page }) => {
   await expect.poll(() => activeSlideUrl(page)).toContain('/slide-b');
 });
 
-test('only two iframes exist and both stay non-blank', async ({ page }) => {
+test('one persistent iframe exists per slide and all stay non-blank', async ({ page }) => {
   await mockSlides(page);
   await page.goto('/');
-  await expect(page.locator('iframe')).toHaveCount(2);
-  await expect.poll(async () => {
-    const srcs = await page.locator('iframe').evaluateAll((els) => els.map((el) => (el as HTMLIFrameElement).src));
-    return srcs.every((s) => s && !s.endsWith('about:blank'));
-  }).toBe(true);
+  await expect(page.locator('iframe')).toHaveCount(SLIDES.length);
+  const srcs = await page.locator('iframe').evaluateAll((els) => els.map((el) => (el as HTMLIFrameElement).src));
+  expect(srcs.every((s) => s && !s.endsWith('about:blank'))).toBe(true);
 });
 
 test('a broken slide is skipped, never shown, with no application errors', async ({ page }) => {
@@ -142,3 +147,36 @@ for (const size of [{ width: 1280, height: 720 }, { width: 2560, height: 1440 }]
     expect(overflow.h).toBe(true);
   });
 }
+
+// Track R4: the persistent-iframe model (Track R2) replaced a per-rotation create/destroy of
+// two iframes' render contexts with one context per slide held for the page's whole life — the
+// growth check this test makes is exactly the thing that change was for. `?fast=` (this file
+// only, never read by real config) shortens every hold so many cycles run in real CI time; the
+// heap check needs Chromium's own CDP Performance domain, so it doesn't run under WebKit.
+test('10 rotation cycles produce no page errors and the heap stays within 10% growth', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Performance.getMetrics is a Chromium-only CDP API');
+  const faults = watchFaults(page);
+  await mockSlides(page);
+  const HOLD_MS = 200;
+  await page.goto(`/?fast=${HOLD_MS}`);
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-a');
+
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Performance.enable');
+  await cdp.send('HeapProfiler.enable');
+  const heapUsed = async () => {
+    await cdp.send('HeapProfiler.collectGarbage');
+    const { metrics } = await cdp.send('Performance.getMetrics');
+    return metrics.find((m) => m.name === 'JSHeapUsedSize')!.value;
+  };
+
+  let afterCycle2 = 0;
+  for (let cycle = 1; cycle <= 10; cycle += 1) {
+    await page.waitForTimeout(HOLD_MS + 50);
+    if (cycle === 2) afterCycle2 = await heapUsed();
+  }
+  const afterCycle10 = await heapUsed();
+
+  expect(faults).toEqual([]);
+  expect(afterCycle10, `heap grew from ${afterCycle2} to ${afterCycle10}`).toBeLessThanOrEqual(afterCycle2 * 1.1);
+});

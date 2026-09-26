@@ -1,7 +1,7 @@
 // Mission Control 3: AI inference core, driven by live litellm_router + Gatus data.
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge } from '/lib/stage.js';
+import { clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge, onDispose } from '/lib/stage.js';
 import { sampleAppScore } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
@@ -156,9 +156,12 @@ function drawReactor(now) {
 
 /* ---------------- boot ---------------- */
 const tickClock = () => { const d = new Date(); $('clock').innerHTML = `${d.toTimeString().slice(0, 8)}<small>${d.toDateString().toUpperCase()}</small>`; };
-tickClock(); setInterval(tickClock, 1000);
+tickClock();
+const clockId = setInterval(tickClock, 1000);
+onDispose(() => clearInterval(clockId));
 await refresh().catch((e) => console.warn('refresh', e));
-setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+onDispose(() => clearInterval(refreshId));
 loop(30, (now) => drawReactor(now));
 // Nightly reload keeps a 24/7 kiosk's memory flat.
 setTimeout(() => location.reload(), 24 * 3600 * 1000);
