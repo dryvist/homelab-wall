@@ -37,8 +37,8 @@
 /* Dark-glass side panels: the hero scene shows through, text stays legible. `contain` is
    deliberately NOT used here (see the #globe comment above — it would make this panel a
    containing block for any position:fixed descendant). */
-.panel-glass{background:rgba(0,0,0,.55);border:1px solid rgba(255,59,92,.35);
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.panel-glass{background:rgba(0,0,0,.45);border:1px solid rgba(255,59,92,.35);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 /* The former hero-scene panel: frame and background gone, only the title (and any absolute
    overlay content, e.g. #tstats) remain, floating directly over the fullscreen canvas. */
 .panel-frameless{background:none;border:none}

@@ -206,7 +206,7 @@ function build3DFlow() {
   const cam = new THREE.PerspectiveCamera(50, 1, 1, 2000);
   cam.position.set(0, 18, 165);
   cam.lookAt(0, 0, 0);
-  const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.0, radius: 0.32, threshold: 0.6 });
+  const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.35, radius: 0.4, threshold: 0.5 });
 
   const group = new THREE.Group(); scene.add(group);
 
@@ -250,9 +250,12 @@ function build3DFlow() {
   // Accretion disk: two coplanar rings (a lit outer ring, a dim base underneath so the "gap" reads
   // as a disk rather than a flat circle).
   const disk = new THREE.Mesh(new THREE.RingGeometry(25, 31, 90, 1, 0, Math.PI * 2 * 0.86), new THREE.MeshBasicMaterial({ color: 0xffb347, side: THREE.DoubleSide, transparent: true, opacity: 0.6 }));
-  disk.rotation.x = -Math.PI / 2; disk.position.y = -17; scene.add(disk);
+  disk.rotation.x = -Math.PI / 2; disk.position.y = -17; group.add(disk);
   const diskBase = new THREE.Mesh(new THREE.RingGeometry(25, 31, 90), new THREE.MeshBasicMaterial({ color: 0x3a2208, side: THREE.DoubleSide }));
-  diskBase.rotation.x = -Math.PI / 2; diskBase.position.y = -17.2; scene.add(diskBase);
+  diskBase.rotation.x = -Math.PI / 2; diskBase.position.y = -17.2; group.add(diskBase);
+  // Lead review (round 2): 1.8x so the tube runs full viewport width, edge to edge, behind both
+  // side columns, not confined to the centre.
+  group.scale.setScalar(1.8);
 
   const resizeAt = (w, h) => { renderer.setSize(w, h, false); bloomFx.setSize(w, h); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); };
   // The canvas is a full-viewport fixed layer now (mc4.css #corecanvas), not the "core" panel's

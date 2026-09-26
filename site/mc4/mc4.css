@@ -29,8 +29,8 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
 /* Dark-glass side panels: the hero scene shows through, text stays legible. `contain` is
    deliberately NOT used here (see the #corecanvas comment in index.html — it would make this
    panel a containing block for any position:fixed descendant). */
-.panel-glass{background:rgba(0,0,0,.55);border:1px solid rgba(255,179,71,.35);
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.panel-glass{background:rgba(0,0,0,.45);border:1px solid rgba(255,179,71,.35);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 /* The former hero-scene panel: frame and background gone, only the title remains, floating
    directly over the fullscreen canvas. */
 .panel-frameless{background:none;border:none}
@@ -46,7 +46,12 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
 .mc4 .panel [data-panel-message]{color:var(--amber);font:600 9px/1 var(--mono);letter-spacing:.1em;white-space:nowrap}
 
 .cardbody{flex:1;min-height:0;overflow:auto;padding:clamp(6px,1vmin,12px) clamp(8px,1.2vmin,14px);
-  display:flex;flex-direction:column;gap:clamp(10px,1.6vmin,20px);justify-content:center}
+  display:flex;flex-direction:column;gap:clamp(10px,1.6vmin,20px)}
+/* No-empty-space fix: the throughput card (always first in .cardbody) grows to fill whatever
+   space the other, natural-height cards don't use, instead of the column centering fixed-height
+   cards with dead space above/below. */
+.cardbody>.card:first-child{flex:1;min-height:0;display:flex;flex-direction:column}
+.cardbody>.card:first-child .through{flex:1;height:auto;min-height:0}
 
 /* Legible download-client/library cards: bigger headline numbers, not tiny faint text
    (the live-wall finding) — .ct/.cn sizes bumped from the pre-hero-scene layout. */
