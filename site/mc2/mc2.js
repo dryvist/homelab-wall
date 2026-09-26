@@ -41,7 +41,7 @@ function renderApps() {
   // A query that succeeded with zero rows has genuinely nothing to show yet — fall back to the
   // shared sample scores (badged), never on top of real (even partial) data.
   const sample = !scored.length;
-  const scores = sample ? apps.map((a, i) => sampleAppScore(i)) : scored.map((a) => a.s);
+  const scores = sample ? apps.map((_, i) => sampleAppScore(i)) : scored.map((a) => a.s);
   const ok = scores.filter((s) => s >= SCORE_OK_MIN).length;
   const warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
   const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;

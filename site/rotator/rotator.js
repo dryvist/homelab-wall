@@ -230,7 +230,11 @@ function step(offset) { goTo(current + offset); }
 function scheduleRotate() {
   clearTimeout(rotateTimer);
   if (paused || holding) return;
-  rotateTimer = setTimeout(() => step(1), holdMs());
+  // The pause/holding invariant is re-checked here, at fire time, not just when the timer was
+  // armed: this is the actual guarantee ("never rotate while paused"), not the timer bookkeeping
+  // above, which only prevents a *known* stale timer from firing — it can't prevent every path
+  // that could otherwise leave an armed timer outliving a pause.
+  rotateTimer = setTimeout(() => { if (!paused && !holding) step(1); }, holdMs());
 }
 
 function pin() {
