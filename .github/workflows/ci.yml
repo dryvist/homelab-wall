@@ -26,6 +26,10 @@ jobs:
           node-version: lts/*
           cache: npm
       - run: npm ci
+      - run: node scripts/vendor-three.mjs
+      # Fails if a Renovate bump to `three` (package.json) landed without regenerating the
+      # committed site/vendor/three copy the static site actually serves.
+      - run: git diff --exit-code -- site/vendor/three
       - run: npx tsc --noEmit
       - run: npx playwright install --with-deps chromium webkit
       - run: npx playwright test

@@ -20,6 +20,8 @@ if (!existsSync(src)) {
 rmSync(dest, { recursive: true, force: true });
 mkdirSync(dest, { recursive: true });
 cpSync(join(src, 'build/three.module.js'), join(dest, 'three.module.js'));
+// three.module.js imports from './three.core.js' internally (0.186 split the build in two).
+cpSync(join(src, 'build/three.core.js'), join(dest, 'three.core.js'));
 cpSync(join(src, 'examples/jsm/postprocessing'), join(dest, 'addons/postprocessing'), { recursive: true });
 cpSync(join(src, 'examples/jsm/shaders'), join(dest, 'addons/shaders'), { recursive: true });
 
@@ -27,6 +29,7 @@ cpSync(join(src, 'examples/jsm/shaders'), join(dest, 'addons/shaders'), { recurs
 // imports 'three'/'three/addons/...' would fail silently at runtime instead of at build time.
 for (const must of [
   'three.module.js',
+  'three.core.js',
   'addons/postprocessing/EffectComposer.js',
   'addons/postprocessing/RenderPass.js',
   'addons/postprocessing/UnrealBloomPass.js',

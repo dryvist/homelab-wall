@@ -23,6 +23,7 @@
     <canvas id="gl"></canvas>
     <div id="labels"></div>
     <div class="ovl" id="wan">WAN EXPORTER PENDING</div>
+    <div class="ovl" id="vlans"></div>
     <div class="ovl" id="fstats"></div>
     <div class="ovl" id="legend"></div>
   </section>
@@ -32,8 +33,8 @@
   <section class="panel" id="storage" data-panel="storage" data-state="pending"><h2>Storage <span id="sttot">—</span><span data-panel-message></span></h2><div class="rows" id="strows"></div></section>
 
   <section class="panel" id="fw" data-panel="firewall" data-state="pending"><div class="fwsplit"><span data-panel-message></span>
-    <div class="fwcol"><h3 class="bh">⛔ Blocked at the edge <span id="blkrate">—</span></h3><div class="fwrows" id="blkrows"></div></div>
-    <div class="fwcol"><h3>Live firewall · flows <span id="fwrate">—</span></h3><div class="fwrows" id="fwrows"></div></div>
+    <div class="fwcol"><h3 class="bh">⛔ Blocked at the edge <span id="blkrate"></span></h3><div class="fwrows" id="blkrows"></div></div>
+    <div class="fwcol"><h3>Live firewall · flows <span id="fwrate"></span></h3><div class="fwrows" id="fwrows"></div></div>
   </div></section>
 
   <section class="panel" id="llm" data-panel="llm" data-state="pending"><h2>LLM fabric <span id="llmsum">—</span><span data-panel-message></span></h2><div id="llmrows"></div></section>

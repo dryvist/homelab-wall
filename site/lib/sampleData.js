@@ -30,6 +30,12 @@ export const SAMPLE_LLM = [
 // panel is never blank. Always shown behind setSampleBadge (site/lib/stage.js); never merged
 // into any page's own live model.
 
+export const SAMPLE_VLANS = [
+  { vlan: '10', rate: 4.2 },
+  { vlan: '20', rate: 1.1 },
+  { vlan: '30', rate: 0.4 },
+];
+
 export const SAMPLE_WAN = [
   { name: 'WAN1', down: 92, up: 11, latency: 14 },
   { name: 'WAN2', down: 48, up: 6, latency: 22 },

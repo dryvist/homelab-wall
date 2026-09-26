@@ -1,10 +1,10 @@
 {
   "panels": {
-    "mc1": ["nodes", "topology", "firewall"],
-    "mc2": ["threat"],
+    "mc1": ["nodes"],
+    "mc2": [],
     "mc3": [],
-    "mc4": ["acquisition", "pipeline"],
-    "mc5": ["github", "pipeline", "infra", "activity"]
+    "mc4": [],
+    "mc5": []
   },
   "queries": []
 }

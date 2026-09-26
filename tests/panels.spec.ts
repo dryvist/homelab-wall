@@ -225,34 +225,54 @@ test('the SAMPLE DATA badge appears on a no-data apps panel and never on a live 
   await expect(page.locator('[data-panel="apps"] [data-sample-badge]')).toBeVisible();
 });
 
-// Every panel this fixture leaves permanently pending — because no live source is wired up for
-// it at all, never because a query happened to return nothing this poll — shows the same badge,
-// with sample content shaped like the eventual real feed. mc1's "nodes" panel is deliberately
-// excluded: it is forced 'pending' for an unrelated reason (no GPU exporter) while still showing
-// real per-node data, so it must never get a badge.
-const PENDING_PANELS: Record<string, string[]> = {
-  mc1: ['topology', 'firewall'],
+// Every panel with NO live source wired up at all (as opposed to a live query that returned zero
+// rows this poll) shows stand-in content: no visible badge, no "pending" text — a machine-only
+// data-source="stand-in" marker (site/lib/stage.js setStandIn) is the only trace, so the panel
+// contract test above already covers its visible state (it must be 'ok', like a live panel).
+// mc1's "nodes" panel is deliberately excluded: it is forced 'pending' for an unrelated reason
+// (no GPU exporter) while still showing real per-node data.
+const STAND_IN_PANELS: Record<string, string[]> = {
+  mc1: ['firewall'], // mc1's topology panel is a MIX (real graph + a stand-in #wan sub-element)
   mc2: ['threat'],
   mc4: ['acquisition', 'pipeline'],
   mc5: ['github', 'infra', 'activity', 'pipeline'],
 };
 
-for (const [pageId, panelIds] of Object.entries(PENDING_PANELS)) {
-  test(`${pageId}: every permanently-pending panel shows the SAMPLE DATA badge`, async ({ page }) => {
+for (const [pageId, panelIds] of Object.entries(STAND_IN_PANELS)) {
+  test(`${pageId}: every stand-in panel is marked machine-readably and never shows a visible badge or pending text`, async ({ page }) => {
     test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
     await mockFeeds(page);
     await page.goto(`/${pageId}/`);
     for (const panelId of panelIds) {
       const panel = page.locator(`[data-panel="${panelId}"]`);
-      await expect(panel, `${pageId} [data-panel="${panelId}"]`).toHaveAttribute('data-state', 'pending');
-      await expect(panel.locator('[data-sample-badge]'), `${pageId} [data-panel="${panelId}"] badge`).toHaveText('SAMPLE DATA');
+      await expect(panel, `${pageId} [data-panel="${panelId}"]`).toHaveAttribute('data-state', 'ok');
+      await expect(panel, `${pageId} [data-panel="${panelId}"] data-source`).toHaveAttribute('data-source', 'stand-in');
+      await expect(panel.locator('[data-sample-badge]'), `${pageId} [data-panel="${panelId}"] must have no visible badge`).toHaveCount(0);
+      await expect(panel, `${pageId} [data-panel="${panelId}"] must have no pending text`).not.toContainText(/pending/i);
     }
-    // mc1's "nodes" panel: pending for an unrelated reason, has real data, never badged.
+    // mc1's "nodes" panel: pending for an unrelated reason, has real data, never a stand-in.
     if (pageId === 'mc1') {
-      await expect(page.locator('[data-panel="nodes"] [data-sample-badge]')).toHaveCount(0);
+      await expect(page.locator('[data-panel="nodes"]')).not.toHaveAttribute('data-source', 'stand-in');
+      // The topology panel itself stays 'ok'/un-flagged (it's a real graph); only its WAN
+      // sub-element, which has no live exporter, carries the marker.
+      await expect(page.locator('[data-panel="topology"]')).not.toHaveAttribute('data-source', 'stand-in');
+      await expect(page.locator('#wan')).toHaveAttribute('data-source', 'stand-in');
     }
   });
 }
+
+// The VLAN panel (Q.vlanFwRate, apps PR #2214) is real once the fixture answers it: real values,
+// no SAMPLE DATA badge. A separate assertion (not the generic contract loop) since it's a
+// sub-element of the "topology" panel, not its own [data-panel].
+test('mc1 VLAN readout shows real per-VLAN rates and drops the SAMPLE DATA badge once the query answers', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped VLAN response only');
+  await mockFeeds(page);
+  await page.goto('/mc1/');
+  const vlans = page.locator('#vlans');
+  await expect(vlans).toContainText('VLAN 10');
+  await expect(vlans).toContainText('4.2');
+  await expect(vlans.locator('[data-sample-badge]')).toHaveCount(0);
+});
 
 test('the SAMPLE DATA badge never appears on a panel that has real data', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');

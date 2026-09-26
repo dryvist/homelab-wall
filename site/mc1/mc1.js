@@ -4,11 +4,11 @@ import { query, range, settle, shortHost } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import {
   clamp, hue, lerp, esc, observeCanvas, hardwareGL, loop, loadConfig, setState,
-  SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge,
+  SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge, setStandIn,
   onDispose, onContextLoss, disposeThreeScene,
 } from '/lib/stage.js';
 import { lastGoodGet, lastGoodSet } from '/lib/lastGood.js';
-import { sampleAppScore, SAMPLE_STORAGE, SAMPLE_LLM, SAMPLE_WAN, SAMPLE_BLOCKED, SAMPLE_ALLOWED } from '/lib/sampleData.js';
+import { sampleAppScore, SAMPLE_STORAGE, SAMPLE_LLM, SAMPLE_WAN, SAMPLE_VLANS, SAMPLE_BLOCKED, SAMPLE_ALLOWED } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -47,6 +47,7 @@ async function refresh() {
     fsAvail: () => query(Q.fsAvail),
     llmState: () => query(Q.llmState),
     llmTok: () => query(Q.llmTokRate),
+    vlan: () => query(Q.vlanFwRate),
   });
 
   // settle() (lib/prom.js) yields null for a query that rejected (bad status, timeout, bad
@@ -135,6 +136,13 @@ async function refresh() {
     }).sort((a, b) => b.state - a.state || b.tok - a.tok || a.n.localeCompare(b.n));
     model.llm = model.llmAll.slice(0, 9);
   }
+  // Per-VLAN firewall event rate (Q.vlanFwRate) — empty until the Cribl pipeline (apps #2214)
+  // deploys, so this is null-vs-empty just like every other query here: a failed query is
+  // 'error', an empty one falls back to sample VLAN bubbles (renderVlans, badged), never both.
+  model.vlanFailed = r.vlan === null;
+  model.vlans = (r.vlan || []).map((row) => ({ vlan: row.labels.vlan, rate: row.value }))
+    .filter((v) => v.vlan != null).sort((a, b) => a.vlan.localeCompare(b.vlan, undefined, { numeric: true }));
+
   model.updated = Date.now();
   renderStatic();
 }
@@ -449,20 +457,31 @@ if (forced === '3d' || (forced !== '2d' && hardwareGL())) {
 }
 
 /* ---------------- firewall + WAN (feed arrives with the Splunk app) ---------------- */
-// No Splunk edge-block/flow feed exists yet — fixed sample rows, badged (setSampleBadge in
-// renderStatic below), stand in for the single "pending" line. Never written into `model`.
+// No Splunk edge-block/flow feed exists yet — stand-in rows (setStandIn in renderStatic below;
+// never visibly badged, per the stand-in-visuals policy in site/lib/stage.js). Never written
+// into `model`.
 $('blkrows').innerHTML = SAMPLE_BLOCKED.map((b) => `<div class="br"><span>${esc(b.time)}</span><span class="f">${b.flag}</span><span class="cc">${esc(b.country)}</span><span>${esc(b.source)}</span><span class="why">${esc(b.reason)}</span><span class="d">${esc(b.ago)} ago</span></div>`).join('');
 $('fwrows').innerHTML = SAMPLE_ALLOWED.map((f) => `<div class="fr ${f.action}"><span>${esc(f.time)}</span><span class="a">${esc(f.action.toUpperCase())}</span><span>${esc(f.proto)}</span><span>${esc(f.desc)}</span><span>${esc(f.dest)}</span><span class="d">${esc(f.ago)} ago</span></div>`).join('');
+$('blkrate').textContent = `${SAMPLE_BLOCKED.length}/min`;
+$('fwrate').textContent = `${SAMPLE_ALLOWED.length}/min`;
 
 /* ---------------- boot ---------------- */
+function renderVlans() {
+  const real = model.vlans.length > 0;
+  const rows = real ? model.vlans : SAMPLE_VLANS;
+  $('vlans').innerHTML = rows.map((v) => `VLAN ${esc(v.vlan)} <b>${v.rate.toFixed(1)}</b>/s`).join('<br>');
+  setSampleBadge($('vlans'), !real);
+}
+
 function renderStatic() {
-  buildNodes(); renderHeader(); renderStorage(); renderLlm(); updateLabels();
+  buildNodes(); renderHeader(); renderStorage(); renderLlm(); updateLabels(); renderVlans();
   setState($('nodes'), 'pending', 'NO GPU EXPORTER');
-  setState($('topo'), 'pending', 'WAN EXPORTER PENDING');
-  // No WAN exporter exists yet — a fixed sample readout, badged, replaces the topology panel's
-  // single "pending" line. Never written into `model`, so nothing here is mistaken for live data.
+  // The topology graph itself is real (config.groups/live app scores) — the panel stays 'ok' even
+  // though its WAN overlay is a stand-in (no WAN exporter exists yet): a stand-in sub-element
+  // never pends or badges the whole panel when the rest of it is live.
+  setState($('topo'), 'ok', '');
   $('wan').innerHTML = SAMPLE_WAN.map((w) => `${w.name} &darr;<b>${w.down}</b> / &uarr;<b>${w.up}</b> Mbps &middot; <b>${w.latency}</b>ms`).join('<br>');
-  setSampleBadge($('topo'), true);
+  setStandIn($('wan'), true);
   // D5: an app with no Gatus series at all is "no data" for that one cell (see drawHex/appsum),
   // never reason to pend the whole panel — only a total scoring failure does.
   // A query that failed outright (settle() -> null) is 'error', never silently "no data".
@@ -474,8 +493,8 @@ function renderStatic() {
   renderAppSum();
   setState($('storage'), model.storageFailed ? 'error' : model.storage.length ? 'ok' : 'empty',
     model.storageFailed ? 'STORAGE QUERY FAILED' : model.storage.length ? '' : 'STORAGE METRICS EMPTY');
-  setState($('fw'), 'pending', 'SPLUNK FEED PENDING');
-  setSampleBadge($('fw'), true);
+  setState($('fw'), 'ok', '');
+  setStandIn($('fw'), true);
   setState($('llm'), model.llmFailed ? 'error' : model.llm.length ? 'ok' : 'pending',
     model.llmFailed ? 'ROUTER QUERY FAILED' : model.llm.length ? '' : 'ROUTER METRICS PENDING');
   const up = model.nodes.filter((n) => !n.pending).length;

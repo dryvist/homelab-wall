@@ -54,6 +54,7 @@ function answer(q: string): unknown[] {
       [{ ...inst('node-b'), ...SHARED_DEVICE }, 3e12],
     ] as Array<[Record<string, string>, number]>);
   }
+  if (q.includes('unifi_vlan_fw_events_total')) return vec([[{ vlan: '10' }, 4.2], [{ vlan: '20' }, 1.1], [{ vlan: '30' }, 0.4]]);
   if (q.includes('litellm_deployment_state')) return vec([[{ litellm_model_name: 'model-large' }, 0], [{ litellm_model_name: 'model-coder' }, 0], [{ litellm_model_name: 'model-small' }, 2]]);
   if (q.includes('litellm_output_tokens')) return vec([[{ model: 'model-large' }, 38], [{ model: 'model-coder' }, 91]]);
   // mc3

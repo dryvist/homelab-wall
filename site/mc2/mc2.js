@@ -7,7 +7,7 @@ import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import { makeBloom } from '/lib/bloom.js';
 import {
-  hardwareGL, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, setSampleBadge,
+  hardwareGL, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, setSampleBadge, setStandIn,
   observeCanvas, onDispose, onContextLoss, disposeThreeScene,
 } from '/lib/stage.js';
 import { sampleAppScore, SAMPLE_THREAT_STATS } from '/lib/sampleData.js';
@@ -51,14 +51,21 @@ function renderApps() {
   setState(panel, scored.length ? 'ok' : 'empty', scored.length ? '' : 'NO SERVICE DATA');
 }
 
-/* ---------------- threat panel (pending: no edge/geoip metrics exist yet) ---------------- */
-setState($('threat'), 'pending', 'EDGE BLOCK FEED PENDING');
-// No edge/geoip feed exists yet — fixed sample stats, badged, replace the "PENDING" placeholders.
-// Never written into any live model.
-document.querySelectorAll('#tstats div b').forEach((b, i) => {
-  b.textContent = i === 0 ? String(SAMPLE_THREAT_STATS.blockedToday) : String(SAMPLE_THREAT_STATS.uniqueSources);
-});
-setSampleBadge($('threat'), true);
+/* ---------------- threat panel (stand-in: no edge/geoip metrics exist yet) ---------------- */
+// No edge/geoip feed exists yet — stand-in stats, machine-flagged only (setStandIn: no visible
+// badge/pending text — see site/lib/stage.js). Never written into any live model. The numbers
+// drift gently every refresh tick (see the interval below) instead of sitting static.
+setState($('threat'), 'ok', '');
+setStandIn($('threat'), true);
+function renderThreatStats() {
+  const drift = (base, seed) => Math.round(base * (1 + 0.08 * Math.sin(Date.now() / 5000 + seed)));
+  document.querySelectorAll('#tstats div b').forEach((b, i) => {
+    b.textContent = i === 0 ? String(drift(SAMPLE_THREAT_STATS.blockedToday, 0)) : String(drift(SAMPLE_THREAT_STATS.uniqueSources, 1));
+  });
+}
+renderThreatStats();
+const threatStatsId = setInterval(renderThreatStats, 4000);
+onDispose(() => clearInterval(threatStatsId));
 
 const threatPanel = $('threat');
 const globeCanvas = $('globe');
