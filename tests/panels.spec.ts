@@ -98,7 +98,20 @@ for (const pageSpec of PAGES) {
       }));
       expect(overlaps).toEqual([]);
       expect(faults).toEqual([]);
-      await page.screenshot({ path: `test-results/${pageSpec.id}-${mode}.png` });
+      // Every real assertion for this page/mode has already run and passed above. This capture is
+      // a best-effort visual-review artifact only — nothing reads it back, nothing asserts on it —
+      // so it must never fail the test. At the two largest viewport x DPR combos (3840x2160,
+      // 2560x1440 physical pixels) Chromium's headless screenshot protocol intermittently throws
+      // "Protocol error (Page.captureScreenshot): Unable to capture screenshot" under CI's runner
+      // memory ceiling (reproduces rarely locally too, confirming it's a Chromium/runner capture
+      // flake, not an app or test-logic defect); jpeg (cheaper to encode than png) cut the failure
+      // rate but didn't eliminate it, so the capture itself is wrapped rather than papering over a
+      // real check.
+      try {
+        await page.screenshot({ path: `test-results/${pageSpec.id}-${mode}.jpg`, type: 'jpeg', quality: 80 });
+      } catch (error) {
+        console.warn(`screenshot capture failed for ${pageSpec.id} ${mode} (non-fatal, no assertion depends on it):`, error);
+      }
     });
   }
 }
