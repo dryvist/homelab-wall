@@ -60,5 +60,11 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
 .afrow b{color:var(--ink);font-weight:600}
 .afrow:nth-child(n+6){opacity:.7}
 .afrow:nth-child(n+11){opacity:.45}
+.afrow:nth-child(n+20){opacity:.28}
+/* The newest row (or two, briefly overlapping during the insert animation) reads brighter/live —
+   full ink colour plus an amber glow — instead of every row sitting at the same dim brightness. */
+.afrow-new{color:var(--ink);text-shadow:0 0 6px rgba(255,179,71,.35)}
+.afrow-new b{color:var(--amber)}
 .afrow-in{animation:afrow-in .35s ease-out}
+.through{width:100%;height:clamp(48px,7vh,84px);display:block}
 @keyframes afrow-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}

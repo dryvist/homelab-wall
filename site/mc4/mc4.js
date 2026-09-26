@@ -81,33 +81,93 @@ const ARR_ACTIONS = ['grabbed', 'imported', 'upgraded'];
 const ARR_TITLES = ['Series Title S02E07', 'Feature Film (2024)', 'Series Title S04E01', 'Feature Film (2019)', 'Series Title S01E11'];
 let arrTimer = null;
 onDispose(() => { if (arrTimer) clearTimeout(arrTimer); });
+// Cap well above what any panel height needs (the CSS opacity ladder below fades rows past ~15
+// visually) so a tall panel still reads as continuously full rather than running out of rows.
+const ARR_MAX_ROWS = 60;
 function addArrRow(animate) {
   const action = ARR_ACTIONS[Math.floor(Math.random() * ARR_ACTIONS.length)];
   const title = ARR_TITLES[Math.floor(Math.random() * ARR_TITLES.length)];
-  const row = document.createElement('div');
-  row.className = animate ? 'afrow afrow-in' : 'afrow';
-  row.textContent = `${action} · ${title}`;
   const feed = $('arrfeed');
-  if (feed) {
-    feed.prepend(row);
-    while (feed.children.length > 18) feed.lastElementChild.remove();
-  }
+  if (!feed) return;
+  // Only the newest row or two read bright/"live"; demote the previous newest back to normal
+  // brightness as soon as another one arrives, instead of every row staying uniformly bright.
+  feed.querySelectorAll('.afrow-new').forEach((el) => el.classList.remove('afrow-new'));
+  const row = document.createElement('div');
+  row.className = animate ? 'afrow afrow-in afrow-new' : 'afrow';
+  row.innerHTML = `<b>${esc(action)}</b> · ${esc(title)}`;
+  feed.prepend(row);
+  while (feed.children.length > ARR_MAX_ROWS) feed.lastElementChild.remove();
 }
 function scheduleArrFeed() {
   arrTimer = setTimeout(() => {
     arrTimer = null;
     addArrRow(true);
     scheduleArrFeed();
-  }, RM ? 4000 : 1200 + Math.random() * 1800);
+  }, RM ? 4000 : 600 + Math.random() * 900);
 }
+
+// Throughput area chart (down + up), 1s cadence — no download-client exporter exists yet, so
+// this is stand-in like everything else in the panel, but it fills the dead space above the
+// QBITTORRENT card instead of leaving it empty.
+const THROUGHPUT_N = 60;
+const downAt = (t) => clamp(42 + Math.sin(t / 4) * 28 + (Math.random() - 0.5) * 10, 2, 100);
+const upAt = (t) => clamp(9 + Math.sin(t / 6 + 1) * 6 + (Math.random() - 0.5) * 4, 0.5, 30);
+const seedNow = Date.now() / 1000;
+// Seeded across the last THROUGHPUT_N seconds (not a flat 0 baseline) so the chart reads as an
+// established trend on first paint instead of an empty history that only starts filling in live.
+const throughput = {
+  down: Array.from({ length: THROUGHPUT_N }, (_, i) => downAt(seedNow - (THROUGHPUT_N - 1 - i))),
+  up: Array.from({ length: THROUGHPUT_N }, (_, i) => upAt(seedNow - (THROUGHPUT_N - 1 - i))),
+};
+function tickThroughput() {
+  const now = Date.now() / 1000;
+  throughput.down.push(downAt(now));
+  throughput.down.shift();
+  throughput.up.push(upAt(now));
+  throughput.up.shift();
+  drawThroughput();
+}
+function drawThroughput() {
+  const canvas = $('throughSpark');
+  if (!canvas) return;
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w) canvas.width = w;
+  if (canvas.height !== h) canvas.height = h;
+  const c = canvas.getContext('2d');
+  c.clearRect(0, 0, w, h);
+  const max = Math.max(1, ...throughput.down, ...throughput.up);
+  const area = (series, color, fill) => {
+    c.beginPath();
+    series.forEach((v, i) => {
+      const x = (i / (series.length - 1)) * w, y = h - (v / max) * (h - 4 * dpr) - 2 * dpr;
+      i === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+    });
+    c.lineTo(w, h); c.lineTo(0, h); c.closePath();
+    c.fillStyle = fill; c.fill();
+    c.beginPath();
+    series.forEach((v, i) => {
+      const x = (i / (series.length - 1)) * w, y = h - (v / max) * (h - 4 * dpr) - 2 * dpr;
+      i === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+    });
+    c.strokeStyle = color; c.lineWidth = 1.5 * dpr; c.stroke();
+  };
+  area(throughput.up, '#38ff9c', 'rgba(56,255,156,.15)');
+  area(throughput.down, '#ffb347', 'rgba(255,179,71,.18)');
+}
+let throughputId = null;
 
 function renderAcqPanel() {
   const [qbit] = SAMPLE_ACQ_CARDS;
-  $('acqbody').innerHTML = card(qbit.title, qbit.note)
+  $('acqbody').innerHTML = `<div class="card"><div class="ct">Throughput <span style="color:var(--amber)">down</span> / <span style="color:var(--green)">up</span></div><canvas id="throughSpark" class="through"></canvas></div>`
+    + card(qbit.title, qbit.note)
     + `<div class="card"><div class="ct">Queue</div><div id="queuerows"></div></div>`
     + statgrid([['tunnel', 'up'], ['peers', '3'], ['handshake', '41s ago'], ['rx / tx', '1.2 / 0.3 GB']]);
   renderQueue();
+  tickThroughput();
+  if (!throughputId) throughputId = setInterval(tickThroughput, 1000);
 }
+onDispose(() => { if (throughputId) clearInterval(throughputId); });
 function renderPipePanel() {
   const [plex, , storage] = SAMPLE_LIBRARY_CARDS;
   $('pipebody').innerHTML = card(plex.title, plex.note)
@@ -117,7 +177,7 @@ function renderPipePanel() {
 }
 renderAcqPanel();
 renderPipePanel();
-for (let i = 0; i < 6; i += 1) addArrRow(false); // seed so the feed isn't empty on first paint
+for (let i = 0; i < 26; i += 1) addArrRow(false); // seed so the feed fills the panel on first paint
 scheduleArrFeed();
 setState($('acq'), 'ok', '');
 setState($('pipe'), 'ok', '');
