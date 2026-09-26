@@ -10,11 +10,15 @@ export const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.char
 // wired up yet) and 'error' (the query itself failed).
 const STATES = new Set(['ok', 'empty', 'pending', 'error', 'stale']);
 
+// `message` is recorded on the panel (data-panel-message-text, invisible) for automation/tests,
+// but only ever painted into the visible [data-panel-message] node for state 'ok' — every other
+// state (pending/empty/error/stale) always has stand-in content on screen instead (sampleData.js,
+// setSampleBadge below), so its message never needs to be, and must not be, visible.
 export function setState(panel, state, message = '') {
   if (!STATES.has(state)) throw new Error(`unknown panel state: ${state}`);
   panel.dataset.state = state;
   const notice = panel.querySelector('[data-panel-message]');
-  if (notice) notice.textContent = message;
+  if (notice) notice.textContent = state === 'ok' ? message : '';
 }
 
 // App health score scale (site/lib/queries.js APP_HEALTH_SCORE): 0-9 is the normal range; 10 is
@@ -26,22 +30,13 @@ export const SCORE_DEGRADED_MIN = 5;
 // the /10 arc-fraction pattern every score ring/glyph already uses.
 export const scorePct = (s) => (s ?? 0) * 10;
 
-// Toggle a panel's "SAMPLE DATA" badge — only while that panel is rendering site/lib/sampleData.js
-// content in place of a real source that returned genuinely nothing this poll (a query that
-// SUCCEEDED with zero rows); never alongside real data. This one stays visible: it's reporting on
-// a live feed that happens to be empty right now, so the operator can tell a real "no data" apart
-// from a real value.
+// Mark a panel as showing site/lib/sampleData.js content in place of a real source that
+// returned genuinely nothing this poll (a query that SUCCEEDED with zero rows) — machine-readable
+// only (data-source, invisible), never a visible badge: the wall must never look non-production,
+// live-empty included. `data-source` stays absent (equivalent to "live") until a page renders its
+// first stand-in panel.
 export function setSampleBadge(panel, on) {
-  let badge = panel.querySelector('[data-sample-badge]');
-  if (on && !badge) {
-    badge = document.createElement('div');
-    badge.dataset.sampleBadge = '';
-    badge.className = 'sample-badge';
-    badge.textContent = 'SAMPLE DATA';
-    panel.appendChild(badge);
-  } else if (!on && badge) {
-    badge.remove();
-  }
+  panel.dataset.source = on ? 'stand-in' : 'live';
 }
 
 // Marks an element (a whole panel, or one sub-element inside an otherwise-real panel, e.g. mc1's

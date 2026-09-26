@@ -45,10 +45,9 @@ function renderApps() {
   const ok = scores.filter((s) => s >= SCORE_OK_MIN).length;
   const warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
   const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
-  const unk = sample ? 0 : apps.length - scored.length;
-  $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>${unk ? ` · <span style="color:var(--dim)">${unk} NO DATA</span>` : ''}`;
+  $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`;
   setSampleBadge(panel, sample);
-  setState(panel, scored.length ? 'ok' : 'empty', scored.length ? '' : 'NO SERVICE DATA');
+  setState(panel, scored.length ? 'ok' : 'empty');
 }
 
 /* ---------------- threat globe + blocked feed (stand-in: no edge/geoip metrics exist yet) ------
