@@ -19,6 +19,13 @@
     <h2>Fleet health <span id="appsum">—</span><span data-panel-message></span></h2>
     <canvas id="fleetRing" width="256" height="256"></canvas>
     <div class="applist" id="applist"></div>
+    <div class="coreextra" id="coreextra">
+      <div class="cxrow"><span>Requests/min</span><b class="num" id="cxReqMin">0</b></div>
+      <div class="cxrow"><span>GPU / VRAM</span><b class="num" id="cxGpu">0%</b></div>
+      <canvas id="gpuGauge" width="288" height="10"></canvas>
+      <div class="sparks" id="modelSparks"></div>
+      <div class="feed" id="reqfeed"></div>
+    </div>
   </section>
 
   <section class="panel" id="cores" data-panel="cores" data-state="pending">
