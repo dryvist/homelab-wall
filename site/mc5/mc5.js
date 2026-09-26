@@ -1,10 +1,14 @@
 // Mission Control 5: pipeline / GitOps overview. Service health is real (Prometheus via
-// Q.appScore, same as mc1); GitHub Actions, Terrakube and Semaphore have no metrics feed yet,
-// so those panels stay `pending` with an explicit missing-source message (panel contract).
+// Q.appScore, same as mc1); GitHub Actions, Terrakube and Semaphore have no metrics feed yet, so
+// those panels show stand-in rows (setStandIn — no visible badge/pending text; see
+// site/lib/stage.js) shaped like the feed each one will eventually get.
 import { query } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { clamp, hue, esc, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge, onDispose } from '/lib/stage.js';
-import { sampleAppScore, SAMPLE_GITHUB_ROWS, SAMPLE_INFRA_ROWS, SAMPLE_ACTIVITY_ROWS, SAMPLE_REPO_COUNT } from '/lib/sampleData.js';
+import {
+  clamp, hue, esc, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct,
+  setSampleBadge, setStandIn, onDispose, signalReady,
+} from '/lib/stage.js';
+import { sampleAppScore, SAMPLE_GITHUB_ROWS, SAMPLE_INFRA_ROWS, SAMPLE_ACTIVITY_ROWS } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e', '#ff3b5c'];
@@ -63,17 +67,22 @@ function ring(el, score) {
 }
 function renderHeader() {
   const scored = apps.filter((a) => a.s != null);
-  const avg = scored.length ? scored.reduce((a, x) => a + x.s, 0) / scored.length
+  // The fleet ring/KPI is the MINIMUM across every scored app, never an average — see mc1.js for
+  // why: an average dilutes a single DOWN app to nothing once enough other apps are healthy.
+  // Falls back to the shared sample average (appsSample) when nothing is scored, same as the
+  // app grid, rather than sitting on a blank ring.
+  const worst = scored.length ? Math.min(...scored.map((x) => x.s))
     : appsSample ? apps.reduce((a, _x, i) => a + sampleAppScore(i), 0) / (apps.length || 1) : null;
+  // 'repos' has no real source at all (cfg.repoCount is never set by anything) — hidden rather
+  // than shown as a permanent '—' placeholder.
   const k = [
-    ['repos', esc(cfg.repoCount ?? SAMPLE_REPO_COUNT), ''],
     ['apps', apps.length, ''],
     ['scored', scored.length, `/${apps.length}`],
-    ['health', avg != null ? Math.round(avg) : '—', ''],
+    ['health', worst != null ? Math.round(worst) : '—', ''],
   ];
   $('kpis').innerHTML = k.map(([l, v, u]) => `<div class="kpi"><b class="num">${v}<i>${u}</i></b><span>${l}</span></div>`).join('');
   $('subtitle').textContent = `${groups.length} GROUPS · ${apps.length} APPS`;
-  ring($('ring'), avg);
+  ring($('ring'), worst);
 }
 
 /* ---------------- apps (required ok panel) ---------------- */
@@ -132,21 +141,28 @@ function drawPipeline(canvas) {
 }
 
 /* ---------------- boot ---------------- */
-setState($('github'), 'pending');
-setState($('infra'), 'pending');
-setState($('activity'), 'pending');
-// No CI/CD, Terrakube/Semaphore, or pipeline-event exporter exists yet — fixed sample rows,
-// badged, replace each panel's single "pending" line. Never written into any live model.
-$('github').querySelector('.body').innerHTML = SAMPLE_GITHUB_ROWS.map((r) => `<div class="pending-row">${esc(r.repo)} &middot; ${esc(r.status)} &middot; ${esc(r.ago)} ago</div>`).join('');
-$('infra').querySelector('.body').innerHTML = SAMPLE_INFRA_ROWS.map((r) => `<div class="pending-row">${esc(r.name)} &middot; ${esc(r.status)} &middot; ${esc(r.ago)} ago</div>`).join('');
-$('activity').querySelector('.body').innerHTML = SAMPLE_ACTIVITY_ROWS.map((r) => `<div class="pending-row">${esc(r.text)} &middot; ${esc(r.ago)} ago</div>`).join('');
-setSampleBadge($('github'), true);
-setSampleBadge($('infra'), true);
-setSampleBadge($('activity'), true);
-setState($('pipeline'), 'pending');
-setSampleBadge($('pipeline'), true);
+// No CI/CD, Terrakube/Semaphore, or pipeline-event exporter exists yet — stand-in rows, styled
+// like a real feed (setStandIn: no visible badge/pending text, no spinner glyph). Never written
+// into any live model.
+setState($('github'), 'ok', '');
+setState($('infra'), 'ok', '');
+setState($('activity'), 'ok', '');
+setStandIn($('github'), true);
+setStandIn($('infra'), true);
+setStandIn($('activity'), true);
+const feedRow = (name, status, ago, col) => `<div class="feed-row"><span class="name">${esc(name)}</span><span class="status" style="color:${col}">${esc(status)}</span><span class="ago">${esc(ago)} ago</span></div>`;
+const GH_COLOR = { 'CI passing': 'var(--green)', 'PR open': 'var(--cyan)' };
+const INFRA_COLOR = { queued: 'var(--dim)', running: 'var(--cyan)' };
+$('github').querySelector('.body').innerHTML = SAMPLE_GITHUB_ROWS.map((r) => feedRow(r.repo, r.status, r.ago, GH_COLOR[r.status] ?? 'var(--ink)')).join('');
+$('infra').querySelector('.body').innerHTML = SAMPLE_INFRA_ROWS.map((r) => feedRow(r.name, r.status, r.ago, INFRA_COLOR[r.status] ?? 'var(--ink)')).join('');
+$('activity').querySelector('.body').innerHTML = SAMPLE_ACTIVITY_ROWS.map((r) => `<div class="feed-row"><span class="name">${esc(r.text)}</span><span></span><span class="ago">${esc(r.ago)} ago</span></div>`).join('');
+setState($('pipeline'), 'ok', '');
+setStandIn($('pipeline'), true);
 fitCanvas($('pipeline'), $('pipecanvas'), () => drawPipeline($('pipecanvas')));
 fitCanvas($('apps'), $('appgrid'), drawAppGrid);
+// No continuous render loop on this page (its canvases redraw only on data refresh/resize), so
+// it posts {wall:'ready'} directly instead of via loop() — see site/lib/stage.js.
+signalReady();
 
 const tickClock = () => { const d = new Date(); $('clock').innerHTML = `${d.toTimeString().slice(0, 8)}<small>${d.toDateString().toUpperCase()}</small>`; };
 tickClock();

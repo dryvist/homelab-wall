@@ -18,6 +18,9 @@ const DEFAULT_SECONDS = 10;
 const IDLE_HIDE_MS = 3000;
 const PROBE_TIMEOUT_MS = 5000;
 const SKIP_NOTE_MS = 4000;
+// A layer whose probe timed out is skipped forever without this: re-probe it periodically so a
+// slide that was down at boot (or hung mid-session) can rejoin rotation once it recovers.
+const REPROBE_MS = 5 * 60 * 1000;
 const FADE_MS = 800; // matches .layer{transition:opacity .8s ease} below
 // ponytail: hard ceiling under Chromium's 16-context-per-page limit — the configured slide count
 // (6: MC1-5 + Glance) is nowhere near it. Raise only if that changes.
@@ -45,6 +48,9 @@ const wrap = (i) => ((i % layers.length) + layers.length) % layers.length;
 // `fast` ms so a CI run can exercise many rotation cycles without waiting out a real 30-60s hold.
 const FAST_MS = Number(new URLSearchParams(location.search).get('fast')) || 0;
 const holdMs = () => FAST_MS || (slides[current]?.seconds ?? DEFAULT_SECONDS) * 1000;
+// A test-only override (never read by real config), mirroring `?fast=`: shortens the re-probe
+// interval so a test can exercise it without waiting out the real 5 minutes.
+const REPROBE_OVERRIDE_MS = Number(new URLSearchParams(location.search).get('reprobe')) || 0;
 const sameOrigin = (url) => {
   try { return new URL(url, location.href).origin === location.origin; } catch { return false; }
 };
@@ -54,10 +60,23 @@ function postWall(layer, state) {
   try { layer.el.contentWindow?.postMessage({ wall: state }, location.origin); } catch { /* torn down mid-message */ }
 }
 
-// One persistent iframe per slide, created once and never re-navigated. A same-origin slide
-// proves itself alive by posting {wall:'ready'} once its own site/lib/stage.js render loop has
-// painted a first frame; a probe window with no 'ready' means it's broken (Track G3) — the same
-// conclusion the cross-origin probe below draws from a failed or stalled load.
+// (Re)arms a layer's readiness: a fresh promise, a fresh PROBE_TIMEOUT_MS deadline. Used both at
+// layer creation and by reprobeBroken() below — a re-probed layer is indistinguishable from a
+// freshly-built one as far as resolveSlide()/the rest of this file is concerned.
+function armLayer(layer) {
+  let settled = false, resolveReady;
+  layer.ok = null;
+  layer.readyPromise = new Promise((resolve) => { resolveReady = resolve; });
+  layer.finish = (ok) => { if (settled) return; settled = true; layer.ok = ok; resolveReady(ok); };
+  clearTimeout(layer.timeoutId);
+  layer.timeoutId = setTimeout(() => layer.finish(false), PROBE_TIMEOUT_MS);
+}
+
+// One persistent iframe per slide, created once and never re-navigated (except by reprobeBroken,
+// which reloads only a layer already marked broken). A same-origin slide proves itself alive by
+// posting {wall:'ready'} once its own site/lib/stage.js render loop has painted a first frame; a
+// probe window with no 'ready' means it's broken (Track G3) — the same conclusion the cross-origin
+// probe below draws from a failed or stalled load.
 function buildLayers() {
   layersEl.innerHTML = '';
   layers = slides.slice(0, MAX_LAYERS).map((slide) => {
@@ -65,18 +84,16 @@ function buildLayers() {
     el.className = 'layer';
     el.title = slide.name || 'slide';
     layersEl.appendChild(el);
-    const layer = { el, name: slide.name, sameOrigin: sameOrigin(slide.url), hideTimer: null };
-    let settled = false, resolveReady;
-    layer.readyPromise = new Promise((resolve) => { resolveReady = resolve; });
-    layer.finish = (ok) => { if (settled) return; settled = true; resolveReady(ok); };
+    const layer = { el, name: slide.name, url: slide.url, sameOrigin: sameOrigin(slide.url), hideTimer: null };
     if (!layer.sameOrigin) {
       // ponytail: cross-origin reachability is a load-vs-timeout race (no HTTP status and no
       // 'ready' handshake visible across origins) — a slow-but-healthy cross-origin slide can
       // misclassify as broken. The live browser check (Track V2) is what actually verifies these.
+      // Attached once: armLayer() only replaces layer.finish, which these always read live.
       el.addEventListener('load', () => layer.finish(true));
       el.addEventListener('error', () => layer.finish(false));
     }
-    setTimeout(() => layer.finish(false), PROBE_TIMEOUT_MS);
+    armLayer(layer);
     el.src = slide.url;
     return layer;
   });
@@ -86,6 +103,27 @@ window.addEventListener('message', (e) => {
   if (e.data?.wall !== 'ready') return;
   layers.find((l) => l.sameOrigin && l.el.contentWindow === e.source)?.finish(true);
 });
+
+// Every REPROBE_MS, reload any layer still marked broken (ok === false — never one still mid-
+// probe, ok === null) and re-arm it: a slide that was down at boot, or that hung mid-session, gets
+// a chance to rejoin rotation instead of being skipped forever. An off-screen layer is invisible
+// either way (activateLayer), so reloading it never disturbs what's on screen.
+function reprobeBroken() {
+  for (const layer of layers) {
+    if (layer.ok !== false) continue;
+    armLayer(layer);
+    reloadLayer(layer);
+  }
+}
+function reloadLayer(layer) {
+  const el = layer.el;
+  // Force a fresh navigation even if the URL is unchanged (a same-origin slide) — a cache-busting
+  // query param, not a reassignment of the identical src, which most browsers no-op.
+  const url = new URL(layer.url, location.href);
+  url.searchParams.set('_reprobe', String(Date.now()));
+  el.src = url.href;
+}
+setInterval(reprobeBroken, REPROBE_OVERRIDE_MS || REPROBE_MS);
 
 // Recursive, not a for-loop: each candidate's readiness must be awaited in order and the search
 // stops at the first ready one, so the attempts are inherently sequential.
@@ -192,7 +230,11 @@ function step(offset) { goTo(current + offset); }
 function scheduleRotate() {
   clearTimeout(rotateTimer);
   if (paused || holding) return;
-  rotateTimer = setTimeout(() => step(1), holdMs());
+  // The pause/holding invariant is re-checked here, at fire time, not just when the timer was
+  // armed: this is the actual guarantee ("never rotate while paused"), not the timer bookkeeping
+  // above, which only prevents a *known* stale timer from firing — it can't prevent every path
+  // that could otherwise leave an armed timer outliving a pause.
+  rotateTimer = setTimeout(() => { if (!paused && !holding) step(1); }, holdMs());
 }
 
 function pin() {

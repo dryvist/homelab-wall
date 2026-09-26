@@ -9,10 +9,10 @@
 </head>
 <body>
 <div id="stage" class="stage mc4">
-  <canvas id="core" class="bgvis"></canvas>
   <header>
     <div class="brand"><span id="title">HOMELAB</span> <span class="acc">//</span> MEDIA <span class="acc">//</span> ACQUISITION</div>
     <div class="vpn" id="vpn"></div>
+    <section class="appstrip" id="apps" data-panel="apps" data-state="pending"><h2>Service health <span id="appsum"></span></h2></section>
     <div class="clock num" id="clock">--:--:--<small>--</small></div>
   </header>
 
@@ -21,9 +21,9 @@
     <div class="cardbody" id="acqbody"></div>
   </section>
 
-  <section class="panel" id="apps" data-panel="apps" data-state="pending">
-    <h2>Service health <span id="appsum">—</span><span data-panel-message></span></h2>
-    <div class="rows" id="approws"></div>
+  <section class="panel" id="core" data-panel="core" data-state="ok">
+    <h2>Acquisition flow</h2>
+    <canvas id="corecanvas"></canvas>
   </section>
 
   <section class="panel" id="pipe" data-panel="pipeline" data-state="pending">
@@ -31,6 +31,7 @@
     <div class="cardbody" id="pipebody"></div>
   </section>
 </div>
+<script type="importmap">{"imports": {"three": "/vendor/three/three.module.js", "three/addons/": "/vendor/three/addons/"}}</script>
 <script type="module" src="/mc4/mc4.js"></script>
 </body>
 </html>
