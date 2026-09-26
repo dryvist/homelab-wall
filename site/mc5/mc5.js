@@ -3,7 +3,7 @@
 // so those panels stay `pending` with an explicit missing-source message (panel contract).
 import { query } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { clamp, hue, esc, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge } from '/lib/stage.js';
+import { clamp, hue, esc, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge, onDispose } from '/lib/stage.js';
 import { sampleAppScore, SAMPLE_GITHUB_ROWS, SAMPLE_INFRA_ROWS, SAMPLE_ACTIVITY_ROWS } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
@@ -18,8 +18,10 @@ function fitCanvas(cell, canvas, draw) {
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     draw();
   };
-  new ResizeObserver(apply).observe(cell);
+  const ro = new ResizeObserver(apply);
+  ro.observe(cell);
   apply();
+  onDispose(() => ro.disconnect());
 }
 
 const cfg = await loadConfig();
@@ -144,8 +146,11 @@ fitCanvas($('pipeline'), $('pipecanvas'), () => drawPipeline($('pipecanvas')));
 fitCanvas($('apps'), $('appgrid'), drawAppGrid);
 
 const tickClock = () => { const d = new Date(); $('clock').innerHTML = `${d.toTimeString().slice(0, 8)}<small>${d.toDateString().toUpperCase()}</small>`; };
-tickClock(); setInterval(tickClock, 1000);
+tickClock();
+const clockId = setInterval(tickClock, 1000);
+onDispose(() => clearInterval(clockId));
 await refresh().catch((e) => console.warn('refresh', e));
-setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+onDispose(() => clearInterval(refreshId));
 // Nightly reload keeps a 24/7 kiosk's memory flat.
 setTimeout(() => location.reload(), 24 * 3600 * 1000);

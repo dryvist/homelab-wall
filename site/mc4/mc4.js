@@ -4,7 +4,7 @@
 // fitCanvas() is the same pattern and drops out at that rebase).
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { clamp, hue, esc, loadConfig, setState, loop, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge } from '/lib/stage.js';
+import { clamp, hue, esc, loadConfig, setState, loop, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge, onDispose } from '/lib/stage.js';
 import { sampleAppScore, SAMPLE_ACQ_CARDS, SAMPLE_LIBRARY_CARDS } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
@@ -70,7 +70,9 @@ function fitCanvas(canvas) {
   const w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 }
-new ResizeObserver(() => fitCanvas(core)).observe(core);
+const coreRO = new ResizeObserver(() => fitCanvas(core));
+coreRO.observe(core);
+onDispose(() => coreRO.disconnect());
 fitCanvas(core);
 function drawCore(t) {
   const w = core.width, h = core.height;
@@ -88,10 +90,13 @@ function drawCore(t) {
 
 /* ---------------- boot ---------------- */
 const tickClock = () => { const d = new Date(); $('clock').innerHTML = `${d.toTimeString().slice(0, 8)}<small>${d.toDateString().toUpperCase()}</small>`; };
-tickClock(); setInterval(tickClock, 1000);
+tickClock();
+const clockId = setInterval(tickClock, 1000);
+onDispose(() => clearInterval(clockId));
 await refresh().catch((e) => console.warn('refresh', e));
 renderApps();
-setInterval(() => refresh().catch((e) => console.warn('refresh', e)).then(() => renderApps()), (cfg.refreshSeconds || 15) * 1000);
+const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)).then(() => renderApps()), (cfg.refreshSeconds || 15) * 1000);
+onDispose(() => clearInterval(refreshId));
 loop(30, (now) => drawCore(now));
 // Nightly reload keeps a 24/7 kiosk's memory flat.
 setTimeout(() => location.reload(), 24 * 3600 * 1000);

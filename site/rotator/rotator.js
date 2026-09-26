@@ -1,6 +1,9 @@
-// Rotator: crossfades between slides on `/`. Slides come from /config.json's `slides` key
-// ([{name, url, seconds?}]); with no key, DEFAULT_SLIDES is used. Only two <iframe> layers ever
-// exist (current + preloaded next) — a slide that fails to load is skipped, never shown blank.
+// Rotator: shows one slide at a time on `/`. Slides come from /config.json's `slides` key
+// ([{name, url, seconds?}]); with no key, DEFAULT_SLIDES is used. One persistent <iframe> per
+// slide is created once at startup and never re-navigated afterwards — switching slides toggles
+// visibility, it never swaps `.src`, so a slide's own render context (WebGL, timers) is created
+// once and lives for the wall's whole session; site/lib/stage.js is what pauses/resumes and
+// eventually disposes it, not this file.
 const DEFAULT_SLIDES = [
   { name: 'MC1', url: '/mc1/' },
   { name: 'MC2', url: '/mc2/' },
@@ -15,10 +18,15 @@ const DEFAULT_SECONDS = 10;
 const IDLE_HIDE_MS = 3000;
 const PROBE_TIMEOUT_MS = 5000;
 const SKIP_NOTE_MS = 4000;
+const FADE_MS = 800; // matches .layer{transition:opacity .8s ease} below
+// ponytail: hard ceiling under Chromium's 16-context-per-page limit — the configured slide count
+// (6: MC1-5 + Glance) is nowhere near it. Raise only if that changes.
+const MAX_LAYERS = 8;
 const CIRC = 2 * Math.PI * 6;
 
 let slides = DEFAULT_SLIDES;
 let holdSeconds = DEFAULT_HOLD;
+let layers = []; // one persistent { el, name, sameOrigin, readyPromise, finish, hideTimer } per slide
 let current = 0;
 let paused = false;
 let holding = false;
@@ -28,56 +36,66 @@ let holdTimer = null;
 let hideDotsTimer = null;
 let skipTimer = null;
 
-const layerA = document.getElementById('layerA');
-const layerB = document.getElementById('layerB');
-let currentLayer = layerA;
-let nextLayer = layerB;
+const layersEl = document.getElementById('layers');
 const dotsEl = document.getElementById('dots');
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
-const wrap = (i) => ((i % slides.length) + slides.length) % slides.length;
-const slideSeconds = () => slides[current]?.seconds ?? DEFAULT_SECONDS;
+const wrap = (i) => ((i % layers.length) + layers.length) % layers.length;
+// A test-only override (never read by anything except this line): shortens every hold to
+// `fast` ms so a CI run can exercise many rotation cycles without waiting out a real 30-60s hold.
+const FAST_MS = Number(new URLSearchParams(location.search).get('fast')) || 0;
+const holdMs = () => FAST_MS || (slides[current]?.seconds ?? DEFAULT_SECONDS) * 1000;
 const sameOrigin = (url) => {
   try { return new URL(url, location.href).origin === location.origin; } catch { return false; }
 };
 
-// ponytail: cross-origin reachability is a load-vs-timeout race (no HTTP status visible across
-// origins) — a slow-but-healthy cross-origin slide can misclassify as broken. Upgrade path: a
-// same-origin health-check proxy, if that proves noisy in practice.
-function urlReachable(layer, url) {
-  if (sameOrigin(url)) {
-    return fetch(new URL(url, location.href).href, { cache: 'no-store' })
-      .then((res) => { if (res.ok) layer.src = url; return res.ok; })
-      .catch(() => false);
-  }
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (ok) => {
-      if (done) return;
-      done = true;
-      layer.removeEventListener('load', onLoad);
-      layer.removeEventListener('error', onError);
-      resolve(ok);
-    };
-    const onLoad = () => finish(true);
-    const onError = () => finish(false);
-    layer.addEventListener('load', onLoad, { once: true });
-    layer.addEventListener('error', onError, { once: true });
-    layer.src = url;
-    setTimeout(() => finish(false), PROBE_TIMEOUT_MS);
+function postWall(layer, state) {
+  if (!layer.sameOrigin) return; // cross-origin content (Glance) has nothing listening for this
+  try { layer.el.contentWindow?.postMessage({ wall: state }, location.origin); } catch { /* torn down mid-message */ }
+}
+
+// One persistent iframe per slide, created once and never re-navigated. A same-origin slide
+// proves itself alive by posting {wall:'ready'} once its own site/lib/stage.js render loop has
+// painted a first frame; a probe window with no 'ready' means it's broken (Track G3) — the same
+// conclusion the cross-origin probe below draws from a failed or stalled load.
+function buildLayers() {
+  layersEl.innerHTML = '';
+  layers = slides.slice(0, MAX_LAYERS).map((slide) => {
+    const el = document.createElement('iframe');
+    el.className = 'layer';
+    el.title = slide.name || 'slide';
+    layersEl.appendChild(el);
+    const layer = { el, name: slide.name, sameOrigin: sameOrigin(slide.url), hideTimer: null };
+    let settled = false, resolveReady;
+    layer.readyPromise = new Promise((resolve) => { resolveReady = resolve; });
+    layer.finish = (ok) => { if (settled) return; settled = true; resolveReady(ok); };
+    if (!layer.sameOrigin) {
+      // ponytail: cross-origin reachability is a load-vs-timeout race (no HTTP status and no
+      // 'ready' handshake visible across origins) — a slow-but-healthy cross-origin slide can
+      // misclassify as broken. The live browser check (Track V2) is what actually verifies these.
+      el.addEventListener('load', () => layer.finish(true));
+      el.addEventListener('error', () => layer.finish(false));
+    }
+    setTimeout(() => layer.finish(false), PROBE_TIMEOUT_MS);
+    el.src = slide.url;
+    return layer;
   });
 }
 
-// Recursive, not a for-loop: each candidate must be probed in order and the search must stop at
-// the first reachable one (a probe has side effects — it sets layer.src on success), so the
-// attempts are inherently sequential rather than parallelizable via Promise.all.
-async function resolveSlide(layer, startIndex, tries = 0) {
-  if (tries >= slides.length) return null;
+window.addEventListener('message', (e) => {
+  if (e.data?.wall !== 'ready') return;
+  layers.find((l) => l.sameOrigin && l.el.contentWindow === e.source)?.finish(true);
+});
+
+// Recursive, not a for-loop: each candidate's readiness must be awaited in order and the search
+// stops at the first ready one, so the attempts are inherently sequential.
+async function resolveSlide(startIndex, tries = 0) {
+  if (tries >= layers.length) return null;
   const idx = wrap(startIndex + tries);
-  const ok = await urlReachable(layer, slides[idx].url);
+  const ok = await layers[idx].readyPromise;
   if (ok) return idx;
-  showSkipped(slides[idx].name);
-  return resolveSlide(layer, startIndex, tries + 1);
+  showSkipped(layers[idx].name);
+  return resolveSlide(startIndex, tries + 1);
 }
 
 function showSkipped(name) {
@@ -96,7 +114,7 @@ function showSkipped(name) {
 function renderDots() {
   const note = document.getElementById('skip');
   dotsEl.innerHTML = '';
-  slides.forEach((slide, i) => {
+  slides.slice(0, layers.length).forEach((slide, i) => {
     const dot = document.createElement('button');
     dot.className = 'dot' + (i === current ? ' current' : '');
     dot.setAttribute('aria-label', slide.name || `slide ${i + 1}`);
@@ -123,18 +141,32 @@ function hideRing() {
   if (ring) { ring.style.transition = 'none'; ring.style.strokeDashoffset = String(CIRC); }
 }
 
-async function primeNext() {
-  const idx = await resolveSlide(nextLayer, wrap(current + 1));
-  nextLayer.dataset.idx = idx === null ? '' : String(idx);
+// Shows layers[index], hides every other layer, and tells same-origin slides whether they're
+// on-screen — site/lib/stage.js pauses a slide's render loop on {wall:'idle'} and resumes it on
+// {wall:'active'} (R1), so an off-screen slide burns no GPU/CPU between its turns. Visibility
+// (never display:none) keeps every layer's box in the layout, so it can never reflow the page.
+function activateLayer(index) {
+  layers.forEach((layer, i) => {
+    if (i === index) {
+      clearTimeout(layer.hideTimer);
+      layer.el.style.visibility = 'visible';
+      layer.el.classList.add('active');
+      postWall(layer, 'active');
+    } else {
+      if (layer.el.classList.contains('active')) {
+        layer.el.classList.remove('active');
+        clearTimeout(layer.hideTimer);
+        layer.hideTimer = setTimeout(() => { layer.el.style.visibility = 'hidden'; }, FADE_MS);
+      }
+      postWall(layer, 'idle');
+    }
+  });
 }
 
 async function commit(index) {
   current = index;
-  [currentLayer, nextLayer] = [nextLayer, currentLayer];
-  currentLayer.classList.add('active');
-  nextLayer.classList.remove('active');
+  activateLayer(index);
   renderDots();
-  await primeNext();
   scheduleRotate();
 }
 
@@ -148,10 +180,7 @@ async function goTo(requestedIndex) {
   if (target === current) return;
   busy = true;
   try {
-    const preloaded = nextLayer.dataset.idx;
-    const idx = preloaded !== '' && preloaded !== undefined && Number(preloaded) === target
-      ? target
-      : await resolveSlide(nextLayer, target);
+    const idx = await resolveSlide(target);
     if (idx !== null) await commit(idx);
   } finally {
     busy = false;
@@ -163,7 +192,7 @@ function step(offset) { goTo(current + offset); }
 function scheduleRotate() {
   clearTimeout(rotateTimer);
   if (paused || holding) return;
-  rotateTimer = setTimeout(() => step(1), slideSeconds() * 1000);
+  rotateTimer = setTimeout(() => step(1), holdMs());
 }
 
 function pin() {
@@ -228,12 +257,12 @@ async function init() {
     if (Array.isArray(cfg.slides) && cfg.slides.length) slides = cfg.slides;
     if (typeof cfg.holdSeconds === 'number') holdSeconds = clamp(cfg.holdSeconds, MIN_HOLD, MAX_HOLD);
   } catch { /* keep defaults */ }
-  const idx = await resolveSlide(currentLayer, 0);
+  buildLayers();
+  const idx = await resolveSlide(0);
   current = idx === null ? 0 : idx;
-  currentLayer.classList.add('active');
+  activateLayer(current);
   renderDots();
   scheduleRotate();
-  await primeNext();
   scheduleNightlyReload();
 }
 
