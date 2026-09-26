@@ -14,7 +14,13 @@ export default defineConfig({
   use: {
     baseURL: wallUrl || 'http://127.0.0.1:4173',
     viewport: { width: 1920, height: 1080 },
-    ...(process.env.WALL_PROXY ? { launchOptions: { proxy: { server: process.env.WALL_PROXY } } } : {}),
+    // The MC2/MC4 WebGL+bloom scenes fill Chromium's default 64MB /dev/shm in a GH Actions
+    // container, which surfaces as "Protocol error (Page.captureScreenshot): Unable to capture
+    // screenshot" on exactly those pages — never locally, where /dev/shm is much larger.
+    launchOptions: {
+      args: ['--disable-dev-shm-usage'],
+      ...(process.env.WALL_PROXY ? { proxy: { server: process.env.WALL_PROXY } } : {}),
+    },
     ...(process.env.WALL_STATE ? { storageState: process.env.WALL_STATE } : {}),
   },
   // The kiosk itself only ever runs in Chromium, but the wall is viewed and debugged in Safari
