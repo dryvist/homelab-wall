@@ -67,8 +67,6 @@ header{grid-column:1/-1;min-width:0;min-height:0;overflow:hidden;display:flex;al
 .lr i{width:7px;height:7px;border-radius:50%}
 .lr .tk{color:#fff;font-weight:600;text-align:right}.lr .h{color:var(--dim)}
 .lr canvas{width:58px;height:14px}
-#legend{bottom:12px;left:14px;display:grid;grid-template-columns:repeat(4,auto);gap:4px 18px}
-#legend i{display:inline-block;width:8px;height:8px;margin-right:6px;box-shadow:0 0 6px currentColor;background:currentColor}
 
 /* apps — #hex is taken out of flow so its backing-store resolution can never feed back into
    the panel's own layout size (the D-mc1-1 bug: a canvas sized from its own container, sizing
