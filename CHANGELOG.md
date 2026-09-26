@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/dryvist/homelab-wall/compare/v0.6.0...v0.7.0) (2026-09-26)
+
+
+### Features
+
+* **wall:** full-viewport hero scenes on MC2, MC3, MC4 ([#43](https://github.com/dryvist/homelab-wall/issues/43)) ([6c01873](https://github.com/dryvist/homelab-wall/commit/6c0187374a1ebcf3c47c471a1503dcd36eb6c1dc))
+
+
+### Bug Fixes
+
+* **wall:** adaptive render quality for the hero-scene canvases ([#45](https://github.com/dryvist/homelab-wall/issues/45)) ([18456dd](https://github.com/dryvist/homelab-wall/commit/18456dd78e39a65b9a32900905d9a6134e6ec4d3))
+
 ## [0.6.0](https://github.com/dryvist/homelab-wall/compare/v0.5.0...v0.6.0) (2026-09-26)
 
 
