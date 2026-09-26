@@ -106,6 +106,16 @@ function renderApps() {
 // in instead of a blank/pending table. reactorList mirrors whichever list rendered last, so the
 // decorative reactor canvas (drawReactor below) always animates real or stand-in state, never "N/A".
 let reactorList = SAMPLE_LLM.map((m) => ({ n: m.n, up: m.state < 2, tok: m.tok }));
+// Queue depth and p50 latency have no litellm metric exposed at all yet (see Q, site/lib/queries.js)
+// — unlike tok/s and UP/DOWN, which are real once the router feed answers, these two columns are
+// always synthetic. Deterministic per-model (name hash + tok rate), not random, so the dense
+// readout doesn't jitter between polls; setStandIn on .modeltab (below) flags the whole row.
+function hashN(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
+function standInQueueLatency(m) {
+  if (!m.up) return { queue: 0, p50: null };
+  const base = hashN(m.n) % 7;
+  return { queue: base + Math.round(m.tok / 15), p50: 80 + base * 35 + Math.round(m.tok * 1.5) };
+}
 function renderCore() {
   const sample = !model.models.length;
   const list = sample ? SAMPLE_LLM.map((m) => ({ n: m.n, up: m.state < 2, tok: m.tok })) : model.models;
@@ -113,9 +123,11 @@ function renderCore() {
   $('modeltab').innerHTML = list.map((m) => {
     const col = m.up ? (m.tok > 0.05 ? 'var(--green)' : 'var(--cyan)') : 'var(--red)';
     const status = m.up ? (m.tok > 0.05 ? `${m.tok.toFixed(0)} tok/s` : 'idle') : 'health check failing';
+    const { queue, p50 } = standInQueueLatency(m);
     return `<div class="mc"><div class="mch"><b title="${esc(m.n)}">${esc(m.n.split('/').pop())}</b><span style="color:${col}">${m.up ? 'UP' : 'DOWN'}</span></div>
       <div class="mcv">${status}</div>
-      <div class="mcbar"><div style="width:${m.up ? clamp(m.tok * 2, 6, 100) : 100}%;background:${col}"></div></div></div>`;
+      <div class="mcbar"><div style="width:${m.up ? clamp(m.tok * 2, 6, 100) : 100}%;background:${col}"></div></div>
+      <div class="mcstats" data-source="stand-in">queue <b>${queue}</b> &middot; p50 <b>${p50 == null ? 'n/a' : `${p50}ms`}</b></div></div>`;
   }).join('');
   const up = list.filter((m) => m.up).length;
   $('coresum').textContent = `${up}/${list.length} UP`;
@@ -132,11 +144,18 @@ function fitCanvas(cv) {
   return dpr;
 }
 
-// Three spinning "model core" groups (nested nested tori + wireframe icosahedron + orbiting
+// Three spinning "model core" groups (nested tori + a per-model hero geometry + orbiting
 // particles + a glow column whose height tracks load) — one per served model, ported from
 // scratchpad/wall-sketches.html scene 88. Capped at 3 (the sketch's layout is 3 columns); with
-// fewer real models the remaining columns just show as idle/dim, never fabricated ones.
+// fewer real models the remaining columns just show as idle/dim, never fabricated ones. Each
+// core gets a distinct primary geometry (not just colour) so the three read as separate hero
+// objects; a central hub ties them together with a particle stream flowing hub-ward from each.
 const CORE_COLS = 3;
+const CORE_GEOMETRIES = [
+  () => new THREE.IcosahedronGeometry(7, 1),
+  () => new THREE.TorusKnotGeometry(5, 1.6, 128, 12),
+  () => new THREE.OctahedronGeometry(8, 2),
+];
 function build3DCore() {
   const renderer = new THREE.WebGLRenderer({ canvas: reactor, antialias: true, alpha: true });
   const scene = new THREE.Scene();
@@ -156,7 +175,7 @@ function build3DCore() {
       g.add(t);
       return t;
     });
-    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(7, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true }));
+    const core = new THREE.Mesh(CORE_GEOMETRIES[i % CORE_GEOMETRIES.length](), new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true }));
     g.add(core);
     const N = 220, pos = new Float32Array(N * 3), pg = new THREE.BufferGeometry();
     pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -164,7 +183,33 @@ function build3DCore() {
     const ph = Array.from({ length: N }, () => ({ a: Math.random() * Math.PI * 2, r: 14 + Math.random() * 26, y: (Math.random() - 0.5) * 18, s: 0.4 + Math.random() }));
     const glow = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 1, 8, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending }));
     glow.position.y = -26; g.add(glow);
-    return { g, rings, core, pos, pg, ph, glow, util: 0, name: '', up: false };
+    return { g, rings, core, pos, pg, ph, glow, col, util: 0, name: '', up: false };
+  });
+
+  // Central hub: a small bright icosahedron every core streams tokens toward, HDR-multiplied so
+  // it bloom-blooms as the scene's focal point without a fourth, redundant hero shape. Pulled
+  // toward the camera (+z) and down (-y), off the middle core's own (0,0,0) position — sitting
+  // on top of it would hide both the hub and the middle core's own particle stream entirely.
+  const hubPos = new THREE.Vector3(0, -34, 46);
+  const hub = new THREE.Mesh(new THREE.IcosahedronGeometry(4, 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.3, 1.3, 1.6), wireframe: true }));
+  hub.position.copy(hubPos);
+  scene.add(hub);
+  const hubGlow = new THREE.Mesh(new THREE.SphereGeometry(1.8, 16, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.1, 1.1, 1.4), transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false }));
+  hubGlow.position.copy(hubPos);
+  scene.add(hubGlow);
+
+  // One particle stream per core: STREAM_N points recycle along the straight line from that
+  // core's centre to the hub, spawning at a random phase so the flow reads continuous rather
+  // than as a single pulse. Speed scales with the core's utilisation (busier model = faster flow).
+  const STREAM_N = 60;
+  const streams = cores.map((c) => {
+    const pos = new Float32Array(STREAM_N * 3), pg = new THREE.BufferGeometry();
+    pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({ color: new THREE.Color(c.col).multiplyScalar(1.4), size: 1.8, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+    const pts = new THREE.Points(pg, mat);
+    scene.add(pts);
+    const phase = Array.from({ length: STREAM_N }, () => Math.random());
+    return { pos, pg, phase, mat };
   });
 
   const resizeAt = (w, h) => { renderer.setSize(w, h, false); bloomFx.setSize(w, h); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); };
@@ -184,9 +229,11 @@ function build3DCore() {
     const t = RM ? 0 : now / 1000;
     cam.position.x = Math.sin(t * 0.12) * 24;
     cam.lookAt(0, 4, 0);
-    cores.forEach((c) => {
+    hub.rotation.y += 0.006; hub.rotation.x += 0.003;
+    hubGlow.scale.setScalar(1 + Math.sin(t * 1.8) * 0.12);
+    cores.forEach((c, i) => {
       const sp = 0.004 + c.util / 4000;
-      c.rings.forEach((rg, i) => { rg.rotation.z += sp * (i % 2 ? -1 : 1) * (1 + i * 0.2); });
+      c.rings.forEach((rg, i2) => { rg.rotation.z += sp * (i2 % 2 ? -1 : 1) * (1 + i2 * 0.2); });
       c.core.rotation.y += sp * 3; c.core.rotation.x += sp;
       c.ph.forEach((p, k) => {
         p.a += sp * p.s * 3;
@@ -199,6 +246,19 @@ function build3DCore() {
       c.glow.scale.y += (targetH - c.glow.scale.y) * 0.05;
       c.glow.position.y = -26 + c.glow.scale.y / 2;
       c.glow.material.opacity = c.up ? 0.35 : 0.08;
+
+      // Idle/down cores stream nothing (no fabricated traffic toward the hub).
+      const stream = streams[i];
+      const speed = c.up ? 0.15 + c.util / 220 : 0;
+      const from = c.g.position, to = hub.position;
+      stream.phase.forEach((ph0, k) => {
+        const ph = c.up ? (ph0 + t * speed) % 1 : ph0;
+        stream.pos[k * 3] = from.x + (to.x - from.x) * ph;
+        stream.pos[k * 3 + 1] = from.y + (to.y - from.y) * ph + Math.sin(ph * Math.PI) * 6;
+        stream.pos[k * 3 + 2] = from.z + (to.z - from.z) * ph;
+      });
+      stream.pg.attributes.position.needsUpdate = true;
+      stream.mat.opacity = c.up ? 0.9 : 0.08;
     });
     bloomFx.render();
   }
