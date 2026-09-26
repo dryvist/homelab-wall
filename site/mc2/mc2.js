@@ -169,38 +169,44 @@ function buildGlobe() {
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  group.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xff4f6f, size: 1.15, transparent: true, opacity: 0.9 })));
+  // Bright red, plain (no HDR multiply): land should read clearly on its own without adding to
+  // the bloom pass — only arc heads/the home beacon bloom (see the tube/bloom comments below).
+  group.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xff3350, size: 1.15, transparent: true, opacity: 0.85 })));
   // Ocean/globe body: near-black, not the muddy red wash a flat BackSide "atmosphere" sphere
   // produces (that renders as a uniform-opacity disc over the WHOLE visible hemisphere, not just
   // the limb, since a plain material has no view-angle falloff) — see the fresnel rim below instead.
   group.add(new THREE.Mesh(new THREE.SphereGeometry(79, 48, 48), new THREE.MeshBasicMaterial({ color: 0x020103, transparent: true, opacity: 0.97 })));
 
-  // Atmosphere rim: a fresnel/rim shader (opacity ramps up only near the silhouette, via
+  // Rim: a fresnel/rim shader (opacity ramps up only near the silhouette, via
   // 1-dot(normal,viewDir)) instead of a flat translucent sphere, so it reads as a thin bright
-  // line at the limb rather than a red wash over the whole disc.
-  const atmosphere = new THREE.Mesh(
-    new THREE.SphereGeometry(83, 48, 48),
-    new THREE.ShaderMaterial({
-      uniforms: { uColor: { value: new THREE.Color(1.4, 0.35, 0.55) } },
-      vertexShader: `varying vec3 vNormal; varying vec3 vViewDir;
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          vViewDir = normalize(-mv.xyz);
-          gl_Position = projectionMatrix * mv;
-        }`,
-      fragmentShader: `varying vec3 vNormal; varying vec3 vViewDir; uniform vec3 uColor;
-        void main() {
-          float rim = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 3.2);
-          gl_FragColor = vec4(uColor, rim);
-        }`,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      side: THREE.FrontSide,
-    }),
-  );
-  scene.add(atmosphere);
+  // line at the limb rather than a wash over the whole disc. A second, larger, much softer shell
+  // gives a subtle outer glow beyond that crisp line, kept separate so the rim itself stays thin.
+  function fresnelShell(radius, color, power, opacity) {
+    return new THREE.Mesh(
+      new THREE.SphereGeometry(radius, 48, 48),
+      new THREE.ShaderMaterial({
+        uniforms: { uColor: { value: color }, uOpacity: { value: opacity } },
+        vertexShader: `varying vec3 vNormal; varying vec3 vViewDir;
+          void main() {
+            vNormal = normalize(normalMatrix * normal);
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            vViewDir = normalize(-mv.xyz);
+            gl_Position = projectionMatrix * mv;
+          }`,
+        fragmentShader: `varying vec3 vNormal; varying vec3 vViewDir; uniform vec3 uColor; uniform float uOpacity;
+          void main() {
+            float rim = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), ${power.toFixed(1)});
+            gl_FragColor = vec4(uColor, rim * uOpacity);
+          }`,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.FrontSide,
+      }),
+    );
+  }
+  scene.add(fresnelShell(80.6, new THREE.Color(1.6, 0.45, 0.6), 6, 1)); // thin crisp rim
+  scene.add(fresnelShell(88, new THREE.Color(0.9, 0.2, 0.35), 3.5, 0.14)); // subtle wide outer glow
 
   const llToVec = (lat, lon, h = 80) => {
     const la = lat * Math.PI / 180, lo = lon * Math.PI / 180;
@@ -211,10 +217,19 @@ function buildGlobe() {
   // a periodic expanding ring (the same visual the impact pulse below uses on arc arrival) so the
   // beacon is visibly "alive" even between arrivals.
   const homeCoreMat = new THREE.MeshBasicMaterial({ color: 0x9beeff });
-  homeCoreMat.color.multiplyScalar(3);
+  homeCoreMat.color.multiplyScalar(2);
   const homeMarker = new THREE.Mesh(new THREE.SphereGeometry(2.2, 16, 16), homeCoreMat);
   homeMarker.position.copy(home);
   group.add(homeMarker);
+
+  // Orient the group once so HOME sits on the visible front-upper hemisphere (~35% down from the
+  // globe's top edge) instead of wherever its raw lat/lon happens to fall — every arc and its
+  // impact then lands in frame, never off-globe or behind it. Solved via vector math (not
+  // hand-derived constants) so it stays correct if HOME_LATLON ever changes.
+  const ELEV_DEG = 18; // ~35% down from the top of the globe's rendered disc
+  const targetDir = new THREE.Vector3(0, Math.sin(ELEV_DEG * Math.PI / 180), Math.cos(ELEV_DEG * Math.PI / 180));
+  const alignQuat = new THREE.Quaternion().setFromUnitVectors(home.clone().normalize(), targetDir);
+  const wobbleAxis = new THREE.Vector3(0, 1, 0);
 
   // Animated arcs: a pool of tube geometries (real 3D thickness — WebGL ignores Line.linewidth
   // on every browser but Firefox-on-Windows, so a THREE.Line here would render as a 1px hairline
@@ -226,13 +241,17 @@ function buildGlobe() {
   const pulses = [];
   const headMat = new THREE.MeshBasicMaterial({ color: 0xfff2cf });
   headMat.color.multiplyScalar(2.3);
-  const tubeMat = () => { const m = new THREE.MeshBasicMaterial({ color: 0xffb454, transparent: true, opacity: 1 }); m.color.multiplyScalar(1.6); return m; };
+  // Plain (no HDR multiply) tube color: only the head should bloom — an HDR tube across 20
+  // concurrent arcs is enough bloom-eligible surface area to fog the whole panel.
+  const tubeMat = () => new THREE.MeshBasicMaterial({ color: 0xffb454, transparent: true, opacity: 1 });
   function spawnArc() {
     if (arcs.length >= 20) return;
     const src = THREAT_SOURCES[(Math.random() * THREAT_SOURCES.length) | 0];
     const a = llToVec(src.lat, src.lon);
-    // High apex: the arc rises well above the globe's surface (radius 80), not just skims it.
-    const mid = a.clone().add(home).multiplyScalar(0.5).normalize().multiplyScalar(80 + a.distanceTo(home) * 1.15);
+    // Apex fixed to 0.25-0.4 globe radii above the surface (never scaled by source distance, so
+    // it can never blow past the panel edge regardless of how far around the globe a source is).
+    const apexR = 80 * (1.25 + Math.random() * 0.15);
+    const mid = a.clone().add(home).multiplyScalar(0.5).normalize().multiplyScalar(apexR);
     const curve = new THREE.QuadraticBezierCurve3(a, mid, home);
     const tubeGeo = new THREE.TubeGeometry(curve, TUBULAR_SEGS, 0.65, RADIAL_SEGS, false);
     tubeGeo.setDrawRange(0, 0);
@@ -245,8 +264,12 @@ function buildGlobe() {
   const spawnId = RM ? null : setInterval(spawnArc, 300);
   onDispose(() => { if (spawnId) clearInterval(spawnId); });
 
-  const pulseMat = () => { const m = new THREE.MeshBasicMaterial({ color: 0x9beeff, transparent: true, opacity: 0.9, side: THREE.DoubleSide }); m.color.multiplyScalar(2.4); return m; };
+  const pulseMat = () => { const m = new THREE.MeshBasicMaterial({ color: 0x9beeff, transparent: true, opacity: 0.85, side: THREE.DoubleSide }); m.color.multiplyScalar(1.6); return m; };
   function spawnPulse() {
+    // Cap concurrent pulses: several overlapping additive-blended rings at the same point stack
+    // into a blown-out white blob instead of reading as a beacon — a hard cap keeps HOME a crisp
+    // pulsing point no matter how many arcs land close together.
+    if (pulses.length >= 3) return;
     const ring = new THREE.Mesh(new THREE.RingGeometry(1, 1.7, 28), pulseMat());
     ring.position.copy(home);
     ring.lookAt(0, 0, 0);
@@ -255,10 +278,13 @@ function buildGlobe() {
   }
   let beaconT = 0;
 
-  const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.05, radius: 0.55, threshold: 0.62 });
+  const bloomFx = makeBloom(renderer, scene, cam, { strength: 0.85, radius: 0.3, threshold: 0.7 });
   observeCanvas(threatPanel, globeCanvas, (w, h) => { renderer.setSize(w, h, false); bloomFx.setSize(w, h); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); });
   const render = (now) => {
-    group.rotation.y = RM ? 0.6 : now / 11000;
+    // A gentle yaw wobble around the aligned orientation (not a full spin) — HOME stays on the
+    // visible face at all times, per the alignment above, instead of orbiting away each cycle.
+    const wobble = RM ? 0.08 : Math.sin(now / 9000) * 0.12;
+    group.quaternion.copy(alignQuat).multiply(new THREE.Quaternion().setFromAxisAngle(wobbleAxis, wobble));
     homeMarker.scale.setScalar(1 + 0.22 * Math.sin(now / 260));
     beaconT += RM ? 0.02 : 0.014;
     if (beaconT >= 1) { beaconT = 0; spawnPulse(); }
