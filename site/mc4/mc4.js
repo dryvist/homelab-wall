@@ -200,62 +200,49 @@ function build3DFlow() {
   const renderer = new THREE.WebGLRenderer({ canvas: coreCanvas, antialias: true, alpha: false });
   renderer.setClearColor(0x000000, 1);
   const scene = new THREE.Scene();
-  // Shock-and-awe: the canvas is now a full-viewport layer (mc4.css #corecanvas), not confined
-  // to the old "core" panel box, so distance/fov are tuned to sweep the tori/tube/particles
-  // across the WHOLE screen (behind the header and side panels) rather than one panel.
-  const cam = new THREE.PerspectiveCamera(50, 1, 1, 2000);
-  cam.position.set(0, 18, 165);
+  // Camera and every geometry value below are ported 1:1 from the approved sketch (scene 125,
+  // scratchpad/wall-sketches.html) — same FOV/distance, same radii/opacities/sizes, no rescale
+  // hack — so the canvas (a full-viewport 16:9 layer, same as the sketch's own #stage) reproduces
+  // the promised framing exactly instead of a shrunk-down approximation.
+  const cam = new THREE.PerspectiveCamera(45, 1, 1, 2000);
+  cam.position.set(0, 40, 300);
   cam.lookAt(0, 0, 0);
   const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.35, radius: 0.4, threshold: 0.5 });
 
   const group = new THREE.Group(); scene.add(group);
 
-  // Nested glowing tori around the core (sketch scene 125) — concentric rings at alternating
-  // tilts, tinted through the same amber/green/cyan palette as the flow tubes below.
-  const TORUS_COLS = [0xffb347, 0x38ff9c, 0x3ee6ff];
-  const tori = Array.from({ length: 5 }, (_, i) => {
-    const t = new THREE.Mesh(
-      new THREE.TorusGeometry(16 + i * 5, 0.4, 8, 64),
-      new THREE.MeshBasicMaterial({ color: TORUS_COLS[i % TORUS_COLS.length], transparent: true, opacity: 0.8 - i * 0.1 }),
-    );
-    t.rotation.x = Math.PI / 2 + i * 0.3; t.rotation.y = i * 0.5;
-    group.add(t);
-    return t;
-  });
-  const P = []; for (let i = 0; i < 380; i += 1) {
-    const u = Math.random() * Math.PI * 2, v = Math.acos(Math.random() * 2 - 1), rr = 65 + Math.random() * 18;
+  // Dust shell around the flow (sketch scene 125): 260 points on a lumpy sphere shell.
+  const P = []; for (let i = 0; i < 260; i += 1) {
+    const u = Math.random() * Math.PI * 2, v = Math.acos(Math.random() * 2 - 1), rr = 150 + Math.random() * 40;
     P.push(Math.sin(v) * Math.cos(u) * rr, Math.cos(v) * rr * 0.6, Math.sin(v) * Math.sin(u) * rr);
   }
   const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
-  group.add(new THREE.Points(pg, new THREE.PointsMaterial({ color: 0xffb347, size: 1.4, transparent: true, opacity: 0.8 })));
+  group.add(new THREE.Points(pg, new THREE.PointsMaterial({ color: 0xffb347, size: 2.4, transparent: true, opacity: 0.8 })));
 
-  const path1 = new THREE.CatmullRomCurve3([new THREE.Vector3(-100, 13, -26), new THREE.Vector3(-52, 26, 0), new THREE.Vector3(-17, 4, 17), new THREE.Vector3(0, 0, 0)]);
-  group.add(new THREE.Mesh(new THREE.TubeGeometry(path1, 100, 4, 12, false), new THREE.MeshBasicMaterial({ color: 0x38ff9c, wireframe: true, transparent: true, opacity: 0.25 })));
-  const path2 = new THREE.CatmullRomCurve3([new THREE.Vector3(100, -9, -26), new THREE.Vector3(52, -22, 9), new THREE.Vector3(17, -4, 17), new THREE.Vector3(0, 0, 0)]);
-  group.add(new THREE.Mesh(new THREE.TubeGeometry(path2, 100, 2.6, 12, false), new THREE.MeshBasicMaterial({ color: 0x3ee6ff, wireframe: true, transparent: true, opacity: 0.18 })));
+  const path1 = new THREE.CatmullRomCurve3([new THREE.Vector3(-230, 30, -60), new THREE.Vector3(-120, 60, 0), new THREE.Vector3(-40, 10, 40), new THREE.Vector3(0, 0, 0)]);
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(path1, 120, 9, 16, false), new THREE.MeshBasicMaterial({ color: 0x38ff9c, wireframe: true, transparent: true, opacity: 0.25 })));
+  const path2 = new THREE.CatmullRomCurve3([new THREE.Vector3(230, -20, -60), new THREE.Vector3(120, -50, 20), new THREE.Vector3(40, -10, 40), new THREE.Vector3(0, 0, 0)]);
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(path2, 120, 6, 12, false), new THREE.MeshBasicMaterial({ color: 0x3ee6ff, wireframe: true, transparent: true, opacity: 0.18 })));
 
-  const core = new THREE.Mesh(new THREE.OctahedronGeometry(9.5, 1), new THREE.MeshBasicMaterial({ color: 0xffb347, wireframe: true }));
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(22, 1), new THREE.MeshBasicMaterial({ color: 0xffb347, wireframe: true }));
   group.add(core);
-  const shield = new THREE.Mesh(new THREE.SphereGeometry(14.5, 24, 24), new THREE.MeshBasicMaterial({ color: 0x38ff9c, wireframe: true, transparent: true, opacity: 0.15 }));
+  const shield = new THREE.Mesh(new THREE.SphereGeometry(34, 24, 24), new THREE.MeshBasicMaterial({ color: 0x38ff9c, wireframe: true, transparent: true, opacity: 0.15 }));
   group.add(shield);
 
   const mkFlow = (curve, col, n, dir) => {
     const pos = new Float32Array(n * 3), g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    group.add(new THREE.Points(g, new THREE.PointsMaterial({ color: col, size: 1.7, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+    group.add(new THREE.Points(g, new THREE.PointsMaterial({ color: col, size: 4, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
     return { curve, pos, g, ph: Array.from({ length: n }, () => Math.random()), dir };
   };
-  const flows = [mkFlow(path1, 0x38ff9c, 190, 1), mkFlow(path2, 0x3ee6ff, 95, -1)];
+  const flows = [mkFlow(path1, 0x38ff9c, 140, 1), mkFlow(path2, 0x3ee6ff, 70, -1)];
 
   // Accretion disk: two coplanar rings (a lit outer ring, a dim base underneath so the "gap" reads
   // as a disk rather than a flat circle).
-  const disk = new THREE.Mesh(new THREE.RingGeometry(25, 31, 90, 1, 0, Math.PI * 2 * 0.86), new THREE.MeshBasicMaterial({ color: 0xffb347, side: THREE.DoubleSide, transparent: true, opacity: 0.6 }));
-  disk.rotation.x = -Math.PI / 2; disk.position.y = -17; group.add(disk);
-  const diskBase = new THREE.Mesh(new THREE.RingGeometry(25, 31, 90), new THREE.MeshBasicMaterial({ color: 0x3a2208, side: THREE.DoubleSide }));
-  diskBase.rotation.x = -Math.PI / 2; diskBase.position.y = -17.2; group.add(diskBase);
-  // Lead review (round 2): 1.8x so the tube runs full viewport width, edge to edge, behind both
-  // side columns, not confined to the centre.
-  group.scale.setScalar(1.8);
+  const disk = new THREE.Mesh(new THREE.RingGeometry(60, 74, 90, 1, 0, Math.PI * 2 * 0.86), new THREE.MeshBasicMaterial({ color: 0xffb347, side: THREE.DoubleSide, transparent: true, opacity: 0.6 }));
+  disk.rotation.x = -Math.PI / 2; disk.position.y = -40; group.add(disk);
+  const diskBase = new THREE.Mesh(new THREE.RingGeometry(60, 74, 90), new THREE.MeshBasicMaterial({ color: 0x3a2208, side: THREE.DoubleSide }));
+  diskBase.rotation.x = -Math.PI / 2; diskBase.position.y = -40.2; group.add(diskBase);
 
   const resizeAt = (w, h) => { renderer.setSize(w, h, false); bloomFx.setSize(w, h); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); };
   // The canvas is a full-viewport fixed layer now (mc4.css #corecanvas), not the "core" panel's
@@ -270,17 +257,17 @@ function build3DFlow() {
     // Brightness/spin tied to the real fleet up-fraction (model.fleetUpFrac) — the one live
     // signal this decorative scene has any business reflecting; never fabricated.
     const health = model.fleetUpFrac ?? 0.8;
-    // Slow camera drift (shock-and-awe): a gentle orbit around the default position so the hero
-    // scene reads as alive even beyond its own spin/flow animation.
+    // Slow camera drift (shock-and-awe): a gentle orbit around the sketch's own default position
+    // so the hero scene reads as alive even beyond its own spin/flow animation.
     if (!RM) {
-      cam.position.x = Math.sin(t * 0.1) * 36;
-      cam.position.y = 18 + Math.sin(t * 0.07) * 16;
+      cam.position.x = Math.sin(t * 0.1) * 50;
+      cam.position.y = 40 + Math.sin(t * 0.07) * 20;
       cam.lookAt(0, 0, 0);
     }
+    const spin = 0.4 + health;
     group.rotation.y = Math.sin(t * 0.15) * 0.35;
-    core.rotation.y += 0.01; core.rotation.x += 0.004;
+    core.rotation.y += 0.01 * spin; core.rotation.x += 0.004 * spin;
     shield.rotation.y -= 0.003; shield.scale.setScalar(1 + Math.sin(t * 3) * 0.03 * health);
-    tori.forEach((tr, i) => { tr.rotation.z += 0.003 * (i % 2 ? -1 : 1) * (1 + i * 0.15) * (0.4 + health); });
     disk.rotation.z += 0.002; diskBase.rotation.z += 0.002;
     flows.forEach((f) => {
       f.ph.forEach((p, k) => {
