@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.4](https://github.com/dryvist/homelab-wall/compare/v0.7.3...v0.7.4) (2026-09-26)
+
+
+### Bug Fixes
+
+* **rotator:** rejoin a slide whose ready arrives after the probe window ([#57](https://github.com/dryvist/homelab-wall/issues/57)) ([e81efca](https://github.com/dryvist/homelab-wall/commit/e81efcacc05d84776118ad56acfbcf5a98e6e9c9))
+
 ## [0.7.3](https://github.com/dryvist/homelab-wall/compare/v0.7.2...v0.7.3) (2026-09-26)
 
 
