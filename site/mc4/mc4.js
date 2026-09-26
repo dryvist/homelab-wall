@@ -5,7 +5,7 @@ import { Q } from '/lib/queries.js';
 import { makeBloom } from '/lib/bloom.js';
 import {
   clamp, esc, loadConfig, setState, loop, SCORE_OK_MIN, SCORE_DEGRADED_MIN, setSampleBadge,
-  setStandIn, onDispose, onContextLoss, disposeThreeScene, hardwareGL,
+  setStandIn, onDispose, onContextLoss, disposeThreeScene, hardwareGL, adaptiveBloomOn, adaptiveDpr,
 } from '/lib/stage.js';
 import { sampleAppScore, SAMPLE_ACQ_CARDS, SAMPLE_LIBRARY_CARDS } from '/lib/sampleData.js';
 
@@ -130,7 +130,7 @@ function tickThroughput() {
 function drawThroughput() {
   const canvas = $('throughSpark');
   if (!canvas) return;
-  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const dpr = adaptiveDpr();
   const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
   if (canvas.width !== w) canvas.width = w;
   if (canvas.height !== h) canvas.height = h;
@@ -189,7 +189,6 @@ const queueId = setInterval(renderQueue, 2000);
 onDispose(() => clearInterval(queueId));
 
 /* ---------------- centre hero: 3D acquisition flow (sketch scene 125) or 2D fallback ---------------- */
-const corePanel = $('core');
 const coreCanvas = $('corecanvas');
 const forced = new URLSearchParams(location.search).get('gl');
 
@@ -201,10 +200,13 @@ function build3DFlow() {
   const renderer = new THREE.WebGLRenderer({ canvas: coreCanvas, antialias: true, alpha: false });
   renderer.setClearColor(0x000000, 1);
   const scene = new THREE.Scene();
-  const cam = new THREE.PerspectiveCamera(45, 1, 1, 2000);
-  cam.position.set(0, 18, 130);
+  // Shock-and-awe: the canvas is now a full-viewport layer (mc4.css #corecanvas), not confined
+  // to the old "core" panel box, so distance/fov are tuned to sweep the tori/tube/particles
+  // across the WHOLE screen (behind the header and side panels) rather than one panel.
+  const cam = new THREE.PerspectiveCamera(50, 1, 1, 2000);
+  cam.position.set(0, 18, 165);
   cam.lookAt(0, 0, 0);
-  const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.0, radius: 0.32, threshold: 0.6 });
+  const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.35, radius: 0.4, threshold: 0.5 });
 
   const group = new THREE.Group(); scene.add(group);
 
@@ -220,7 +222,7 @@ function build3DFlow() {
     group.add(t);
     return t;
   });
-  const P = []; for (let i = 0; i < 260; i += 1) {
+  const P = []; for (let i = 0; i < 380; i += 1) {
     const u = Math.random() * Math.PI * 2, v = Math.acos(Math.random() * 2 - 1), rr = 65 + Math.random() * 18;
     P.push(Math.sin(v) * Math.cos(u) * rr, Math.cos(v) * rr * 0.6, Math.sin(v) * Math.sin(u) * rr);
   }
@@ -243,18 +245,24 @@ function build3DFlow() {
     group.add(new THREE.Points(g, new THREE.PointsMaterial({ color: col, size: 1.7, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
     return { curve, pos, g, ph: Array.from({ length: n }, () => Math.random()), dir };
   };
-  const flows = [mkFlow(path1, 0x38ff9c, 130, 1), mkFlow(path2, 0x3ee6ff, 65, -1)];
+  const flows = [mkFlow(path1, 0x38ff9c, 190, 1), mkFlow(path2, 0x3ee6ff, 95, -1)];
 
   // Accretion disk: two coplanar rings (a lit outer ring, a dim base underneath so the "gap" reads
   // as a disk rather than a flat circle).
   const disk = new THREE.Mesh(new THREE.RingGeometry(25, 31, 90, 1, 0, Math.PI * 2 * 0.86), new THREE.MeshBasicMaterial({ color: 0xffb347, side: THREE.DoubleSide, transparent: true, opacity: 0.6 }));
-  disk.rotation.x = -Math.PI / 2; disk.position.y = -17; scene.add(disk);
+  disk.rotation.x = -Math.PI / 2; disk.position.y = -17; group.add(disk);
   const diskBase = new THREE.Mesh(new THREE.RingGeometry(25, 31, 90), new THREE.MeshBasicMaterial({ color: 0x3a2208, side: THREE.DoubleSide }));
-  diskBase.rotation.x = -Math.PI / 2; diskBase.position.y = -17.2; scene.add(diskBase);
+  diskBase.rotation.x = -Math.PI / 2; diskBase.position.y = -17.2; group.add(diskBase);
+  // Lead review (round 2): 1.8x so the tube runs full viewport width, edge to edge, behind both
+  // side columns, not confined to the centre.
+  group.scale.setScalar(1.8);
 
   const resizeAt = (w, h) => { renderer.setSize(w, h, false); bloomFx.setSize(w, h); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); };
+  // The canvas is a full-viewport fixed layer now (mc4.css #corecanvas), not the "core" panel's
+  // box — size the backing store from the viewport itself (document.documentElement's
+  // ResizeObserver fires on viewport resize) rather than any one panel.
   const ro = new ResizeObserver(() => { fitCanvas(coreCanvas); resizeAt(coreCanvas.width, coreCanvas.height); });
-  ro.observe(corePanel);
+  ro.observe(document.documentElement);
   fitCanvas(coreCanvas); resizeAt(coreCanvas.width, coreCanvas.height);
 
   function render(now) {
@@ -262,6 +270,13 @@ function build3DFlow() {
     // Brightness/spin tied to the real fleet up-fraction (model.fleetUpFrac) — the one live
     // signal this decorative scene has any business reflecting; never fabricated.
     const health = model.fleetUpFrac ?? 0.8;
+    // Slow camera drift (shock-and-awe): a gentle orbit around the default position so the hero
+    // scene reads as alive even beyond its own spin/flow animation.
+    if (!RM) {
+      cam.position.x = Math.sin(t * 0.1) * 36;
+      cam.position.y = 18 + Math.sin(t * 0.07) * 16;
+      cam.lookAt(0, 0, 0);
+    }
     group.rotation.y = Math.sin(t * 0.15) * 0.35;
     core.rotation.y += 0.01; core.rotation.x += 0.004;
     shield.rotation.y -= 0.003; shield.scale.setScalar(1 + Math.sin(t * 3) * 0.03 * health);
@@ -277,13 +292,16 @@ function build3DFlow() {
       });
       f.g.attributes.position.needsUpdate = true;
     });
-    bloomFx.render();
+    // Adaptive quality (site/lib/stage.js): bloom is the second thing dropped under sustained
+    // frame-time pressure, after the DPR cap — a plain renderer.render() skips the whole
+    // EffectComposer pass.
+    if (adaptiveBloomOn()) bloomFx.render(); else renderer.render(scene, cam);
   }
   return { render, renderer, scene, dispose: () => { bloomFx.dispose(); ro.disconnect(); } };
 }
 
 function fitCanvas(canvas) {
-  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const dpr = adaptiveDpr();
   const w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 }
@@ -300,7 +318,7 @@ if (forced === '3d' || (forced !== '2d' && hardwareGL())) {
   onDispose(() => { flow3d.dispose(); disposeThreeScene(flow3d.renderer, flow3d.scene); });
 } else {
   const coreRO = new ResizeObserver(() => fitCanvas(coreCanvas));
-  coreRO.observe(corePanel);
+  coreRO.observe(document.documentElement);
   onDispose(() => coreRO.disconnect());
   fitCanvas(coreCanvas);
   drawCore = (t) => {
@@ -326,7 +344,7 @@ onDispose(() => clearInterval(clockId));
 // The render loop (and the 'ready' postMessage it fires — site/lib/stage.js) starts before the
 // first data refresh resolves, so a slow/failing query never delays 'ready' past the rotator's
 // probe window.
-loop(30, (now) => drawCore(now));
+loop(0, (now) => drawCore(now)); // uncapped: native refresh rate, the display has headroom to spare
 await refresh().catch((e) => console.warn('refresh', e));
 renderApps();
 const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)).then(() => renderApps()), (cfg.refreshSeconds || 15) * 1000);

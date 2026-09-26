@@ -58,7 +58,7 @@ export function setStandIn(el, on) {
 // of what determines the rendered size) is what grew a panel without bound.
 export function observeCanvas(cell, canvas, onResize) {
   const apply = () => {
-    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const dpr = adaptiveDpr();
     const w = Math.round(cell.clientWidth * dpr), h = Math.round(cell.clientHeight * dpr);
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; onResize?.(w, h); }
   };
@@ -155,16 +155,49 @@ export function signalReady() {
   try { window.parent?.postMessage({ wall: 'ready' }, location.origin); } catch { /* no parent to tell */ }
 }
 
-// requestAnimationFrame capped at `fps` (never above 30), paused while idle (see above) and
-// disposed on pagehide.
+// ---------------------------------------------------------------------------
+// Adaptive render quality: the shock-and-awe hero scenes (mc2/mc3/mc4) run their canvas
+// uncapped (loop(0, ...) below) — fine on the operator's display machine, but under real
+// contention (CI's software-GL renderer running several pages in parallel; also weaker real
+// hardware) the same uncapped loop, full DPR and always-on bloom can starve the main thread.
+// One rolling frame-time average, sampled every uncapped frame, steps a single quality tier
+// down — DPR to 1, then bloom off, then a 30fps cap — when the average frame is heavier than
+// ~40ms, and steps back up (in reverse) once there's sustained headroom. No UA/test sniffing:
+// this reacts to the actual measured cost of the frame just rendered, on any machine.
+const TIER_DPR = 1, TIER_BLOOM = 2, TIER_FPS = 3;
+let qTier = 0;
+let emaFrameMs = 16; // seeded at a healthy 60fps frame
+let lastTierChangeAt = 0;
+const STEP_DOWN_MS = 40, STEP_UP_MS = 20, TIER_COOLDOWN_MS = 2000;
+function sampleFrameCost(dtMs) {
+  emaFrameMs = emaFrameMs * 0.9 + dtMs * 0.1;
+  const now = performance.now();
+  if (now - lastTierChangeAt < TIER_COOLDOWN_MS) return;
+  if (emaFrameMs > STEP_DOWN_MS && qTier < TIER_FPS) { qTier += 1; lastTierChangeAt = now; }
+  else if (emaFrameMs < STEP_UP_MS && qTier > 0) { qTier -= 1; lastTierChangeAt = now; }
+}
+// Read by observeCanvas (canvas backing-store resolution) and by a page's own bloom setup.
+export function adaptiveDpr(max = 2) { return qTier >= TIER_DPR ? Math.min(max, 1) : max; }
+export function adaptiveBloomOn() { return qTier < TIER_BLOOM; }
+
+// requestAnimationFrame capped at `fps` (never above 30) — or, with `fps <= 0`, uncapped: fn runs
+// every rAF tick at the display's native refresh rate (the shock-and-awe hero scenes; the
+// operator confirmed the display machine has headroom to spare, and adaptive quality above
+// covers it when that assumption doesn't hold). An uncapped caller falls back to a 30fps cap of
+// its own once the quality tier says the machine can't keep up. Paused while idle (see above)
+// and disposed on pagehide either way.
 export function loop(fps, fn) {
-  const min = 1000 / Math.min(fps, 30);
+  const requestedUncapped = fps <= 0;
   let last = 0, handle = null;
   const tick = (now) => {
     handle = null;
     if (idle) return; // wake() restarts the rAF chain once active again
-    if (now - last >= min - 1) {
-      fn(now, Math.min((now - last) / 1000, 0.1));
+    const uncapped = requestedUncapped && qTier < TIER_FPS;
+    const min = uncapped ? 0 : 1000 / Math.min(fps > 0 ? fps : 30, 30);
+    const dt = now - last;
+    if (uncapped || dt >= min - 1) {
+      if (requestedUncapped && last) sampleFrameCost(dt);
+      fn(now, Math.min(dt / 1000, 0.1));
       last = now;
       requestAnimationFrame(signalReady); // one frame after this one is committed
     }

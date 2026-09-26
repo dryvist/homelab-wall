@@ -6,6 +6,11 @@
   grid-template-rows:auto minmax(0,1fr);gap:clamp(6px,1vmin,14px);padding:clamp(8px,1.3vmin,16px) clamp(9px,1.5vmin,18px);
   box-sizing:border-box;background:#000}
 
+/* Shock-and-awe hero layer: the tori/tube canvas is a full-viewport fixed layer behind every
+   panel, not confined to the "core" panel's own box — see index.html's placement as a direct
+   child of #stage, before every panel. */
+#corecanvas{position:fixed;inset:0;width:100vw;height:100vh;z-index:0;display:block}
+
 header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:center;gap:clamp(12px,2vmin,26px);padding:0 clamp(4px,1vmin,10px)}
 .brand{font:700 clamp(16px,2.4vmin,30px)/1 var(--disp);letter-spacing:.14em;color:#fff;text-shadow:0 0 18px rgba(255,179,71,.55)}
 .brand .acc{color:var(--amber)}
@@ -20,12 +25,18 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
 .clock small{display:block;font:400 clamp(8px,.9vmin,11px)/1.6 var(--mono);color:var(--dim);letter-spacing:.2em}
 
 .mc4 .panel{position:relative;z-index:1;grid-row:2;display:flex;flex-direction:column;min-height:0;min-width:0;
-  background:#050301;border:1px solid rgba(255,179,71,.35);
   clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
+/* Dark-glass side panels: the hero scene shows through, text stays legible. `contain` is
+   deliberately NOT used here (see the #corecanvas comment in index.html — it would make this
+   panel a containing block for any position:fixed descendant). */
+.panel-glass{background:rgba(0,0,0,.45);border:1px solid rgba(255,179,71,.35);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+/* The former hero-scene panel: frame and background gone, only the title remains, floating
+   directly over the fullscreen canvas. */
+.panel-frameless{background:none;border:none}
 #acq{grid-column:1}
 #core{grid-column:2;padding:0}
 #core h2{position:absolute;left:0;top:0;z-index:2;background:transparent;border:none}
-#corecanvas{width:100%;height:100%;display:block}
 #pipe{grid-column:3}
 
 .mc4 .panel>h2{margin:0;padding:clamp(6px,.9vmin,10px) clamp(10px,1.4vmin,16px) clamp(4px,.6vmin,7px);
@@ -35,7 +46,13 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
 .mc4 .panel [data-panel-message]{color:var(--amber);font:600 9px/1 var(--mono);letter-spacing:.1em;white-space:nowrap}
 
 .cardbody{flex:1;min-height:0;overflow:auto;padding:clamp(6px,1vmin,12px) clamp(8px,1.2vmin,14px);
-  display:flex;flex-direction:column;gap:clamp(10px,1.6vmin,20px);justify-content:center}
+  display:flex;flex-direction:column;gap:clamp(10px,1.6vmin,20px)}
+/* No-empty-space fix: the throughput card (always first in #acqbody, download client only —
+   NOT #pipebody, whose first card is PLEX's fixed-size stat card) grows to fill whatever space
+   the other, natural-height cards don't use, instead of the column centering fixed-height cards
+   with dead space above/below. */
+#acqbody>.card:first-child{flex:1;min-height:0;display:flex;flex-direction:column}
+#acqbody>.card:first-child .through{flex:1;height:auto;min-height:0}
 
 /* Legible download-client/library cards: bigger headline numbers, not tiny faint text
    (the live-wall finding) — .ct/.cn sizes bumped from the pre-hero-scene layout. */
@@ -56,7 +73,10 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
 .statgrid span{font-size:clamp(9px,.85vmin,10px);color:var(--dim);letter-spacing:.12em;text-transform:uppercase}
 .statgrid b{font:600 clamp(13px,1.4vmin,17px)/1 var(--disp);color:#fff}
 .afeed{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:3px}
-.afrow{font-size:clamp(9px,.9vmin,11px);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* flex:none — a flex column's default flex-shrink otherwise crushes these below their own
+   line-height as the feed grows, reading as overlapping/illegible text. The feed scrolls (its own
+   overflow:hidden clips excess rows out of view), it never compresses its rows to fit. */
+.afrow{flex:none;font-size:clamp(11px,1.05vmin,13px);line-height:1.6;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .afrow b{color:var(--ink);font-weight:600}
 .afrow:nth-child(n+6){opacity:.7}
 .afrow:nth-child(n+11){opacity:.45}
