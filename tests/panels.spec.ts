@@ -45,12 +45,12 @@ for (const pageSpec of PAGES) {
         const panel = panels.nth(index);
         const id = await panel.getAttribute('data-panel');
         expect(id).not.toBeNull();
-        const state = await panel.getAttribute('data-state');
+        // Web-first assertion: the state is set once the panel's feed resolves, not on insert.
         if (allowed.has(id!)) {
-          expect(state).toBe('pending');
+          await expect(panel).toHaveAttribute('data-state', 'pending');
           await expect(panel).toContainText(/[A-Z]{2,}/);
         } else {
-          expect(state).toBe('ok');
+          await expect(panel).toHaveAttribute('data-state', 'ok');
           // Poll, not a one-shot read: a panel can flip to data-state="ok" (set synchronously
           // by renderStatic) a frame before its own rAF-scheduled repaint (e.g. mc1's #appsum)
           // has actually painted over its placeholder "—".
@@ -130,7 +130,7 @@ for (const vp of STABILITY_MATRIX) {
 
       // never a silently blank panel: it's ok, declared-pending, or an explicit error.
       for (let i = 0; i < count; i += 1) {
-        expect(['ok', 'pending', 'error']).toContain(await panels.nth(i).getAttribute('data-state'));
+        await expect(panels.nth(i)).toHaveAttribute('data-state', /^(ok|pending|error)$/);
       }
 
       // offsetLeft/Top/Width/Height (not getBoundingClientRect) — the grid's actual box,
