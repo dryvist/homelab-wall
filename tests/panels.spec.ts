@@ -255,7 +255,7 @@ test('a no-data apps panel renders sample scores marked only by data-source, nev
 // (no GPU exporter) while still showing real per-node data.
 const STAND_IN_PANELS: Record<string, string[]> = {
   mc1: ['firewall'], // mc1's topology panel is a MIX (real graph + a stand-in #wan sub-element)
-  mc2: ['threat'],
+  mc2: ['threat', 'blocked'],
   mc4: ['acquisition', 'pipeline'],
   mc5: ['github', 'infra', 'activity', 'pipeline'],
 };
