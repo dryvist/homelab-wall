@@ -135,17 +135,22 @@ window.addEventListener('message', (e) => {
   else if (e.data?.wall === 'active') setIdle(false);
 });
 
-// requestAnimationFrame capped at `fps` (never above 30), paused while idle
-// (see above) and disposed on pagehide. Posts {wall:'ready'} to the parent
-// frame once its first frame has painted, for the rotator's G3 probe.
+// Posts {wall:'ready'} to the parent frame once, for the rotator's probe (site/rotator/rotator.js
+// buildLayers()) — a same-origin slide proves itself alive this way. loop() below calls it after
+// its first painted frame; a page with no continuous render loop (e.g. mc5, which redraws only on
+// data refresh/resize) calls it directly instead, right after its first synchronous paint.
+let signaled = false;
+export function signalReady() {
+  if (signaled) return;
+  signaled = true;
+  try { window.parent?.postMessage({ wall: 'ready' }, location.origin); } catch { /* no parent to tell */ }
+}
+
+// requestAnimationFrame capped at `fps` (never above 30), paused while idle (see above) and
+// disposed on pagehide.
 export function loop(fps, fn) {
   const min = 1000 / Math.min(fps, 30);
-  let last = 0, handle = null, signaled = false;
-  const signalReady = () => {
-    if (signaled) return;
-    signaled = true;
-    try { window.parent?.postMessage({ wall: 'ready' }, location.origin); } catch { /* no parent to tell */ }
-  };
+  let last = 0, handle = null;
   const tick = (now) => {
     handle = null;
     if (idle) return; // wake() restarts the rAF chain once active again

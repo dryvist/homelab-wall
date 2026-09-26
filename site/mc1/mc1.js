@@ -1,4 +1,5 @@
 // Mission Control 1: estate overview, driven by live Prometheus data.
+import * as THREE from 'three';
 import { query, range, settle, shortHost } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import {
@@ -151,7 +152,11 @@ function renderHeader() {
   ];
   $('kpis').innerHTML = k.map(([l, v, u]) => `<div class="kpi"><b class="num">${v}<i>${u}</i></b><span>${l}</span></div>`).join('');
   const scored = apps.filter((a) => a.s != null);
-  ring($('estateRing'), scored.length ? scored.reduce((a, x) => a + x.s, 0) / scored.length : null);
+  // The fleet ring is the MINIMUM across every scored app, never an average — an average dilutes
+  // a single DOWN app to nothing once enough other apps are healthy (it can round back up to 10,
+  // the "100% uptime" value, while an app sits at 0). The fleet can never look healthier than its
+  // worst known app.
+  ring($('estateRing'), scored.length ? Math.min(...scored.map((x) => x.s)) : null);
   $('subtitle').textContent = `${model.nodes.filter((n) => !n.pending).length} NODES · ${groups.length} GROUPS · ${apps.length} APPS`;
 }
 function ring(el, score) {
@@ -347,7 +352,6 @@ let drawTopo;
 let topoRO = null; // disconnected and replaced on every buildTopology() call, including a rebuild
 const forced = new URLSearchParams(location.search).get('gl');
 function buildTopology() {
-  const THREE = window.THREE;
   const renderer = new THREE.WebGLRenderer({ canvas: $('gl'), antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   const scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x04070c, 0.0065);
@@ -418,7 +422,7 @@ function buildTopology() {
   };
   return { render, renderer, scene };
 }
-if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
+if (forced === '3d' || (forced !== '2d' && hardwareGL())) {
   let topo3d = buildTopology();
   drawTopo = (now, dt) => topo3d.render(now, dt);
   onContextLoss($('gl'), () => {
@@ -481,13 +485,17 @@ const tickClock = () => { const d = new Date(); $('clock').innerHTML = `${d.toTi
 tickClock();
 const clockId = setInterval(tickClock, 1000);
 onDispose(() => clearInterval(clockId));
-await refresh().catch((e) => console.warn('refresh', e));
-const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
-onDispose(() => clearInterval(refreshId));
+// The render loop (and the 'ready' postMessage it fires after its first frame — site/lib/
+// stage.js) starts before the first data refresh resolves, not after: a slow/failing Prometheus
+// query must never delay 'ready' past the rotator's probe window and get this page skipped as
+// broken, the way an AI-panel query outage did to MC3.
 let lastNodes = 0;
 loop(30, (now, dt) => {
   drawTopo(now, dt); drawHex(now);
   if (now - lastNodes > 100) { drawNodes(); lastNodes = now; }
 });
+await refresh().catch((e) => console.warn('refresh', e));
+const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+onDispose(() => clearInterval(refreshId));
 // Nightly reload keeps a 24/7 kiosk's memory flat.
 setTimeout(() => location.reload(), 24 * 3600 * 1000);
