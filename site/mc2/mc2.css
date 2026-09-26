@@ -6,12 +6,19 @@
 .mc2stage{position:relative;width:100vw;height:100vh;height:100dvh;box-sizing:border-box;
   display:grid;grid-template-rows:clamp(48px,7vmin,86px) 1fr;gap:clamp(6px,1vmin,14px);
   padding:clamp(8px,1.3vmin,16px) clamp(9px,1.5vmin,18px);
-  background:radial-gradient(1200px 700px at 50% 45%,#170810 0%,var(--void) 70%)}
-.mc2stage::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:#000}
+.mc2stage::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
   background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}
 
+/* Shock-and-awe hero layer: the globe/arcs canvas is a full-viewport fixed layer behind every
+   panel, not confined to the "threat" panel's own box. It must NOT be a descendant of any
+   element with `contain`/`transform`/`filter`/`backdrop-filter` (those establish a containing
+   block for position:fixed, which would clip it right back down to that ancestor's box) — see
+   index.html's placement as a direct child of #stage, before every panel. */
+#globe{position:fixed;inset:0;width:100vw;height:100vh;z-index:0;display:block}
+
 /* header */
-.mc2stage>header{grid-row:1;min-width:0;min-height:0;overflow:hidden;
+.mc2stage>header{grid-row:1;position:relative;z-index:2;min-width:0;min-height:0;overflow:hidden;
   display:flex;align-items:center;gap:clamp(10px,2vmin,26px)}
 .brand{font:700 clamp(15px,2vmin,28px)/1 var(--disp);letter-spacing:.14em;color:#fff;
   text-shadow:0 0 18px rgba(255,59,92,.55);white-space:nowrap}
@@ -24,15 +31,22 @@
 
 /* threat panel + right-third blocked-traffic feed */
 .row2{grid-row:2;min-width:0;min-height:0;display:grid;grid-template-columns:minmax(0,2fr) minmax(240px,1fr);
-  gap:clamp(6px,1vmin,14px)}
-.panel{position:relative;min-width:0;min-height:0;overflow:hidden;contain:layout size;
-  background:#020202;border:1px solid rgba(255,59,92,.35);
+  gap:clamp(6px,1vmin,14px);z-index:2}
+.panel{position:relative;min-width:0;min-height:0;overflow:hidden;
   clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
+/* Dark-glass side panels: the hero scene shows through, text stays legible. `contain` is
+   deliberately NOT used here (see the #globe comment above — it would make this panel a
+   containing block for any position:fixed descendant). */
+.panel-glass{background:rgba(0,0,0,.55);border:1px solid rgba(255,59,92,.35);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+/* The former hero-scene panel: frame and background gone, only the title (and any absolute
+   overlay content, e.g. #tstats) remain, floating directly over the fullscreen canvas. */
+.panel-frameless{background:none;border:none}
+.panel-frameless>h2{border-bottom:none}
 .panel>h2{position:relative;z-index:2;margin:0;padding:clamp(8px,1.3vmin,16px) clamp(9px,1.5vmin,18px) calc(clamp(8px,1.3vmin,16px)*.75);
   font:600 clamp(11px,1.2vmin,15px)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:#fff;
   display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,59,92,.25)}
 .panel [data-panel-message]{color:var(--amber);font:600 clamp(7px,.7vmin,10px)/1 var(--mono);letter-spacing:.1em}
-#threat canvas{position:absolute;inset:0;width:100%;height:100%}
 .stat{position:absolute;left:clamp(14px,2vmin,32px);bottom:clamp(14px,2vmin,32px);z-index:2;
   display:flex;gap:clamp(20px,3.2vmin,48px)}
 .stat div{font:600 clamp(11px,1.15vmin,15px)/1.4 var(--mono);color:#fff;letter-spacing:.16em;text-transform:uppercase;

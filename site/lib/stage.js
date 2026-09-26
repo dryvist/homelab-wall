@@ -155,15 +155,18 @@ export function signalReady() {
   try { window.parent?.postMessage({ wall: 'ready' }, location.origin); } catch { /* no parent to tell */ }
 }
 
-// requestAnimationFrame capped at `fps` (never above 30), paused while idle (see above) and
-// disposed on pagehide.
+// requestAnimationFrame capped at `fps` (never above 30) — or, with `fps <= 0`, uncapped: fn runs
+// every rAF tick at the display's native refresh rate (the shock-and-awe hero scenes; the
+// operator confirmed the display machine has headroom to spare). Paused while idle (see above)
+// and disposed on pagehide either way.
 export function loop(fps, fn) {
-  const min = 1000 / Math.min(fps, 30);
+  const uncapped = fps <= 0;
+  const min = uncapped ? 0 : 1000 / Math.min(fps, 30);
   let last = 0, handle = null;
   const tick = (now) => {
     handle = null;
     if (idle) return; // wake() restarts the rAF chain once active again
-    if (now - last >= min - 1) {
+    if (uncapped || now - last >= min - 1) {
       fn(now, Math.min((now - last) / 1000, 0.1));
       last = now;
       requestAnimationFrame(signalReady); // one frame after this one is committed

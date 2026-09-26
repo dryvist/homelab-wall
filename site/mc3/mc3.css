@@ -7,16 +7,30 @@
   gap:clamp(10px,1.2vmin,18px);padding:clamp(10px,1.6vmin,20px);
   background:#000}
 
-.panel{position:relative;min-width:0;min-height:0;background:#050208;
-  border:1px solid rgba(255,79,216,.35);box-shadow:0 0 24px rgba(255,79,216,.12);
+/* Shock-and-awe hero layer: the reactor canvas is a full-viewport fixed layer behind every
+   panel, not confined to the "cores" panel's own box — see index.html's placement as a direct
+   child of #stage, before every panel. */
+#reactor{position:fixed;inset:0;width:100vw;height:100vh;z-index:0;display:block}
+
+.panel{position:relative;min-width:0;min-height:0;
   clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
+/* Dark-glass side panel: the hero scene shows through, text stays legible. `contain` is
+   deliberately NOT used here (see the #reactor comment in index.html — it would make this
+   panel a containing block for any position:fixed descendant). */
+.panel-glass{background:rgba(0,0,0,.55);border:1px solid rgba(255,79,216,.35);
+  box-shadow:0 0 24px rgba(255,79,216,.12);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+/* The former hero-scene panel: frame and background gone, only the title (and the model cards,
+   which carry their own translucent background) remain, floating directly over the fullscreen
+   canvas. */
+.panel-frameless{background:none;border:none;box-shadow:none}
+.panel-frameless>h2{border-bottom:none}
 .panel>h2{margin:0;padding:clamp(6px,.9vmin,10px) clamp(10px,1.4vmin,16px) 6px;
   font:600 clamp(11px,1.1vmin,13px)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:#ff4fd8;
   display:flex;justify-content:space-between;border-bottom:1px solid var(--grid)}
 .panel>h2 span{color:var(--dim);letter-spacing:.1em}
 .panel [data-panel-message]{color:var(--amber);font:600 9px/1 var(--mono);letter-spacing:.1em;white-space:nowrap}
 
-header{grid-column:1/-1;display:flex;align-items:center;gap:clamp(16px,2.4vmin,30px)}
+header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:center;gap:clamp(16px,2.4vmin,30px)}
 .brand{font:700 clamp(18px,2.6vmin,30px)/1 var(--disp);letter-spacing:.14em;color:#fff;
   text-shadow:0 0 18px rgba(255,79,216,.55)}
 .brand .sl{color:#ff4fd8}
@@ -30,7 +44,7 @@ header{grid-column:1/-1;display:flex;align-items:center;gap:clamp(16px,2.4vmin,3
 .clock small{display:block;font:400 clamp(9px,1vmin,11px)/1.6 var(--mono);color:var(--dim);letter-spacing:.2em}
 
 /* fleet health (mandatory apps panel) */
-#apps{grid-row:2;grid-column:1;display:flex;flex-direction:column;overflow:hidden}
+#apps{grid-row:2;grid-column:1;z-index:2;display:flex;flex-direction:column;overflow:hidden}
 #fleetRing{width:100%;aspect-ratio:1;max-height:26%;flex:none;display:block}
 .applist{flex:none;min-height:0;overflow:hidden;padding:4px clamp(8px,1.2vmin,12px) 8px;display:flex;flex-direction:column;gap:3px}
 .ar{display:grid;grid-template-columns:8px 1fr auto;align-items:center;gap:8px;font-size:clamp(10px,1vmin,12px)}
@@ -64,12 +78,11 @@ header{grid-column:1/-1;display:flex;align-items:center;gap:clamp(16px,2.4vmin,3
    only its content height instead of a share of the flexible track (grid auto-placement with
    only 2 explicit tracks for 3 children handed h2 part of the 1fr row, leaving a ~70px dead
    strip above the scene). */
-#cores{grid-row:2;grid-column:2;display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden}
-#reactor{width:100%;height:100%;min-height:0;display:block}
+#cores{grid-row:2;grid-column:2;z-index:2;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
 /* max-height as a viewport unit, not a %: a percentage here resolves against the grid row's
    auto-sized (content-dependent) height, which is circular and clipped the 4th (queue/latency)
    line silently — overflow:auto with no visible scrollbar, so the row just vanished. */
-.modeltab{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:clamp(8px,1vmin,12px);
+.modeltab{align-self:end;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:clamp(8px,1vmin,12px);
   padding:clamp(8px,1.2vmin,14px);max-height:clamp(160px,28vh,280px);overflow:auto}
 .mc{border:1px solid rgba(255,79,216,.3);background:rgba(20,6,26,.6);padding:10px 14px 12px;
   clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}

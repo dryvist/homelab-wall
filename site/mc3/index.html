@@ -9,13 +9,18 @@
 </head>
 <body>
 <div id="stage" class="stage">
+  <!-- Full-viewport hero layer: NOT nested inside a panel (a `contain`/`transform`/`filter`/
+       `backdrop-filter` ancestor would become the containing block for this canvas's
+       position:fixed, clipping it back to that panel's box) — see the shock-and-awe comment
+       block in mc3.css. -->
+  <canvas id="reactor"></canvas>
   <header>
     <div class="brand">AI CORE <span class="sl">//</span> INFERENCE<small id="subtitle">—</small></div>
     <div class="kpis" id="kpis"></div>
     <div class="clock num" id="clock">--:--:--<small>--</small></div>
   </header>
 
-  <section class="panel" id="apps" data-panel="apps" data-state="pending">
+  <section class="panel panel-glass" id="apps" data-panel="apps" data-state="pending">
     <h2>Fleet health <span id="appsum">—</span><span data-panel-message></span></h2>
     <canvas id="fleetRing" width="256" height="256"></canvas>
     <div class="applist" id="applist"></div>
@@ -28,9 +33,8 @@
     </div>
   </section>
 
-  <section class="panel" id="cores" data-panel="cores" data-state="pending">
+  <section class="panel panel-frameless" id="cores" data-panel="cores" data-state="pending">
     <h2>AI Core <span id="coresum">—</span><span data-panel-message></span></h2>
-    <canvas id="reactor"></canvas>
     <div class="modeltab" id="modeltab"></div>
   </section>
 </div>
