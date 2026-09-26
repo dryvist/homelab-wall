@@ -8,6 +8,16 @@ const SLIDES = [
   { name: 'Slide C', url: '/slide-c', seconds: 10 },
 ];
 
+// rotator.js registers a real service worker unconditionally (site/sw.js). Almost none of these
+// tests are about that worker, and letting it register anyway means its background install-time
+// fetches (hashing rotator.js, precaching the shell) compete with the single-threaded dev server
+// used across the whole file, which has produced flaky timing elsewhere in this suite. Blocking
+// /sw.js by default removes that noise; the two tests that actually cover the service worker call
+// page.unroute('**/sw.js') first to let it register for real.
+test.beforeEach(async ({ page }) => {
+  await page.route('**/sw.js', (route) => route.abort());
+});
+
 async function mockSlides(page: import('@playwright/test').Page, holdSeconds = 30, brokenIndex = -1) {
   await page.route('**/config.json', (r) => r.fulfill({ json: { slides: SLIDES, holdSeconds } }));
   for (const [i, s] of SLIDES.entries()) {
@@ -237,6 +247,114 @@ for (const size of [{ width: 1280, height: 720 }, { width: 2560, height: 1440 }]
     expect(overflow.h).toBe(true);
   });
 }
+
+// Track: self-heal — a reload must never navigate into a dead origin. The preflight fetch fires
+// from inside a page.clock-fastForwarded timer callback and targets the exact page URL; that
+// specific combination doesn't reliably surface to page.route() (a Playwright/Chromium quirk with
+// no bearing on the real kiosk, which never runs under a fake clock or request interception) — so
+// this replaces window.fetch itself, keyed on the preflight's own distinguishing option
+// (`redirect: 'manual'`, which nothing else in rotator.js passes), giving deterministic control
+// over exactly that one call without touching the network layer at all.
+test('reload preflight blocks navigation on a 500 and proceeds once the origin recovers', async ({ page }) => {
+  await page.addInitScript(() => {
+    const realFetch = window.fetch.bind(window);
+    (window as any).__preflightHealthy = false;
+    (window as any).__preflightCount = 0;
+    window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.redirect === 'manual') {
+        (window as any).__preflightCount += 1;
+        if (!(window as any).__preflightHealthy) {
+          return Promise.resolve(new Response('origin down', { status: 500 }));
+        }
+      }
+      return realFetch(input as any, init);
+    }) as typeof fetch;
+  });
+  await page.clock.install();
+  await mockSlides(page);
+
+  await page.goto('/?reloadms=10000');
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-a');
+  await page.evaluate(() => { (window as any).__marker = 'alive'; });
+
+  await page.clock.fastForward(10_000); // reload timer fires; preflight gets a 500
+  await expect.poll(() => page.evaluate(() => (window as any).__preflightCount)).toBeGreaterThan(0);
+  expect(await markerGone(page)).toBe(false); // did not navigate away
+
+  await page.evaluate(() => { (window as any).__preflightHealthy = true; });
+  await page.clock.fastForward(60_000); // RELOAD_RETRY_MS
+  await expect.poll(() => markerGone(page)).toBe(true); // now reloads
+});
+
+// Track: self-heal — the service worker must keep the kiosk shell bootable through an outage even
+// when nothing else is running (e.g. a human presses Reload mid-outage). Service-worker request
+// interception is flaky enough across engines that this is scoped to Chromium, mirroring the
+// existing CDP-only heap test below.
+test('service worker keeps the rotator itself running, not just its HTML, through a total outage', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'service worker fetch interception is exercised on Chromium only');
+  await page.unroute('**/sw.js'); // this test needs the real worker (see beforeEach above)
+  await mockSlides(page);
+  await page.goto('/');
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-a');
+  await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+
+  // Every shell asset the origin serves — not just '/' — returns 500: rotator.js and config.json
+  // included. A cache that only covers the root HTML would still boot a blank page here (the
+  // script tag present, nothing behind it able to run); this must actually keep rotating.
+  await page.route(
+    (url) => url.pathname === '/' || url.pathname.startsWith('/rotator/') || url.pathname === '/config.json',
+    (route) => route.fulfill({ status: 500, body: 'origin down' }),
+  );
+  await page.reload();
+  await expect(page.locator('script[src="/rotator/rotator.js"]')).toHaveCount(1);
+  await expect(page.locator('#layers')).toBeAttached();
+  // The rotator having actually executed (not just the cached HTML rendering inertly) is what
+  // builds an iframe per slide and activates one — proving the engine is running, not just its
+  // markup. This doesn't assert the exact pre-outage slide set survived (config.json is a
+  // deployment-time file with no on-disk fixture in this checkout, so the service worker's own
+  // precache fetch for it — made from the worker's own context, outside this test's page-level
+  // mocking — falls back to whatever the dev server actually has for it); that config.json itself
+  // gets cached and served on a 5xx is covered by the shell-manifest test below.
+  // (One iframe per slide is built synchronously in buildLayers(), before any slide's own ready
+  // handshake — proof enough that the JS engine executed rather than merely a cached document
+  // rendering; DEFAULT_SLIDES' real mc1-5 pages can take a while past this test's budget to each
+  // finish their own ready handshake, so this doesn't wait on activateLayer() too.)
+  await expect(page.locator('iframe')).not.toHaveCount(0);
+});
+
+// Guards against the shell cache silently drifting out of sync with the page it's meant to cover
+// — re-derives the reference list independently (a fresh regex scan of the served index.html,
+// not a call into site/sw.js) so a hand-maintained or stale manifest in the worker would fail this.
+test('the service worker shell manifest covers every same-origin asset index.html references', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'service worker cache introspection is exercised on Chromium only');
+  await page.unroute('**/sw.js'); // this test needs the real worker (see beforeEach above)
+  await mockSlides(page);
+  await page.goto('/');
+  await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+
+  const htmlRefs = await page.evaluate(async () => {
+    const html = await (await fetch('/', { cache: 'no-store' })).text();
+    const urls = new Set<string>();
+    for (const m of html.matchAll(/\b(?:src|href)=["']([^"']+)["']/g)) {
+      try {
+        const u = new URL(m[1], location.origin);
+        if (u.origin === location.origin) urls.add(u.pathname);
+      } catch { /* not a URL */ }
+    }
+    return [...urls];
+  });
+  expect(htmlRefs.length).toBeGreaterThan(0); // sanity: index.html does reference something
+
+  const manifest = await page.evaluate(async () => {
+    const cache = await caches.open('wall-shell');
+    const stored = await cache.match('/__sw_shell_manifest__');
+    return stored ? ((await stored.json()) as string[]) : [];
+  });
+
+  for (const ref of htmlRefs) {
+    expect(manifest, `${ref} is referenced by index.html but missing from the SW shell manifest`).toContain(ref);
+  }
+});
 
 // Track R4: the persistent-iframe model (Track R2) replaced a per-rotation create/destroy of
 // two iframes' render contexts with one context per slide held for the page's whole life — the
