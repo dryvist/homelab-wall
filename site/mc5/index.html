@@ -9,6 +9,11 @@
 </head>
 <body>
 <div id="mc5" class="mc5">
+  <!-- Full-viewport hero layer: NOT nested inside a panel (a `contain`/`transform`/`filter`/
+       `backdrop-filter` ancestor would become the containing block for this canvas's
+       position:fixed, clipping it back to that panel's box) — see the shock-and-awe comment
+       block in mc5.css. -->
+  <canvas id="hero"></canvas>
   <header>
     <canvas id="ring" width="128" height="128"></canvas>
     <div class="brand"><span id="title">HOMELAB</span> <span class="acc">//</span> PIPELINE <span class="acc">//</span> GITOPS<small id="subtitle">—</small></div>
@@ -16,31 +21,32 @@
     <div class="clock num" id="clock">--:--:--<small>--</small></div>
   </header>
 
-  <section class="panel" id="apps" data-panel="apps" data-state="pending">
+  <section class="panel panel-glass" id="apps" data-panel="apps" data-state="pending">
     <h2>Service health <span id="appsum">—</span><span data-panel-message></span></h2>
     <canvas id="appgrid"></canvas>
   </section>
 
-  <section class="panel" id="github" data-panel="github" data-state="pending">
+  <section class="panel panel-glass" id="github" data-panel="github" data-state="pending">
     <h2>GitHub · Actions &amp; PRs<span data-panel-message></span></h2>
     <div class="body"></div>
   </section>
 
-  <section class="panel" id="pipeline" data-panel="pipeline" data-state="pending">
+  <section class="panel panel-glass" id="pipeline" data-panel="pipeline" data-state="pending">
     <h2>Pipeline stages<span data-panel-message></span></h2>
     <canvas id="pipecanvas"></canvas>
   </section>
 
-  <section class="panel" id="infra" data-panel="infra" data-state="pending">
+  <section class="panel panel-glass" id="infra" data-panel="infra" data-state="pending">
     <h2>Terrakube &amp; Semaphore<span data-panel-message></span></h2>
     <div class="body"></div>
   </section>
 
-  <section class="panel" id="activity" data-panel="activity" data-state="pending">
+  <section class="panel panel-glass" id="activity" data-panel="activity" data-state="pending">
     <h2>Pipeline activity<span data-panel-message></span></h2>
     <div class="body"></div>
   </section>
 </div>
+<script type="importmap">{"imports": {"three": "/vendor/three/three.module.js", "three/addons/": "/vendor/three/addons/"}}</script>
 <script type="module" src="/mc5/mc5.js"></script>
 </body>
 </html>

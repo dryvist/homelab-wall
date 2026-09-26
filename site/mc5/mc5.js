@@ -2,16 +2,20 @@
 // Q.appScore, same as mc1); GitHub Actions, Terrakube and Semaphore have no metrics feed yet, so
 // those panels show stand-in rows (setStandIn — no visible badge/pending text; see
 // site/lib/stage.js) shaped like the feed each one will eventually get.
+import * as THREE from 'three';
 import { query } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
+import { makeBloom } from '/lib/bloom.js';
 import {
   clamp, hue, esc, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct,
-  setSampleBadge, setStandIn, onDispose, signalReady,
+  setSampleBadge, setStandIn, onDispose, onContextLoss, disposeThreeScene, hardwareGL,
+  adaptiveBloomOn, adaptiveDpr, loop,
 } from '/lib/stage.js';
 import { sampleAppScore, SAMPLE_GITHUB_ROWS, SAMPLE_INFRA_ROWS, SAMPLE_ACTIVITY_ROWS } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e', '#ff3b5c'];
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // Size a canvas's backing store from its own cell (never from the canvas's own rendered box —
 // that self-reference is what grows a panel without bound), then redraw.
@@ -97,6 +101,9 @@ function renderApps() {
   const ok = scores.filter((s) => s >= SCORE_OK_MIN).length, warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
   const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
   $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`;
+  // The one live signal the decorative hero scene has any business reflecting (flow speed/glow)
+  // — never fabricated.
+  model.fleetOkFrac = scores.length ? ok / scores.length : 0.8;
   setSampleBadge($('apps'), appsSample);
   setState($('apps'), scored.length ? 'ok' : 'empty');
   drawAppGrid(display);
@@ -140,6 +147,136 @@ function drawPipeline(canvas) {
   });
 }
 
+/* ---------------- full-viewport hero: commits flowing through the pipeline, 3D (or 2D fallback) --------------- */
+const heroCanvas = $('hero');
+const forced = new URLSearchParams(location.search).get('gl');
+
+function fitHero(canvas) {
+  const dpr = adaptiveDpr();
+  const w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+
+function build3DPipeline() {
+  // alpha:false + opaque black clear: a transparent canvas + bloom reads as a colour fog wash
+  // across the whole page instead of solid black with glow confined to the objects (same class
+  // of bug MC3/MC4's hero scenes hit).
+  const renderer = new THREE.WebGLRenderer({ canvas: heroCanvas, antialias: true, alpha: false });
+  renderer.setClearColor(0x000000, 1);
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(48, 1, 1, 2000);
+  cam.position.set(0, 24, 190);
+  cam.lookAt(0, 0, 0);
+  const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.1, radius: 0.34, threshold: 0.6 });
+
+  const group = new THREE.Group(); scene.add(group);
+
+  const stars = []; for (let i = 0; i < 1200; i++) stars.push((Math.random() - 0.5) * 900, Math.random() * 400 - 80, (Math.random() - 0.5) * 500 - 150);
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(stars, 3));
+  group.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: 0x2a3a8a, size: 1.1, transparent: true, opacity: 0.7 })));
+
+  // Repo node: the commit stream's origin, far left so the flow sweeps the full viewport width.
+  const repo = new THREE.Mesh(new THREE.IcosahedronGeometry(13, 1), new THREE.MeshBasicMaterial({ color: 0x7b8cff, wireframe: true }));
+  repo.position.set(-125, 0, 0); group.add(repo);
+  const repoShield = new THREE.Mesh(new THREE.SphereGeometry(19, 24, 24), new THREE.MeshBasicMaterial({ color: 0x7b8cff, wireframe: true, transparent: true, opacity: 0.18 }));
+  repoShield.position.copy(repo.position); group.add(repoShield);
+  const repoGlow = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 16), new THREE.MeshBasicMaterial({ color: 0x7b8cff, transparent: true, opacity: 0.6 }));
+  repoGlow.position.copy(repo.position); group.add(repoGlow);
+
+  // One S-curve sweeping the repo node to a "deploy" endpoint far right — commits (particles)
+  // flow along it; three stage rings mark Build/Test/Deploy checkpoints on the way.
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-125, 0, 0), new THREE.Vector3(-62, 34, -20), new THREE.Vector3(0, -16, 10),
+    new THREE.Vector3(62, 28, -18), new THREE.Vector3(125, 0, 0),
+  ]);
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 120, 2.4, 10, false), new THREE.MeshBasicMaterial({ color: 0x3ee6ff, wireframe: true, transparent: true, opacity: 0.5 })));
+
+  const STAGE_COLS = [0x3ee6ff, 0x38ff9c, 0xffb347];
+  const stageRings = STAGE_COLS.map((col, i) => {
+    const t = (i + 1) / (STAGE_COLS.length + 1) + 0.08;
+    const p = curve.getPoint(t);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(13, 0.6, 8, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9 }));
+    ring.position.copy(p); ring.rotation.x = Math.PI / 2;
+    group.add(ring);
+    return ring;
+  });
+
+  const N = 260, pos = new Float32Array(N * 3), pgcol = new Float32Array(N * 3), pg = new THREE.BufferGeometry();
+  pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  pg.setAttribute('color', new THREE.BufferAttribute(pgcol, 3));
+  const dim = new THREE.Color(0x7b8cff), bright = new THREE.Color(0x38ff9c);
+  group.add(new THREE.Points(pg, new THREE.PointsMaterial({ size: 2, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+  const phase = Array.from({ length: N }, (_, i) => i / N);
+
+  const resizeAt = (w, h) => { renderer.setSize(w, h, false); bloomFx.setSize(w, h); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); };
+  const ro = new ResizeObserver(() => { fitHero(heroCanvas); resizeAt(heroCanvas.width, heroCanvas.height); });
+  ro.observe(document.documentElement);
+  fitHero(heroCanvas); resizeAt(heroCanvas.width, heroCanvas.height);
+
+  function render(now) {
+    const t = RM ? 0 : now / 1000;
+    // Flow speed/brightness tied to the real fleet OK fraction — the one live signal this
+    // decorative scene has any business reflecting; never fabricated.
+    const health = model.fleetOkFrac ?? 0.8;
+    if (!RM) {
+      cam.position.x = Math.sin(t * 0.08) * 30;
+      cam.position.y = 24 + Math.sin(t * 0.06) * 12;
+      cam.lookAt(0, 0, 0);
+      group.rotation.y = Math.sin(t * 0.05) * 0.08;
+    }
+    repo.rotation.y += 0.006; repo.rotation.x += 0.003;
+    repoShield.rotation.y -= 0.003; repoShield.rotation.x += 0.0015;
+    repoGlow.scale.setScalar(1 + Math.sin(t * 2.4) * 0.15);
+    stageRings.forEach((r, i) => { r.rotation.z += 0.006 * (i % 2 ? -1 : 1); r.scale.setScalar(1 + Math.sin(t * 3 + i) * 0.06 * health); });
+    phase.forEach((p, k) => {
+      phase[k] = (p + 0.0025 * (0.4 + health)) % 1;
+      const q = curve.getPoint(phase[k]);
+      pos[k * 3] = q.x; pos[k * 3 + 1] = q.y; pos[k * 3 + 2] = q.z;
+      dim.clone().lerp(bright, phase[k]).toArray(pgcol, k * 3);
+    });
+    pg.attributes.position.needsUpdate = true;
+    pg.attributes.color.needsUpdate = true;
+    // Adaptive quality (site/lib/stage.js): bloom is the second thing dropped under sustained
+    // frame-time pressure, after the DPR cap — a plain renderer.render() skips the whole
+    // EffectComposer pass.
+    if (adaptiveBloomOn()) bloomFx.render(); else renderer.render(scene, cam);
+  }
+  return { render, renderer, scene, dispose: () => { bloomFx.dispose(); ro.disconnect(); } };
+}
+
+function draw2DPipelineFallback(canvas, now) {
+  const w = canvas.width, h = canvas.height;
+  if (!w || !h) return;
+  const c = canvas.getContext('2d');
+  c.clearRect(0, 0, w, h);
+  const cy = h * 0.5, x0 = w * 0.04, x1 = w * 0.96;
+  c.strokeStyle = 'rgba(123,140,255,.3)'; c.lineWidth = Math.max(1, h * 0.004);
+  c.beginPath(); c.moveTo(x0, cy); c.lineTo(x1, cy); c.stroke();
+  const cols = ['#3ee6ff', '#38ff9c', '#ffb347'];
+  cols.forEach((col, i) => {
+    const t = (i + 1) / (cols.length + 1), x = x0 + (x1 - x0) * t, r = Math.min(w, h) * 0.018 * (1 + (RM ? 0 : Math.sin(now / 900 + i) * 0.1));
+    c.beginPath(); c.arc(x, cy, r, 0, Math.PI * 2); c.strokeStyle = col; c.lineWidth = 2; c.shadowColor = col; c.shadowBlur = 8; c.stroke(); c.shadowBlur = 0;
+  });
+}
+
+let drawHero;
+if (forced === '3d' || (forced !== '2d' && hardwareGL())) {
+  let flow3d = build3DPipeline();
+  drawHero = (now) => flow3d.render(now);
+  onContextLoss(heroCanvas, () => {
+    flow3d.dispose();
+    disposeThreeScene(flow3d.renderer, flow3d.scene);
+    flow3d = build3DPipeline();
+  });
+  onDispose(() => { flow3d.dispose(); disposeThreeScene(flow3d.renderer, flow3d.scene); });
+} else {
+  const heroRO = new ResizeObserver(() => fitHero(heroCanvas));
+  heroRO.observe(document.documentElement);
+  onDispose(() => heroRO.disconnect());
+  fitHero(heroCanvas);
+  drawHero = (now) => draw2DPipelineFallback(heroCanvas, now);
+}
+
 /* ---------------- boot ---------------- */
 // No CI/CD, Terrakube/Semaphore, or pipeline-event exporter exists yet — stand-in rows, styled
 // like a real feed (setStandIn: no visible badge/pending text, no spinner glyph). Never written
@@ -160,9 +297,10 @@ setState($('pipeline'), 'ok', '');
 setStandIn($('pipeline'), true);
 fitCanvas($('pipeline'), $('pipecanvas'), () => drawPipeline($('pipecanvas')));
 fitCanvas($('apps'), $('appgrid'), drawAppGrid);
-// No continuous render loop on this page (its canvases redraw only on data refresh/resize), so
-// it posts {wall:'ready'} directly instead of via loop() — see site/lib/stage.js.
-signalReady();
+// The render loop (and the 'ready' postMessage it fires — site/lib/stage.js) starts before the
+// first data refresh resolves, so a slow/failing query never delays 'ready' past the rotator's
+// probe window.
+loop(0, (now) => drawHero(now)); // uncapped: native refresh rate, the display has headroom to spare
 
 const tickClock = () => { const d = new Date(); $('clock').innerHTML = `${d.toTimeString().slice(0, 8)}<small>${d.toDateString().toUpperCase()}</small>`; };
 tickClock();

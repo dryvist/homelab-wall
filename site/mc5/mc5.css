@@ -1,18 +1,25 @@
 /* mc5: fluid full-viewport grid, no fixed design surface — every track is fr/auto and type
    scales with vmin, so the page fills whatever screen it's on without JS reading/writing size. */
+/* Solid black stage (operator's standing dark-mode rule): no radial haze behind the panels —
+   violet stays an accent colour (borders, text, bloom), never a background wash. */
 .mc5{
   width:100vw;height:100dvh;box-sizing:border-box;overflow:hidden;position:relative;
   display:grid;grid-template-columns:1fr 1.3fr 1fr;grid-template-rows:auto auto 1fr auto;
   grid-template-areas:"hd hd hd" "ap ap ap" "gh pl in" "ac ac ac";
   gap:clamp(6px,1vmin,14px);padding:clamp(8px,1.3vmin,16px) clamp(9px,1.5vmin,18px);
-  background:radial-gradient(1200px 700px at 50% 45%,#0e1030 0%,var(--void) 70%);
+  background:#000;
 }
-.mc5::after{content:"";position:absolute;inset:0;pointer-events:none;
+.mc5::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
   background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}
 .mc5 .num{font-variant-numeric:tabular-nums}
 .acc{color:var(--cyan)}
 
-header{grid-area:hd;display:flex;align-items:center;gap:clamp(12px,2vmin,26px)}
+/* Shock-and-awe hero layer: the git-flow canvas is a full-viewport fixed layer behind every
+   panel, not confined to any one panel's box — see index.html's placement as a direct child of
+   #mc5, before every panel. */
+#hero{position:fixed;inset:0;width:100vw;height:100vh;z-index:0;display:block}
+
+header{grid-area:hd;position:relative;z-index:2;display:flex;align-items:center;gap:clamp(12px,2vmin,26px)}
 .brand{font:700 clamp(15px,2.6vmin,30px)/1 var(--disp);letter-spacing:.14em;color:#fff;text-shadow:0 0 18px rgba(123,140,255,.55)}
 .brand small{display:block;font:400 clamp(7px,.85vmin,11px)/1.6 var(--mono);letter-spacing:.3em;color:var(--dim)}
 .kpis{display:flex;gap:clamp(10px,2vmin,26px);flex:1;justify-content:center}
@@ -24,8 +31,13 @@ header{grid-area:hd;display:flex;align-items:center;gap:clamp(12px,2vmin,26px)}
 .clock small{display:block;font:400 clamp(7px,.9vmin,11px)/1.6 var(--mono);color:var(--dim);letter-spacing:.2em}
 #ring{width:clamp(38px,5vmin,64px);height:clamp(38px,5vmin,64px)}
 
-.panel{position:relative;min-height:0;min-width:0;overflow:hidden;background:linear-gradient(180deg,rgba(14,16,48,.78),rgba(6,7,20,.78));
-  border:1px solid #2a2f77;clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
+.panel{position:relative;z-index:2;min-height:0;min-width:0;overflow:hidden;
+  clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
+/* Dark-glass panel: the hero scene shows through, text stays legible. `contain` is deliberately
+   NOT used here (see the #hero comment in index.html — it would make this panel a containing
+   block for any position:fixed descendant). */
+.panel-glass{background:rgba(6,7,20,.42);border:1px solid #2a2f77;
+  backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
 .panel>h2{margin:0;padding:clamp(5px,.8vmin,8px) clamp(10px,1.4vmin,14px) clamp(4px,.6vmin,6px);
   font:600 clamp(9px,1.2vmin,12px)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:#9aa3ff;
   display:flex;justify-content:space-between;border-bottom:1px solid #171a45}
