@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/dryvist/homelab-wall/compare/v0.7.4...v0.8.0) (2026-09-26)
+
+
+### Features
+
+* **mc3:** wire real queue time and API latency into model tiles ([#61](https://github.com/dryvist/homelab-wall/issues/61)) ([206c6dc](https://github.com/dryvist/homelab-wall/commit/206c6dcd525a9b209b36553f94e54a7102f1efd4))
+
+
+### Bug Fixes
+
+* **mc4:** render the media hero scene faithfully to the approved sketch ([#60](https://github.com/dryvist/homelab-wall/issues/60)) ([30d2926](https://github.com/dryvist/homelab-wall/commit/30d2926c0f3e18db513d513b114c5da9b4b49824))
+
 ## [0.7.4](https://github.com/dryvist/homelab-wall/compare/v0.7.3...v0.7.4) (2026-09-26)
 
 
