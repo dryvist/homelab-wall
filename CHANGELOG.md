@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/dryvist/homelab-wall/compare/v0.3.1...v0.4.0) (2026-09-26)
+
+
+### Features
+
+* **mc:** rescale app health to a 0-10 scale and show SAMPLE DATA on empty panels ([0dcecf3](https://github.com/dryvist/homelab-wall/commit/0dcecf31883e05988bef8702d5e36dc018df06d3))
+
 ## [0.3.1](https://github.com/dryvist/homelab-wall/compare/v0.3.0...v0.3.1) (2026-09-26)
 
 
