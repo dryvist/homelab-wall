@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/dryvist/homelab-wall/compare/v0.4.0...v0.4.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* **render:** pause/dispose page render loops and persist rotator iframes ([#30](https://github.com/dryvist/homelab-wall/issues/30)) ([dbd3812](https://github.com/dryvist/homelab-wall/commit/dbd3812e0837a37bd6c2fbbab9c5dd681180d9b1))
+
 ## [0.4.0](https://github.com/dryvist/homelab-wall/compare/v0.3.1...v0.4.0) (2026-09-26)
 
 
