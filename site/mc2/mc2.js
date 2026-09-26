@@ -91,11 +91,12 @@ function addFeedRow(source) {
   const port = FEED_PORTS[(Math.random() * FEED_PORTS.length) | 0];
   const reason = FEED_REASONS[(Math.random() * FEED_REASONS.length) | 0];
   const row = document.createElement('div');
-  row.className = 'frow';
+  row.className = 'frow frow-flash';
   row.innerHTML = `<span class="t">${fmtTime(new Date())}</span>` +
     `<span class="src"><em>${source.cc}</em> ${source.name} → :${port}</span>` +
     `<span class="act drop">${reason}</span>`;
   feedEl.prepend(row);
+  row.addEventListener('animationend', () => row.classList.remove('frow-flash'), { once: true });
   while (feedEl.children.length > MAX_FEED_ROWS) feedEl.lastChild.remove();
 
   blockedToday += 1;
@@ -148,10 +149,11 @@ function buildGlobe() {
   const renderer = new THREE.WebGLRenderer({ canvas: globeCanvas, antialias: true, alpha: true });
   renderer.setPixelRatio(1); // backing-store pixels are set explicitly below
   const scene = new THREE.Scene();
-  // fov/distance tuned so the globe fills most of the panel height rather than sitting small in
-  // a mostly-empty frame (the live-wall finding: "small, dim... 70% empty dark space").
+  // fov/distance tuned so the WHOLE globe (including its atmosphere rim) fits inside the panel
+  // with margin (~80-85% of panel height), never clipped — see the half-height/atmosphere-radius
+  // comment inline below for the math.
   const cam = new THREE.PerspectiveCamera(46, 1, 1, 1000);
-  cam.position.set(0, 0, 196);
+  cam.position.set(0, 0, 260);
   const group = new THREE.Group();
   scene.add(group);
 
@@ -167,83 +169,117 @@ function buildGlobe() {
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  group.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xff4f6f, size: 1.15, transparent: true, opacity: 0.85 })));
-  group.add(new THREE.Mesh(new THREE.SphereGeometry(79, 48, 48), new THREE.MeshBasicMaterial({ color: 0x14040a, transparent: true, opacity: 0.92 })));
-  // Atmosphere rim: an oversized, backside-only sphere so only its silhouette (the limb) shows —
-  // brighter and thicker than a hairline so it's visible as a distinct glow, not just AA fuzz.
-  scene.add(new THREE.Mesh(new THREE.SphereGeometry(84, 48, 48), new THREE.MeshBasicMaterial({ color: 0xff2d55, transparent: true, opacity: 0.16, side: THREE.BackSide })));
-  scene.add(new THREE.Mesh(new THREE.SphereGeometry(90, 48, 48), new THREE.MeshBasicMaterial({ color: 0xff2d55, transparent: true, opacity: 0.07, side: THREE.BackSide })));
+  group.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xff4f6f, size: 1.15, transparent: true, opacity: 0.9 })));
+  // Ocean/globe body: near-black, not the muddy red wash a flat BackSide "atmosphere" sphere
+  // produces (that renders as a uniform-opacity disc over the WHOLE visible hemisphere, not just
+  // the limb, since a plain material has no view-angle falloff) — see the fresnel rim below instead.
+  group.add(new THREE.Mesh(new THREE.SphereGeometry(79, 48, 48), new THREE.MeshBasicMaterial({ color: 0x020103, transparent: true, opacity: 0.97 })));
+
+  // Atmosphere rim: a fresnel/rim shader (opacity ramps up only near the silhouette, via
+  // 1-dot(normal,viewDir)) instead of a flat translucent sphere, so it reads as a thin bright
+  // line at the limb rather than a red wash over the whole disc.
+  const atmosphere = new THREE.Mesh(
+    new THREE.SphereGeometry(83, 48, 48),
+    new THREE.ShaderMaterial({
+      uniforms: { uColor: { value: new THREE.Color(1.4, 0.35, 0.55) } },
+      vertexShader: `varying vec3 vNormal; varying vec3 vViewDir;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vViewDir = normalize(-mv.xyz);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `varying vec3 vNormal; varying vec3 vViewDir; uniform vec3 uColor;
+        void main() {
+          float rim = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 3.2);
+          gl_FragColor = vec4(uColor, rim);
+        }`,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.FrontSide,
+    }),
+  );
+  scene.add(atmosphere);
 
   const llToVec = (lat, lon, h = 80) => {
     const la = lat * Math.PI / 180, lo = lon * Math.PI / 180;
     return new THREE.Vector3(Math.cos(la) * Math.cos(lo) * h, Math.sin(la) * h, -Math.cos(la) * Math.sin(lo) * h);
   };
   const home = llToVec(...HOME_LATLON);
-  const homeMarker = new THREE.Mesh(new THREE.SphereGeometry(2.6, 12, 12), new THREE.MeshBasicMaterial({ color: 0x3ee6ff }));
+  // HOME beacon: an HDR-bright core (bloom does the glow) that pulses in scale every frame, plus
+  // a periodic expanding ring (the same visual the impact pulse below uses on arc arrival) so the
+  // beacon is visibly "alive" even between arrivals.
+  const homeCoreMat = new THREE.MeshBasicMaterial({ color: 0x9beeff });
+  homeCoreMat.color.multiplyScalar(3);
+  const homeMarker = new THREE.Mesh(new THREE.SphereGeometry(2.2, 16, 16), homeCoreMat);
   homeMarker.position.copy(home);
   group.add(homeMarker);
 
-  // Animated arcs: a pool of quadratic-bezier lines from a source to `home`. Each one draws in
-  // over its lifetime (a sliding drawRange window gives a moving trail rather than a line that
-  // stays fully lit once revealed), with a bright glowing head (bloom does the actual glow) and,
-  // on arrival, a brief expanding "impact" ring at `home`.
-  const TRAIL_LEN = 22;
+  // Animated arcs: a pool of tube geometries (real 3D thickness — WebGL ignores Line.linewidth
+  // on every browser but Firefox-on-Windows, so a THREE.Line here would render as a 1px hairline
+  // regardless of material settings) from a source to `home`, rising well above the surface.
+  // Each draws in via a sliding-window index range (a moving trail, not a line that stays fully
+  // lit once revealed), with an HDR glowing head and, on arrival, an expanding impact ring.
+  const TUBULAR_SEGS = 48, RADIAL_SEGS = 6, IDX_PER_SEG = RADIAL_SEGS * 6, TRAIL_SEGS = 16;
   const arcs = [];
   const pulses = [];
+  const headMat = new THREE.MeshBasicMaterial({ color: 0xfff2cf });
+  headMat.color.multiplyScalar(2.3);
+  const tubeMat = () => { const m = new THREE.MeshBasicMaterial({ color: 0xffb454, transparent: true, opacity: 1 }); m.color.multiplyScalar(1.6); return m; };
   function spawnArc() {
-    if (arcs.length >= 26) return;
+    if (arcs.length >= 20) return;
     const src = THREAT_SOURCES[(Math.random() * THREAT_SOURCES.length) | 0];
     const a = llToVec(src.lat, src.lon);
-    const mid = a.clone().add(home).multiplyScalar(0.5).normalize().multiplyScalar(80 + a.distanceTo(home) * 0.55);
+    // High apex: the arc rises well above the globe's surface (radius 80), not just skims it.
+    const mid = a.clone().add(home).multiplyScalar(0.5).normalize().multiplyScalar(80 + a.distanceTo(home) * 1.15);
     const curve = new THREE.QuadraticBezierCurve3(a, mid, home);
-    const points = curve.getPoints(60);
-    const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-    lineGeo.setDrawRange(0, 0);
-    // Amber, not red: the globe/atmosphere are already saturated red-pink, so a same-hue line
-    // washes out against it — amber (paired with the yellow head below) reads as a distinct
-    // "incoming" signal instead of blending into the sphere it's crossing.
-    const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0xffa63e, transparent: true, opacity: 0.95 }));
-    group.add(line);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(1.8, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffd23e }));
+    const tubeGeo = new THREE.TubeGeometry(curve, TUBULAR_SEGS, 0.65, RADIAL_SEGS, false);
+    tubeGeo.setDrawRange(0, 0);
+    const tube = new THREE.Mesh(tubeGeo, tubeMat());
+    group.add(tube);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(2.1, 10, 10), headMat);
     group.add(head);
-    arcs.push({ line, lineGeo, curve, head, t: 0 });
+    arcs.push({ tube, tubeGeo, curve, head, t: 0 });
   }
-  const spawnId = RM ? null : setInterval(spawnArc, 260);
+  const spawnId = RM ? null : setInterval(spawnArc, 300);
   onDispose(() => { if (spawnId) clearInterval(spawnId); });
 
+  const pulseMat = () => { const m = new THREE.MeshBasicMaterial({ color: 0x9beeff, transparent: true, opacity: 0.9, side: THREE.DoubleSide }); m.color.multiplyScalar(2.4); return m; };
   function spawnPulse() {
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(1, 1.6, 24),
-      new THREE.MeshBasicMaterial({ color: 0x3ee6ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide }),
-    );
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1, 1.7, 28), pulseMat());
     ring.position.copy(home);
     ring.lookAt(0, 0, 0);
     group.add(ring);
     pulses.push({ ring, t: 0 });
   }
+  let beaconT = 0;
 
-  const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.1, radius: 0.65, threshold: 0.08 });
+  const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.05, radius: 0.55, threshold: 0.62 });
   observeCanvas(threatPanel, globeCanvas, (w, h) => { renderer.setSize(w, h, false); bloomFx.setSize(w, h); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); });
   const render = (now) => {
     group.rotation.y = RM ? 0.6 : now / 11000;
+    homeMarker.scale.setScalar(1 + 0.22 * Math.sin(now / 260));
+    beaconT += RM ? 0.02 : 0.014;
+    if (beaconT >= 1) { beaconT = 0; spawnPulse(); }
     for (let i = arcs.length - 1; i >= 0; i -= 1) {
       const arc = arcs[i];
-      arc.t += RM ? 0.016 : 0.01;
-      const head = Math.min(60, (arc.t * 60) | 0);
-      const start = Math.max(0, head - TRAIL_LEN);
-      arc.lineGeo.setDrawRange(start, head - start);
-      arc.line.material.opacity = arc.t > 0.85 ? Math.max(0, 0.95 * (1 - (arc.t - 0.85) / 0.15)) : 0.95;
+      arc.t += RM ? 0.014 : 0.009;
+      const headSeg = Math.min(TUBULAR_SEGS, (arc.t * TUBULAR_SEGS) | 0);
+      const startSeg = Math.max(0, headSeg - TRAIL_SEGS);
+      arc.tubeGeo.setDrawRange(startSeg * IDX_PER_SEG, (headSeg - startSeg) * IDX_PER_SEG);
+      arc.tube.material.opacity = arc.t > 0.85 ? Math.max(0, 1 - (arc.t - 0.85) / 0.15) : 1;
       arc.head.position.copy(arc.curve.getPoint(Math.min(arc.t, 1)));
       if (arc.t >= 1 && !arc.landed) { arc.landed = true; spawnPulse(); }
-      if (arc.t > 1.12) { group.remove(arc.line, arc.head); arcs.splice(i, 1); }
+      if (arc.t > 1.12) { group.remove(arc.tube, arc.head); arc.tubeGeo.dispose(); arc.tube.material.dispose(); arcs.splice(i, 1); }
     }
     for (let i = pulses.length - 1; i >= 0; i -= 1) {
       const p = pulses[i];
-      p.t += RM ? 0.05 : 0.035;
-      const s = 1 + p.t * 9;
+      p.t += RM ? 0.05 : 0.032;
+      const s = 1 + p.t * 10;
       p.ring.scale.set(s, s, s);
       p.ring.material.opacity = Math.max(0, 0.9 * (1 - p.t));
-      if (p.t >= 1) { group.remove(p.ring); pulses.splice(i, 1); }
+      if (p.t >= 1) { group.remove(p.ring); p.ring.material.dispose(); pulses.splice(i, 1); }
     }
     bloomFx.render();
   };
