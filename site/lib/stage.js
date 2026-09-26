@@ -17,6 +17,30 @@ export function setState(panel, state, message = '') {
   if (notice) notice.textContent = message;
 }
 
+// App health score scale (site/lib/queries.js APP_HEALTH_SCORE): 0-9 is the normal range; 10 is
+// reserved for 100% success over the trailing 30d. OK/DEGRADED/DOWN tiers derive from these two
+// constants, never a second hardcoded copy of the cutoffs.
+export const SCORE_OK_MIN = 8;
+export const SCORE_DEGRADED_MIN = 5;
+// hue() expects a 0-100 input; a score maps onto it by this fixed x10 scale, which also matches
+// the /10 arc-fraction pattern every score ring/glyph already uses.
+export const scorePct = (s) => (s ?? 0) * 10;
+
+// Toggle a panel's "SAMPLE DATA" badge — only while that panel is rendering site/lib/sampleData.js
+// content in place of a real source that has nothing yet; never alongside real data.
+export function setSampleBadge(panel, on) {
+  let badge = panel.querySelector('[data-sample-badge]');
+  if (on && !badge) {
+    badge = document.createElement('div');
+    badge.dataset.sampleBadge = '';
+    badge.className = 'sample-badge';
+    badge.textContent = 'SAMPLE DATA';
+    panel.appendChild(badge);
+  } else if (!on && badge) {
+    badge.remove();
+  }
+}
+
 // The page has no fixed design surface: the stage is 100vw x 100dvh (wall.css) and every grid
 // cell is fr/minmax(0,1fr)-sized, so the grid itself can never overflow its container.
 // A canvas inside a cell must size its backing store from the CELL's box, via a ResizeObserver

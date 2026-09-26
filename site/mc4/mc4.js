@@ -4,7 +4,8 @@
 // fitCanvas() is the same pattern and drops out at that rebase).
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { clamp, hue, esc, loadConfig, setState, loop } from '/lib/stage.js';
+import { clamp, hue, esc, loadConfig, setState, loop, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge } from '/lib/stage.js';
+import { sampleAppScore, SAMPLE_ACQ_CARDS, SAMPLE_LIBRARY_CARDS } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -22,7 +23,7 @@ async function refresh() {
     const seen = new Set();
     for (const row of r.score) {
       const a = appIndex[row.labels.name];
-      if (a && Number.isFinite(row.value)) { a.s = clamp(row.value, 0, 100); seen.add(a.n); }
+      if (a && Number.isFinite(row.value)) { a.s = clamp(row.value, 0, 10); seen.add(a.n); }
     }
     for (const a of apps) if (!seen.has(a.n)) a.s = null;
   }
@@ -30,15 +31,21 @@ async function refresh() {
 
 /* ---------------- service health (the page's live panel) ---------------- */
 function renderApps() {
-  $('approws').innerHTML = apps.map((a) => {
-    const unk = a.s == null, col = unk ? 'var(--faint)' : hue(a.s);
-    return `<div class="ar"><span>${esc(a.n)}</span><div class="bar"><div style="width:${unk ? 0 : a.s}%;background:${col};box-shadow:0 0 6px ${col}"></div></div><span class="v num">${unk ? '?' : Math.round(a.s)}</span></div>`;
-  }).join('');
   const scored = apps.filter((a) => a.s != null);
-  const ok = scored.filter((a) => a.s >= 90).length, warn = scored.filter((a) => a.s >= 50 && a.s < 90).length, bad = scored.filter((a) => a.s < 50).length;
-  $('appsum').innerHTML = scored.length
+  // A query that succeeded with zero rows has genuinely nothing to show yet — render the shared
+  // sample scores instead (badged), never layered on top of real (even partial) data.
+  const sample = !scored.length;
+  const display = apps.map((a, i) => (sample ? { n: a.n, s: sampleAppScore(i) } : a));
+  $('approws').innerHTML = display.map((a) => {
+    const unk = a.s == null, col = unk ? 'var(--faint)' : hue(scorePct(a.s));
+    return `<div class="ar"><span>${esc(a.n)}</span><div class="bar"><div style="width:${unk ? 0 : scorePct(a.s)}%;background:${col};box-shadow:0 0 6px ${col}"></div></div><span class="v num">${unk ? '?' : Math.round(a.s)}</span></div>`;
+  }).join('');
+  const scores = display.map((a) => a.s).filter((s) => s != null);
+  const ok = scores.filter((s) => s >= SCORE_OK_MIN).length, warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length, bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
+  $('appsum').innerHTML = scores.length
     ? `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`
     : '';
+  setSampleBadge($('apps'), sample);
   setState($('apps'), scored.length ? 'ok' : 'empty', scored.length ? '' : 'NO SERVICE DATA');
 }
 
@@ -46,10 +53,14 @@ function renderApps() {
 function card(title, note) {
   return `<div class="card"><div class="ct">${esc(title)}</div><div class="cn">${esc(note)}</div></div>`;
 }
-$('acqbody').innerHTML = [card('QBITTORRENT', 'DOWNLOAD CLIENT EXPORTER PENDING'), card('VPN TUNNEL', 'DOWNLOAD-VPN EXPORTER PENDING')].join('');
-$('pipebody').innerHTML = [card('PLEX', 'MEDIA SERVER EXPORTER PENDING'), card('ARR STACK', 'ARR EXPORTER PENDING'), card('LIBRARY STORAGE', 'LIBRARY STORAGE METRICS PENDING')].join('');
+// No download-client/library exporter exists yet — fixed sample cards, badged, replace the
+// single "EXPORTER PENDING" line each panel used to show. Never written into any live model.
+$('acqbody').innerHTML = SAMPLE_ACQ_CARDS.map((c) => card(c.title, c.note)).join('');
+$('pipebody').innerHTML = SAMPLE_LIBRARY_CARDS.map((c) => card(c.title, c.note)).join('');
 setState($('acq'), 'pending', 'DOWNLOAD CLIENT EXPORTER PENDING');
 setState($('pipe'), 'pending', 'MEDIA LIBRARY EXPORTER PENDING');
+setSampleBadge($('acq'), true);
+setSampleBadge($('pipe'), true);
 $('vpn').textContent = 'VPN EXPORTER PENDING';
 
 /* ---------------- decorative core (acquisition flow, ambient only) ---------------- */
