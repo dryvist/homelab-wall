@@ -13,10 +13,10 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Playwright
+  typecheck:
+    name: Typecheck
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -31,11 +31,44 @@ jobs:
       # committed site/vendor/three copy the static site actually serves.
       - run: git diff --exit-code -- site/vendor/three
       - run: npx tsc --noEmit
-      - run: npx playwright install --with-deps chromium webkit
-      - run: npx playwright test
+
+  # One job per Playwright project instead of one job running all 8: the full matrix on a single
+  # 4-vCPU runner over-subscribed it (WebGL/bloom scenes plus screenshot capture across 8
+  # projects), which surfaced as screenshot-capture failures and skewed the fake-clock/postMessage
+  # timing rotator.spec depends on — both CI-only, never reproducing in a low-parallelism local
+  # run. Sharding by project keeps each runner's load light and the wall-clock time down, since
+  # shards run on separate runners in parallel rather than queueing on one.
+  test:
+    name: Playwright (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - chromium-1920x1080@1
+          - chromium-1920x1080@2
+          - webkit-1920x1080@1
+          - webkit-1920x1080@2
+          - chromium-2560x1440
+          - webkit-2560x1440
+          - chromium-1440x900
+          - webkit-1440x900
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: lts/*
+          cache: npm
+      - run: npm ci
+      - run: node scripts/vendor-three.mjs
+      - run: npx playwright install --with-deps "$(cut -d- -f1 <<< '${{ matrix.project }}')"
+      - run: npx playwright test --project="${{ matrix.project }}"
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: screenshots
+          name: screenshots-${{ matrix.project }}
           path: test-results/
           retention-days: 14

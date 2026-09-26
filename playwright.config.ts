@@ -8,6 +8,9 @@ const wallUrl = process.env.WALL_URL;
 export default defineConfig({
   testDir: 'tests',
   timeout: 60_000,
+  // ci.yml runs one Playwright project per job (its own runner) instead of the full 8-project
+  // matrix on one runner — that's what fixed the resource contention (see ci.yml). Each shard's
+  // ~40 tests still get the CPU-based default worker count, same as a local run.
   use: {
     baseURL: wallUrl || 'http://127.0.0.1:4173',
     viewport: { width: 1920, height: 1080 },
