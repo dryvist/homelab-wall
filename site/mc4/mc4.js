@@ -5,7 +5,7 @@
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import { clamp, hue, esc, loadConfig, setState, loop, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge } from '/lib/stage.js';
-import { sampleAppScore } from '/lib/sampleData.js';
+import { sampleAppScore, SAMPLE_ACQ_CARDS, SAMPLE_LIBRARY_CARDS } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -53,10 +53,14 @@ function renderApps() {
 function card(title, note) {
   return `<div class="card"><div class="ct">${esc(title)}</div><div class="cn">${esc(note)}</div></div>`;
 }
-$('acqbody').innerHTML = [card('QBITTORRENT', 'DOWNLOAD CLIENT EXPORTER PENDING'), card('VPN TUNNEL', 'DOWNLOAD-VPN EXPORTER PENDING')].join('');
-$('pipebody').innerHTML = [card('PLEX', 'MEDIA SERVER EXPORTER PENDING'), card('ARR STACK', 'ARR EXPORTER PENDING'), card('LIBRARY STORAGE', 'LIBRARY STORAGE METRICS PENDING')].join('');
+// No download-client/library exporter exists yet — fixed sample cards, badged, replace the
+// single "EXPORTER PENDING" line each panel used to show. Never written into any live model.
+$('acqbody').innerHTML = SAMPLE_ACQ_CARDS.map((c) => card(c.title, c.note)).join('');
+$('pipebody').innerHTML = SAMPLE_LIBRARY_CARDS.map((c) => card(c.title, c.note)).join('');
 setState($('acq'), 'pending', 'DOWNLOAD CLIENT EXPORTER PENDING');
 setState($('pipe'), 'pending', 'MEDIA LIBRARY EXPORTER PENDING');
+setSampleBadge($('acq'), true);
+setSampleBadge($('pipe'), true);
 $('vpn').textContent = 'VPN EXPORTER PENDING';
 
 /* ---------------- decorative core (acquisition flow, ambient only) ---------------- */

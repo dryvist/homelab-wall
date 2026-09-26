@@ -1,4 +1,4 @@
-// Synthetic data only — never recorded from a real system.
+// Fake data only — never captured from a real system.
 import type { Page, Route } from '@playwright/test';
 import { sampleAppScore } from '../site/lib/sampleData.js';
 

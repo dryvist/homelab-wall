@@ -1,3 +1,12 @@
 export declare const sampleAppScore: (i: number) => number;
 export declare const SAMPLE_STORAGE: ReadonlyArray<{ host: string; name: string; size: number; used: number }>;
 export declare const SAMPLE_LLM: ReadonlyArray<{ n: string; state: number; tok: number; hist: number[] }>;
+export declare const SAMPLE_WAN: ReadonlyArray<{ name: string; down: number; up: number; latency: number }>;
+export declare const SAMPLE_BLOCKED: ReadonlyArray<{ time: string; flag: string; country: string; source: string; reason: string; ago: string }>;
+export declare const SAMPLE_ALLOWED: ReadonlyArray<{ time: string; action: string; proto: string; desc: string; dest: string; ago: string }>;
+export declare const SAMPLE_THREAT_STATS: { blockedToday: number; uniqueSources: number };
+export declare const SAMPLE_ACQ_CARDS: ReadonlyArray<{ title: string; note: string }>;
+export declare const SAMPLE_LIBRARY_CARDS: ReadonlyArray<{ title: string; note: string }>;
+export declare const SAMPLE_GITHUB_ROWS: ReadonlyArray<{ repo: string; status: string; ago: string }>;
+export declare const SAMPLE_INFRA_ROWS: ReadonlyArray<{ name: string; status: string; ago: string }>;
+export declare const SAMPLE_ACTIVITY_ROWS: ReadonlyArray<{ text: string; ago: string }>;

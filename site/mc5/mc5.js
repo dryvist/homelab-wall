@@ -4,7 +4,7 @@
 import { query } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import { clamp, hue, esc, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge } from '/lib/stage.js';
-import { sampleAppScore } from '/lib/sampleData.js';
+import { sampleAppScore, SAMPLE_GITHUB_ROWS, SAMPLE_INFRA_ROWS, SAMPLE_ACTIVITY_ROWS } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e', '#ff3b5c'];
@@ -130,10 +130,16 @@ function drawPipeline(canvas) {
 setState($('github'), 'pending', 'GITHUB ACTIONS FEED PENDING');
 setState($('infra'), 'pending', 'TERRAKUBE / SEMAPHORE FEED PENDING');
 setState($('activity'), 'pending', 'PIPELINE EVENT FEED PENDING');
-$('github').querySelector('.body').innerHTML = '<div class="pending-row">no CI/CD Prometheus exporter yet</div>';
-$('infra').querySelector('.body').innerHTML = '<div class="pending-row">no Terrakube/Semaphore Prometheus exporter yet</div>';
-$('activity').querySelector('.body').innerHTML = '<div class="pending-row">no pipeline event feed yet</div>';
+// No CI/CD, Terrakube/Semaphore, or pipeline-event exporter exists yet — fixed sample rows,
+// badged, replace each panel's single "pending" line. Never written into any live model.
+$('github').querySelector('.body').innerHTML = SAMPLE_GITHUB_ROWS.map((r) => `<div class="pending-row">${esc(r.repo)} &middot; ${esc(r.status)} &middot; ${esc(r.ago)} ago</div>`).join('');
+$('infra').querySelector('.body').innerHTML = SAMPLE_INFRA_ROWS.map((r) => `<div class="pending-row">${esc(r.name)} &middot; ${esc(r.status)} &middot; ${esc(r.ago)} ago</div>`).join('');
+$('activity').querySelector('.body').innerHTML = SAMPLE_ACTIVITY_ROWS.map((r) => `<div class="pending-row">${esc(r.text)} &middot; ${esc(r.ago)} ago</div>`).join('');
+setSampleBadge($('github'), true);
+setSampleBadge($('infra'), true);
+setSampleBadge($('activity'), true);
 setState($('pipeline'), 'pending', 'STAGE STATUS FEED PENDING');
+setSampleBadge($('pipeline'), true);
 fitCanvas($('pipeline'), $('pipecanvas'), () => drawPipeline($('pipecanvas')));
 fitCanvas($('apps'), $('appgrid'), drawAppGrid);
 

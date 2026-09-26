@@ -6,7 +6,7 @@ import {
   SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge,
 } from '/lib/stage.js';
 import { lastGoodGet, lastGoodSet } from '/lib/lastGood.js';
-import { sampleAppScore, SAMPLE_STORAGE, SAMPLE_LLM } from '/lib/sampleData.js';
+import { sampleAppScore, SAMPLE_STORAGE, SAMPLE_LLM, SAMPLE_WAN, SAMPLE_BLOCKED, SAMPLE_ALLOWED } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -431,14 +431,20 @@ if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
 }
 
 /* ---------------- firewall + WAN (feed arrives with the Splunk app) ---------------- */
-$('blkrows').innerHTML = '<div class="pending" style="padding:14px">edge block feed pending</div>';
-$('fwrows').innerHTML = '<div class="pending" style="padding:14px">flow feed pending</div>';
+// No Splunk edge-block/flow feed exists yet — fixed sample rows, badged (setSampleBadge in
+// renderStatic below), stand in for the single "pending" line. Never written into `model`.
+$('blkrows').innerHTML = SAMPLE_BLOCKED.map((b) => `<div class="br"><span>${esc(b.time)}</span><span class="f">${b.flag}</span><span class="cc">${esc(b.country)}</span><span>${esc(b.source)}</span><span class="why">${esc(b.reason)}</span><span class="d">${esc(b.ago)} ago</span></div>`).join('');
+$('fwrows').innerHTML = SAMPLE_ALLOWED.map((f) => `<div class="fr ${f.action}"><span>${esc(f.time)}</span><span class="a">${esc(f.action.toUpperCase())}</span><span>${esc(f.proto)}</span><span>${esc(f.desc)}</span><span>${esc(f.dest)}</span><span class="d">${esc(f.ago)} ago</span></div>`).join('');
 
 /* ---------------- boot ---------------- */
 function renderStatic() {
   buildNodes(); renderHeader(); renderStorage(); renderLlm(); updateLabels();
   setState($('nodes'), 'pending', 'NO GPU EXPORTER');
   setState($('topo'), 'pending', 'WAN EXPORTER PENDING');
+  // No WAN exporter exists yet — a fixed sample readout, badged, replaces the topology panel's
+  // single "pending" line. Never written into `model`, so nothing here is mistaken for live data.
+  $('wan').innerHTML = SAMPLE_WAN.map((w) => `${w.name} &darr;<b>${w.down}</b> / &uarr;<b>${w.up}</b> Mbps &middot; <b>${w.latency}</b>ms`).join('<br>');
+  setSampleBadge($('topo'), true);
   // D5: an app with no Gatus series at all is "no data" for that one cell (see drawHex/appsum),
   // never reason to pend the whole panel — only a total scoring failure does.
   // A query that failed outright (settle() -> null) is 'error', never silently "no data".
@@ -451,6 +457,7 @@ function renderStatic() {
   setState($('storage'), model.storageFailed ? 'error' : model.storage.length ? 'ok' : 'empty',
     model.storageFailed ? 'STORAGE QUERY FAILED' : model.storage.length ? '' : 'STORAGE METRICS EMPTY');
   setState($('fw'), 'pending', 'SPLUNK FEED PENDING');
+  setSampleBadge($('fw'), true);
   setState($('llm'), model.llmFailed ? 'error' : model.llm.length ? 'ok' : 'pending',
     model.llmFailed ? 'ROUTER QUERY FAILED' : model.llm.length ? '' : 'ROUTER METRICS PENDING');
   const up = model.nodes.filter((n) => !n.pending).length;

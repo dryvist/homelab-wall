@@ -5,7 +5,7 @@
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import { hardwareGL, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, setSampleBadge } from '/lib/stage.js';
-import { sampleAppScore } from '/lib/sampleData.js';
+import { sampleAppScore, SAMPLE_THREAT_STATS } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -48,6 +48,12 @@ function renderApps() {
 
 /* ---------------- threat panel (pending: no edge/geoip metrics exist yet) ---------------- */
 setState($('threat'), 'pending', 'EDGE BLOCK FEED PENDING');
+// No edge/geoip feed exists yet — fixed sample stats, badged, replace the "PENDING" placeholders.
+// Never written into any live model.
+document.querySelectorAll('#tstats div b').forEach((b, i) => {
+  b.textContent = i === 0 ? String(SAMPLE_THREAT_STATS.blockedToday) : String(SAMPLE_THREAT_STATS.uniqueSources);
+});
+setSampleBadge($('threat'), true);
 
 // ponytail: duplicated (not imported) from the in-flight fluid rewrite of site/lib/stage.js
 // (fix/mc1-layout-feedback-loop, not yet on develop) — this lane doesn't touch that file.
