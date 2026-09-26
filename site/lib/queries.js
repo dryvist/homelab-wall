@@ -35,6 +35,10 @@ export const Q = {
   nodeUptime: `time() - node_boot_time_seconds{${NODE}}`,
   fsSize: `node_filesystem_size_bytes{${FS}}`,
   fsAvail: `node_filesystem_avail_bytes{${FS}}`,
+  // Per-VLAN firewall event rate (apps PR #2214: a Cribl pipeline on the UniFi syslog source
+  // derives this from the br<N> interface). Empty until that pipeline deploys — mc1.js falls
+  // back to sample VLAN bubbles (site/lib/sampleData.js) until real series exist.
+  vlanFwRate: 'sum by (vlan) (rate(unifi_vlan_fw_events_total[5m]))',
   llmState: 'max by (litellm_model_name) (litellm_deployment_state)',
   llmTokRate: 'sum by (model) (rate(litellm_output_tokens_metric_total[5m]))',
   // mc3

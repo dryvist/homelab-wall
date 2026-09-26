@@ -4,12 +4,16 @@
   grid-template-rows:auto minmax(0,1fr);gap:clamp(6px,1vmin,14px);padding:clamp(8px,1.3vmin,16px) clamp(9px,1.5vmin,18px);
   box-sizing:border-box;background:radial-gradient(1200px 700px at 50% 45%,#2a1604 0%,var(--void) 70%)}
 
-.bgvis{position:absolute;inset:0;width:100%;height:100%;z-index:0;opacity:.55}
-
 header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:center;gap:clamp(12px,2vmin,26px);padding:0 clamp(4px,1vmin,10px)}
 .brand{font:700 clamp(16px,2.4vmin,30px)/1 var(--disp);letter-spacing:.14em;color:#fff;text-shadow:0 0 18px rgba(255,179,71,.55)}
 .brand .acc{color:var(--amber)}
-.vpn{flex:1;text-align:center;font:600 clamp(9px,1.1vmin,13px) var(--mono);letter-spacing:.1em;color:var(--dim)}
+/* Bigger and real (not a single faint line): the connection state is the headline, the detail
+   line secondary — legibility the live-wall finding explicitly called out as missing. */
+.vpn{font:700 clamp(13px,1.6vmin,18px)/1.5 var(--disp);letter-spacing:.06em;color:#fff;white-space:nowrap}
+.appstrip{flex:1;min-width:0;overflow:hidden}
+.appstrip h2{margin:0;font:600 clamp(9px,1vmin,13px)/1 var(--disp);letter-spacing:.18em;text-transform:uppercase;
+  color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.appstrip h2 span{margin-left:12px;letter-spacing:.05em}
 .clock{text-align:right;font:600 clamp(18px,2.6vmin,34px)/1 var(--disp);color:#fff}
 .clock small{display:block;font:400 clamp(8px,.9vmin,11px)/1.6 var(--mono);color:var(--dim);letter-spacing:.2em}
 
@@ -17,7 +21,9 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
   background:linear-gradient(180deg,rgba(30,16,4,.82),rgba(8,5,2,.85));border:1px solid rgba(255,179,71,.35);
   clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
 #acq{grid-column:1}
-#apps{grid-column:2}
+#core{grid-column:2;padding:0}
+#core h2{position:absolute;left:0;top:0;z-index:2;background:transparent;border:none}
+#corecanvas{width:100%;height:100%;display:block}
 #pipe{grid-column:3}
 
 .mc4 .panel>h2{margin:0;padding:clamp(6px,.9vmin,10px) clamp(10px,1.4vmin,16px) clamp(4px,.6vmin,7px);
@@ -26,18 +32,12 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
 .mc4 .panel>h2 span{color:var(--dim);letter-spacing:.1em}
 .mc4 .panel [data-panel-message]{color:var(--amber);font:600 9px/1 var(--mono);letter-spacing:.1em;white-space:nowrap}
 
-.cardbody,.rows{flex:1;min-height:0;overflow:auto;padding:clamp(6px,1vmin,12px) clamp(8px,1.2vmin,14px);
-  display:flex;flex-direction:column;gap:clamp(10px,1.6vmin,20px)}
-.cardbody{justify-content:center}
-.rows{justify-content:flex-start;gap:0}
+.cardbody{flex:1;min-height:0;overflow:auto;padding:clamp(6px,1vmin,12px) clamp(8px,1.2vmin,14px);
+  display:flex;flex-direction:column;gap:clamp(10px,1.6vmin,20px);justify-content:center}
 
-.card{border:1px solid rgba(255,179,71,.3);background:rgba(20,10,2,.4);padding:clamp(6px,1vmin,12px) clamp(8px,1.2vmin,14px);
+/* Legible download-client/library cards: bigger headline numbers, not tiny faint text
+   (the live-wall finding) — .ct/.cn sizes bumped from the pre-hero-scene layout. */
+.card{border:1px solid rgba(255,179,71,.3);background:rgba(20,10,2,.4);padding:clamp(8px,1.2vmin,14px) clamp(10px,1.4vmin,16px);
   clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
-.card .ct{font:600 clamp(8px,.9vmin,11px) var(--disp);letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:6px}
-.card .cn{color:var(--faint);letter-spacing:.16em;text-transform:uppercase;font-size:clamp(8px,.85vmin,11px)}
-
-.ar{display:grid;grid-template-columns:1fr minmax(50px,1fr) 28px;align-items:center;gap:8px;padding:3px 0;font-size:clamp(9px,1vmin,12px)}
-.ar span:first-child{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.ar .bar{height:6px;background:#2a1604;position:relative;overflow:hidden}
-.ar .bar div{position:absolute;inset:0 auto 0 0}
-.ar .v{text-align:right;color:var(--dim)}
+.card .ct{font:600 clamp(11px,1.2vmin,14px) var(--disp);letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:8px}
+.card .cn{color:var(--faint);letter-spacing:.1em;font-size:clamp(11px,1.2vmin,15px);line-height:1.5}

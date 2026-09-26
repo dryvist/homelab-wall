@@ -8,6 +8,9 @@ const wallUrl = process.env.WALL_URL;
 export default defineConfig({
   testDir: 'tests',
   timeout: 60_000,
+  // ci.yml runs one Playwright project per job (its own runner) instead of the full 8-project
+  // matrix on one runner — that's what fixed the resource contention (see ci.yml). Each shard's
+  // ~40 tests still get the CPU-based default worker count, same as a local run.
   use: {
     baseURL: wallUrl || 'http://127.0.0.1:4173',
     viewport: { width: 1920, height: 1080 },
@@ -19,14 +22,20 @@ export default defineConfig({
   // Chromium-only suite has missed real regressions there. Both engines run at the Mac Studio's
   // own size (1920x1080) at DPR 1 and 2 (the WebKit growth bug only showed at DPR 2); the two
   // other sizes each get one project per engine to keep the matrix lean.
+  //
+  // Chromium projects only get `--disable-dev-shm-usage`: the MC2/MC4 WebGL+bloom scenes fill
+  // Chromium's default 64MB /dev/shm inside the GH Actions container, surfacing as a
+  // page.screenshot Protocol error ("Unable to capture screenshot") on exactly those pages —
+  // never locally, where /dev/shm is much larger. WebKit doesn't take Chromium flags, so this
+  // must stay scoped to the Chromium projects, not the shared `use` block above.
   projects: [
-    { name: 'chromium-1920x1080@1', use: { ...devices['Desktop Chrome'], viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 } },
-    { name: 'chromium-1920x1080@2', use: { ...devices['Desktop Chrome'], viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 2 } },
+    { name: 'chromium-1920x1080@1', use: { ...devices['Desktop Chrome'], viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1, launchOptions: { args: ['--disable-dev-shm-usage'] } } },
+    { name: 'chromium-1920x1080@2', use: { ...devices['Desktop Chrome'], viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 2, launchOptions: { args: ['--disable-dev-shm-usage'] } } },
     { name: 'webkit-1920x1080@1', use: { ...devices['Desktop Safari'], viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 } },
     { name: 'webkit-1920x1080@2', use: { ...devices['Desktop Safari'], viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 2 } },
-    { name: 'chromium-2560x1440', use: { ...devices['Desktop Chrome'], viewport: { width: 2560, height: 1440 } } },
+    { name: 'chromium-2560x1440', use: { ...devices['Desktop Chrome'], viewport: { width: 2560, height: 1440 }, launchOptions: { args: ['--disable-dev-shm-usage'] } } },
     { name: 'webkit-2560x1440', use: { ...devices['Desktop Safari'], viewport: { width: 2560, height: 1440 } } },
-    { name: 'chromium-1440x900', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
+    { name: 'chromium-1440x900', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, launchOptions: { args: ['--disable-dev-shm-usage'] } } },
     { name: 'webkit-1440x900', use: { ...devices['Desktop Safari'], viewport: { width: 1440, height: 900 } } },
   ],
   webServer: wallUrl ? undefined : {

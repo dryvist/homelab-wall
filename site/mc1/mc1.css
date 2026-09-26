@@ -59,6 +59,8 @@ header{grid-column:1/-1;min-width:0;min-height:0;overflow:hidden;display:flex;al
 #wan{top:40px;left:14px;width:300px}
 #wan canvas{width:300px;height:70px;display:block}
 #wan b{color:var(--ink);font-weight:600}
+#vlans{top:118px;left:14px;width:300px;line-height:1.8}
+#vlans b{color:var(--ink);font-weight:600}
 #fstats{top:40px;right:14px;text-align:right;line-height:1.8}
 #fstats b{color:#fff;font:600 16px var(--disp);margin-left:8px}
 .lr{display:grid;grid-template-columns:12px 1fr 58px 56px 58px;gap:6px;align-items:center;font-size:11px;color:var(--ink);line-height:1.7}

@@ -27,7 +27,10 @@ export const SCORE_DEGRADED_MIN = 5;
 export const scorePct = (s) => (s ?? 0) * 10;
 
 // Toggle a panel's "SAMPLE DATA" badge — only while that panel is rendering site/lib/sampleData.js
-// content in place of a real source that has nothing yet; never alongside real data.
+// content in place of a real source that returned genuinely nothing this poll (a query that
+// SUCCEEDED with zero rows); never alongside real data. This one stays visible: it's reporting on
+// a live feed that happens to be empty right now, so the operator can tell a real "no data" apart
+// from a real value.
 export function setSampleBadge(panel, on) {
   let badge = panel.querySelector('[data-sample-badge]');
   if (on && !badge) {
@@ -39,6 +42,17 @@ export function setSampleBadge(panel, on) {
   } else if (!on && badge) {
     badge.remove();
   }
+}
+
+// Marks an element (a whole panel, or one sub-element inside an otherwise-real panel, e.g. mc1's
+// WAN overlay inside the real topology graph) as showing stand-in visuals for a feed that has NO
+// live source wired up AT ALL — as opposed to setSampleBadge's "a live query came back empty".
+// Deliberately invisible on the rendered page (a `data-source` attribute only, no on-screen
+// badge/"PENDING" text) so a stand-in panel reads as a normal, finished part of the wall; it never
+// overrides a live signal — nothing that has a real feed ever gets marked this way, live or down.
+export function setStandIn(el, on) {
+  if (on) el.dataset.source = 'stand-in';
+  else delete el.dataset.source;
 }
 
 // The page has no fixed design surface: the stage is 100vw x 100dvh (wall.css) and every grid
@@ -135,17 +149,22 @@ window.addEventListener('message', (e) => {
   else if (e.data?.wall === 'active') setIdle(false);
 });
 
-// requestAnimationFrame capped at `fps` (never above 30), paused while idle
-// (see above) and disposed on pagehide. Posts {wall:'ready'} to the parent
-// frame once its first frame has painted, for the rotator's G3 probe.
+// Posts {wall:'ready'} to the parent frame once, for the rotator's probe (site/rotator/rotator.js
+// buildLayers()) — a same-origin slide proves itself alive this way. loop() below calls it after
+// its first painted frame; a page with no continuous render loop (e.g. mc5, which redraws only on
+// data refresh/resize) calls it directly instead, right after its first synchronous paint.
+let signaled = false;
+export function signalReady() {
+  if (signaled) return;
+  signaled = true;
+  try { window.parent?.postMessage({ wall: 'ready' }, location.origin); } catch { /* no parent to tell */ }
+}
+
+// requestAnimationFrame capped at `fps` (never above 30), paused while idle (see above) and
+// disposed on pagehide.
 export function loop(fps, fn) {
   const min = 1000 / Math.min(fps, 30);
-  let last = 0, handle = null, signaled = false;
-  const signalReady = () => {
-    if (signaled) return;
-    signaled = true;
-    try { window.parent?.postMessage({ wall: 'ready' }, location.origin); } catch { /* no parent to tell */ }
-  };
+  let last = 0, handle = null;
   const tick = (now) => {
     handle = null;
     if (idle) return; // wake() restarts the rAF chain once active again
