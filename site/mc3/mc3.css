@@ -82,8 +82,18 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
 /* max-height as a viewport unit, not a %: a percentage here resolves against the grid row's
    auto-sized (content-dependent) height, which is circular and clipped the 4th (queue/latency)
    line silently — overflow:auto with no visible scrollbar, so the row just vanished. */
-.modeltab{align-self:end;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:clamp(8px,1vmin,12px);
-  padding:clamp(8px,1.2vmin,14px);max-height:clamp(160px,28vh,280px);overflow:auto}
+/* Column count is set inline per-render (mc3.js) to an explicit repeat(N,1fr) — never
+   auto-fit's width-based wrap, which orphaned a lone tile onto a second row at N=8. Always one
+   row, so the band's height (and how much of the hero scene below it covers) stays fixed
+   regardless of model count. */
+.modeltab{align-self:end;display:grid;gap:clamp(6px,.8vmin,10px);
+  padding:clamp(8px,1.2vmin,14px);max-height:clamp(110px,16vh,160px);overflow:auto}
+/* Dense mode (>5 models sharing the one row): smaller type and padding so narrow columns stay
+   legible instead of clipping/wrapping. */
+.modeltab.dense .mc{padding:6px 8px 8px}
+.modeltab.dense .mch{font-size:clamp(9px,.9vmin,11px)}
+.modeltab.dense .mctok{font-size:clamp(16px,2.2vmin,22px)}
+.modeltab.dense .mcstats{font-size:clamp(8px,.75vmin,9px);gap:6px}
 .mc{border:1px solid rgba(255,79,216,.3);background:rgba(20,6,26,.6);padding:10px 14px 12px;
   clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
 .mch{display:flex;justify-content:space-between;gap:8px;font:600 clamp(11px,1.1vmin,13px) var(--disp)}

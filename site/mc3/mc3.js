@@ -157,7 +157,13 @@ function renderCore() {
   const list = sample ? SAMPLE_LLM.map((m) => ({ n: m.n, up: m.state < 2, tok: m.tok })) : model.models;
   reactorList = list;
   list.forEach((m) => pushHist(m.n, m.tok));
-  $('modeltab').innerHTML = list.map((m) => {
+  const tab = $('modeltab');
+  // One row, always: an explicit column count (not auto-fit's width-based wrap) so N models
+  // never orphan a lone tile onto a second row. Compact type kicks in once the row is dense
+  // enough that auto-fit's old 200px-min columns would have wrapped anyway.
+  tab.style.gridTemplateColumns = `repeat(${Math.max(list.length, 1)},minmax(0,1fr))`;
+  tab.classList.toggle('dense', list.length > 5);
+  tab.innerHTML = list.map((m) => {
     const col = m.up ? (m.tok > 0.05 ? 'var(--green)' : 'var(--cyan)') : 'var(--red)';
     const status = m.up ? 'tok/s' : 'health check failing';
     const { queue, p50 } = standInQueueLatency(m);
