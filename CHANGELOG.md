@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/dryvist/homelab-wall/compare/v0.7.1...v0.7.2) (2026-09-26)
+
+
+### Bug Fixes
+
+* **rotator:** reload once an hour ([#51](https://github.com/dryvist/homelab-wall/issues/51)) ([7fec07d](https://github.com/dryvist/homelab-wall/commit/7fec07dc193b97c1f4d218f8f1f5648cc5e753f4))
+
 ## [0.7.1](https://github.com/dryvist/homelab-wall/compare/v0.7.0...v0.7.1) (2026-09-26)
 
 
