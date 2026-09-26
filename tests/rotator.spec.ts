@@ -238,6 +238,58 @@ for (const size of [{ width: 1280, height: 720 }, { width: 2560, height: 1440 }]
   });
 }
 
+// Track: self-heal — a reload must never navigate into a dead origin. The preflight fetch in
+// scheduleReload() targets the exact page URL, so intercepting only fetch-type requests to '/'
+// (never the 'document' request of the initial page.goto) lets the origin "go down" without
+// breaking the mocked navigation that already happened.
+test('reload preflight blocks navigation on a 500 and proceeds once the origin recovers', async ({ page }) => {
+  await page.clock.install();
+  await mockSlides(page);
+  // This test is about the preflight fetch in rotator.js, not the service worker (covered
+  // separately below) — registering one anyway means its install-time fetch (site/sw.js hashing
+  // rotator.js) runs concurrently in the background and races the preflight's own fetch to '/',
+  // which is flaky specifically under WebKit. Blocking /sw.js keeps the registration a no-op
+  // (register() rejects, caught and ignored by rotator.js) so no such background work ever starts.
+  await page.route('**/sw.js', (route) => route.abort());
+  let preflightRequests = 0;
+  let healthy = false;
+  await page.route((url) => url.pathname === '/', (route) => {
+    if (route.request().isNavigationRequest()) return route.continue();
+    preflightRequests += 1;
+    if (!healthy) return route.fulfill({ status: 500, body: 'origin down' });
+    return route.continue();
+  });
+
+  await page.goto('/?reloadms=10000');
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-a');
+  await page.evaluate(() => { (window as any).__marker = 'alive'; });
+
+  await page.clock.fastForward(10_000); // reload timer fires; preflight gets a 500
+  await expect.poll(() => preflightRequests).toBeGreaterThan(0);
+  expect(await markerGone(page)).toBe(false); // did not navigate away
+
+  healthy = true;
+  await page.clock.fastForward(60_000); // RELOAD_RETRY_MS
+  await expect.poll(() => markerGone(page)).toBe(true); // now reloads
+});
+
+// Track: self-heal — the service worker must keep the kiosk shell bootable through an outage even
+// when nothing else is running (e.g. a human presses Reload mid-outage). Service-worker request
+// interception is flaky enough across engines that this is scoped to Chromium, mirroring the
+// existing CDP-only heap test below.
+test('service worker serves the cached shell when the origin returns 500 on navigation', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'service worker fetch interception is exercised on Chromium only');
+  await mockSlides(page);
+  await page.goto('/');
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-a');
+  await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+
+  await page.route((url) => url.pathname === '/', (route) => route.fulfill({ status: 500, body: 'origin down' }));
+  await page.reload();
+  await expect(page.locator('script[src="/rotator/rotator.js"]')).toHaveCount(1);
+  await expect(page.locator('#layers')).toBeAttached();
+});
+
 // Track R4: the persistent-iframe model (Track R2) replaced a per-rotation create/destroy of
 // two iframes' render contexts with one context per slide held for the page's whole life — the
 // growth check this test makes is exactly the thing that change was for. `?fast=` (this file
