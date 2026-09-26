@@ -60,9 +60,11 @@ function statCard(title, rows) {
   return `<div class="card"><div class="ct">${esc(title)}</div><div class="qgrid">${rows.map(([v, l, c]) => `<div><b class="num${c ? ` ${c}` : ''}">${esc(v)}</b><span>${esc(l)}</span></div>`).join('')}</div></div>`;
 }
 
-// A handful of generic in-progress items (never a real filename) drive both the QBITTORRENT
-// summary numerals and the TORRENTS list below — one shared array, like the sketch's own `tor`.
-const TORRENT_NAMES = ['collection.s01e04', 'archive-part-07', 'release.pack.2160p', 'media-item-12', 'bundle-vol-03', 'image-mirror-01', 'open-source.iso', 'restore-set-02', 'archive-part-11', 'linux-distro.iso'];
+// A handful of in-progress items drive both the QBITTORRENT summary numerals and the TORRENTS
+// list below — one shared array, like the sketch's own `tor`. Names are real public-domain films
+// (Blender Foundation open movies, a public-domain classic) and generic Linux ISOs, same mix the
+// sketch itself uses — never an invented-looking placeholder string.
+const TORRENT_NAMES = ['Sintel.2010.4K', 'Big.Buck.Bunny.2008.2160p', 'Tears.of.Steel.2012.1080p', 'Cosmos.Laundromat.2015', 'Spring.2019.4K', 'Night.of.the.Living.Dead.1968', 'ubuntu-24.04-desktop-amd64.iso', 'debian-13.2-netinst.iso', 'archlinux-2026.09.01.iso', 'fedora-42-workstation.iso'];
 const TORRENTS = TORRENT_NAMES.map((n, i) => ({ n, seed: i % 3 === 0, ratio: 0.3 + ((i * 37) % 100) / 25 }));
 const downAt = (t) => clamp(42 + Math.sin(t / 4) * 28 + (Math.sin(t * 1.7) * 0.5) * 10, 2, 100);
 const upAt = (t) => clamp(9 + Math.sin(t / 6 + 1) * 6 + Math.sin(t * 2.3) * 4, 0.5, 30);
@@ -103,9 +105,9 @@ function renderLibraryStorage() {
   return `<div class="card"><div class="ct">LIBRARY STORAGE</div><div class="lbig"><b>${LIBRARY.used}</b><i> / ${LIBRARY.total} TB · ${pct}%</i></div>${rows}</div>`;
 }
 
-// PLEX card: figures ported 1:1 from the sketch (it hardcodes these too) plus 3 generic "now
-// playing" lines — never a real media title.
-const PLEX_STREAMS = [['Feature film A', '4K direct', 'living room'], ['Feature film B', '1080p transcode', 'phone'], ['Feature film C', '4K HDR', 'office']];
+// PLEX card: figures and "now playing" titles ported 1:1 from the sketch (it hardcodes these
+// too) — real public-domain films, never an invented-looking placeholder string.
+const PLEX_STREAMS = [['Sintel', '4K direct', 'living room'], ['Tears of Steel', '1080p transcode', 'phone'], ['Big Buck Bunny', '4K HDR', 'office']];
 function renderPlex() {
   const rows = PLEX_STREAMS.map(([t, q, w]) => `<div>▶ ${esc(t)} · ${esc(q)} · ${esc(w)}</div>`).join('');
   return `<div class="card"><div class="ct">PLEX</div><div class="p3grid"><div><b>3</b><span>streams</span></div><div><b>1</b><span>transcode</span></div><div><b>85</b><span>Mb/s out</span></div></div><div class="pstreams">${rows}</div></div>`;
@@ -123,9 +125,9 @@ function renderArrStack() {
   return `<div class="card"><div class="ct">ARR STACK</div><div class="agrid">${rows}</div></div>`;
 }
 
-// Recently-added poster strip (sketch scene 125's bottom band): generic gradient cards, never a
-// real media title.
-const POSTER_TITLES = ['Feature film A', 'Feature film B', 'Series C', 'Series D', 'Feature film E', 'Feature film F', 'Series G', 'Feature film H'];
+// Recently-added poster strip: the sketch's own 8 titles, verbatim — all real public-domain
+// Blender Foundation films.
+const POSTER_TITLES = ['Sintel', 'Big Buck Bunny', 'Tears of Steel', 'Spring', 'Cosmos Laundromat', 'Agent 327', 'Caminandes', 'Charge'];
 function renderPosters(now) {
   const cards = POSTER_TITLES.map((p, i) => {
     const age = Math.round(1 + ((now / (9 + i)) % 1) * 47);

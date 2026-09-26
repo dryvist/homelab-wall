@@ -37,13 +37,7 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
 .colR .cardbody{transform:perspective(1200px) rotateY(-10deg);transform-origin:right center}
 
 .panel-frameless{background:none;border:none}
-/* position:relative is load-bearing: #core h2 below is position:absolute;left:0;top:0, and
-   without a positioned ancestor here it resolves against the viewport instead of this panel,
-   landing on top of the page header (the bug a visual regression check caught). */
 #core{grid-column:2;grid-row:2;position:relative;z-index:1;padding:0}
-#core h2{position:absolute;left:0;top:0;z-index:2;background:transparent;border:none;margin:0;
-  padding:clamp(6px,.9vmin,10px) clamp(10px,1.4vmin,16px) clamp(4px,.6vmin,7px);
-  font:600 clamp(10px,1.1vmin,13px)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--amber)}
 
 /* Full sketch contrast: headline numbers in --ink (near-white) or a status colour, never the
    near-black --faint token a card's text previously used — that read as dim/broken, not live.
