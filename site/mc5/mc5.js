@@ -4,7 +4,7 @@
 import { query } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import { clamp, hue, esc, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge, onDispose } from '/lib/stage.js';
-import { sampleAppScore, SAMPLE_GITHUB_ROWS, SAMPLE_INFRA_ROWS, SAMPLE_ACTIVITY_ROWS } from '/lib/sampleData.js';
+import { sampleAppScore, SAMPLE_GITHUB_ROWS, SAMPLE_INFRA_ROWS, SAMPLE_ACTIVITY_ROWS, SAMPLE_REPO_COUNT } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e', '#ff3b5c'];
@@ -43,8 +43,10 @@ async function refresh() {
     for (const a of apps) if (!seen.has(a.n)) a.s = null;
   }
   model.updated = Date.now();
-  renderHeader();
+  // renderApps() computes appsSample (the shared-score fallback flag) before renderHeader()
+  // reads it for the estate ring.
   renderApps();
+  renderHeader();
 }
 
 /* ---------------- header ---------------- */
@@ -61,9 +63,10 @@ function ring(el, score) {
 }
 function renderHeader() {
   const scored = apps.filter((a) => a.s != null);
-  const avg = scored.length ? scored.reduce((a, x) => a + x.s, 0) / scored.length : null;
+  const avg = scored.length ? scored.reduce((a, x) => a + x.s, 0) / scored.length
+    : appsSample ? apps.reduce((a, _x, i) => a + sampleAppScore(i), 0) / (apps.length || 1) : null;
   const k = [
-    ['repos', esc((cfg.repoCount ?? '—')), ''],
+    ['repos', esc(cfg.repoCount ?? SAMPLE_REPO_COUNT), ''],
     ['apps', apps.length, ''],
     ['scored', scored.length, `/${apps.length}`],
     ['health', avg != null ? Math.round(avg) : '—', ''],
@@ -83,10 +86,10 @@ function renderApps() {
   const display = apps.map((a, i) => (appsSample ? { n: a.n, s: sampleAppScore(i) } : a));
   const scores = display.map((a) => a.s).filter((s) => s != null);
   const ok = scores.filter((s) => s >= SCORE_OK_MIN).length, warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
-  const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length, unk = appsSample ? 0 : apps.length - scored.length;
-  $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>${unk ? ` · <span style="color:var(--dim)">${unk} NO DATA</span>` : ''}`;
+  const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
+  $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`;
   setSampleBadge($('apps'), appsSample);
-  setState($('apps'), scored.length ? 'ok' : 'empty', scored.length ? '' : 'NO SERVICE DATA');
+  setState($('apps'), scored.length ? 'ok' : 'empty');
   drawAppGrid(display);
 }
 function drawAppGrid(display = apps) {
@@ -129,9 +132,9 @@ function drawPipeline(canvas) {
 }
 
 /* ---------------- boot ---------------- */
-setState($('github'), 'pending', 'GITHUB ACTIONS FEED PENDING');
-setState($('infra'), 'pending', 'TERRAKUBE / SEMAPHORE FEED PENDING');
-setState($('activity'), 'pending', 'PIPELINE EVENT FEED PENDING');
+setState($('github'), 'pending');
+setState($('infra'), 'pending');
+setState($('activity'), 'pending');
 // No CI/CD, Terrakube/Semaphore, or pipeline-event exporter exists yet — fixed sample rows,
 // badged, replace each panel's single "pending" line. Never written into any live model.
 $('github').querySelector('.body').innerHTML = SAMPLE_GITHUB_ROWS.map((r) => `<div class="pending-row">${esc(r.repo)} &middot; ${esc(r.status)} &middot; ${esc(r.ago)} ago</div>`).join('');
@@ -140,7 +143,7 @@ $('activity').querySelector('.body').innerHTML = SAMPLE_ACTIVITY_ROWS.map((r) =>
 setSampleBadge($('github'), true);
 setSampleBadge($('infra'), true);
 setSampleBadge($('activity'), true);
-setState($('pipeline'), 'pending', 'STAGE STATUS FEED PENDING');
+setState($('pipeline'), 'pending');
 setSampleBadge($('pipeline'), true);
 fitCanvas($('pipeline'), $('pipecanvas'), () => drawPipeline($('pipecanvas')));
 fitCanvas($('apps'), $('appgrid'), drawAppGrid);

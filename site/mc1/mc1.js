@@ -7,7 +7,7 @@ import {
   onDispose, onContextLoss, disposeThreeScene,
 } from '/lib/stage.js';
 import { lastGoodGet, lastGoodSet } from '/lib/lastGood.js';
-import { sampleAppScore, SAMPLE_STORAGE, SAMPLE_LLM, SAMPLE_WAN, SAMPLE_BLOCKED, SAMPLE_ALLOWED } from '/lib/sampleData.js';
+import { sampleAppScore, sampleGpuBase, SAMPLE_STORAGE, SAMPLE_LLM, SAMPLE_WAN, SAMPLE_BLOCKED, SAMPLE_ALLOWED } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -151,7 +151,9 @@ function renderHeader() {
   ];
   $('kpis').innerHTML = k.map(([l, v, u]) => `<div class="kpi"><b class="num">${v}<i>${u}</i></b><span>${l}</span></div>`).join('');
   const scored = apps.filter((a) => a.s != null);
-  ring($('estateRing'), scored.length ? scored.reduce((a, x) => a + x.s, 0) / scored.length : null);
+  const avg = scored.length ? scored.reduce((a, x) => a + x.s, 0) / scored.length
+    : appsSample ? apps.reduce((a, _x, i) => a + sampleAppScore(i), 0) / (apps.length || 1) : null;
+  ring($('estateRing'), avg);
   $('subtitle').textContent = `${model.nodes.filter((n) => !n.pending).length} NODES · ${groups.length} GROUPS · ${apps.length} APPS`;
 }
 function ring(el, score) {
@@ -209,18 +211,25 @@ function spark(id, h) {
 }
 function drawNodes() {
   model.nodes.forEach((n, i) => {
+    // A node with no exporter at all (n.pending — an extraNode never wired up) has no cpu/mem/
+    // load either; a plausible animated stand-in replaces the '—' every gauge used to show,
+    // same as the GPU gauge below. Never written into `n`, so it's never mistaken for a reading.
+    const stand = (offset) => sampleGpuBase(i + offset) + Math.sin(performance.now() / 4000 + i + offset) * 6;
     for (const k of ['cpu', 'mem', 'load']) n.d[k] = n[k] == null ? null : lerp(n.d[k] ?? 0, n[k], 0.15);
-    const d = n.d;
-    gauge(`g${i}0`, d.cpu, 100, 'CPU', '%', hue(100 - (d.cpu ?? 0)));
-    gauge(`g${i}1`, d.mem, 100, 'MEM', '%', hue(100 - (d.mem ?? 0)));
-    gauge(`g${i}2`, d.load, n.cores || 1, 'LOAD', '', hue(100 - (d.load ?? 0) / (n.cores || 1) * 100));
-    gauge(`g${i}3`, null, 100, n.pending ? 'PENDING' : 'NO GPU', '%', '#2a4556');
+    const d = n.d, cpu = n.pending ? stand(0) : d.cpu, mem = n.pending ? stand(1) : d.mem, load = n.pending ? stand(2) : d.load;
+    gauge(`g${i}0`, cpu, 100, 'CPU', '%', hue(100 - (cpu ?? 0)));
+    gauge(`g${i}1`, mem, 100, 'MEM', '%', hue(100 - (mem ?? 0)));
+    gauge(`g${i}2`, load, n.cores || 1, 'LOAD', '', hue(100 - (load ?? 0) / (n.cores || 1) * 100));
+    // No GPU exporter exists yet on any node — a plausible animated value, standing in for the
+    // flat gauge this used to show.
+    const gpu = stand(3);
+    gauge(`g${i}3`, gpu, 100, 'GPU', '%', hue(100 - gpu));
     spark(`sp${i}`, n.hist || []);
-    const meta = n.pending ? `${n.role} · exporter pending`
+    const meta = n.pending ? (n.role || 'node')
       : n.stale
-        ? (n.lastSeen == null ? 'NO DATA'
+        ? (n.lastSeen == null ? 'STALE'
           : Date.now() - n.lastSeen < STALE_MS ? `STALE ${ageLabel(n.lastSeen)}`
-          : `NO DATA since ${new Date(n.lastSeen).toTimeString().slice(0, 8)}`)
+          : `STALE since ${new Date(n.lastSeen).toTimeString().slice(0, 8)}`)
         : `${n.role ? n.role + ' · ' : ''}${n.temp != null ? Math.round(n.temp) + '°C · ' : ''}${n.up != null ? 'up ' + Math.floor(n.up / 86400) + 'd' : ''}`;
     const el = $('nm' + i); if (el && el.textContent !== meta) el.textContent = meta;
     const card = $('node' + i); if (card) card.classList.toggle('stale', !!n.stale);
@@ -231,29 +240,27 @@ function drawNodes() {
 
 /* ---------------- storage ---------------- */
 function renderStorage() {
-  // A query that succeeded with zero rows (never storageFailed, which is its own 'error' state)
-  // has genuinely nothing to show yet — render the fixed sample dataset instead of a blank list,
-  // badged, rather than the real (empty) one.
-  const sample = !model.storageFailed && model.storage.length === 0;
+  // A hard query failure (storageFailed) or a query that succeeded with zero rows both have
+  // nothing real to show yet — render the fixed sample dataset instead of a blank list, badged.
+  const sample = model.storage.length === 0;
   const rows = sample ? SAMPLE_STORAGE : model.storage;
   const fmt = (b) => (b >= TB ? (b / TB).toFixed(1) + 'T' : Math.round(b / GB) + 'G');
-  $('strows').innerHTML = rows.length ? rows.map((s) => {
+  $('strows').innerHTML = rows.map((s) => {
     const p = s.used / s.size * 100, col = hue(100 - p);
     return `<div class="st"><span>${esc(s.host)} <em>${esc(s.name)}</em></span><div class="bar"><div style="width:${p}%;background:linear-gradient(90deg,${col.replace('hsl', 'hsla').replace(')', ',.2)')},${col});box-shadow:0 0 10px ${col}"></div></div><span class="v num"><b>${p.toFixed(0)}%</b> ${fmt(s.size)}</span></div>`;
-  }).join('') : '<div class="st pending">storage metrics pending</div>';
+  }).join('');
   const tot = rows.reduce((a, s) => a + s.size, 0), used = rows.reduce((a, s) => a + s.used, 0);
-  $('sttot').textContent = tot ? `${(used / TB).toFixed(1)} / ${(tot / TB).toFixed(1)} TB` : '—';
+  $('sttot').textContent = `${(used / TB).toFixed(1)} / ${(tot / TB).toFixed(1)} TB`;
   setSampleBadge($('storage'), sample);
 }
 
 /* ---------------- LLM panel ---------------- */
 function renderLlm() {
-  // model.llmFailed (its own 'error' state, unaffected here) is a hard query failure; an empty
-  // list is genuinely no data yet — show the fixed sample dataset instead, badged.
-  const sample = !model.llmFailed && !model.llm.length;
+  // A hard query failure (llmFailed) or an empty list both have nothing real to show yet — the
+  // fixed sample dataset (site/lib/sampleData.js) is never empty, so this always has rows.
+  const sample = !model.llm.length;
   const list = sample ? SAMPLE_LLM : model.llm;
   setSampleBadge($('llm'), sample);
-  if (!list.length) { $('llmrows').innerHTML = '<div class="pending">router metrics pending</div>'; $('llmsum').textContent = '—'; return; }
   $('llmrows').innerHTML = list.map((m, i) => {
     const up = m.state < 2, col = m.state === 0 ? (m.tok > 0 ? '#38ff9c' : '#3ee6ff') : m.state === 1 ? '#ffb347' : '#ff3b5c';
     return `<div class="lr"><i style="background:${col};box-shadow:0 0 8px ${col}"></i><span title="${esc(m.n)}">${esc(m.n.split('/').pop())}</span><canvas id="lc${i}" width="116" height="28"></canvas><span class="tk" style="color:${up ? '#fff' : '#ff3b5c'}">${!up ? 'DOWN' : m.tok > 0.05 ? m.tok.toFixed(0) + ' t/s' : 'idle'}</span><span class="h">${['ok', 'degraded', 'outage'][m.state] || '?'}</span></div>`;
@@ -318,21 +325,25 @@ function drawHex(t) {
 // matrix) -- a symptom of coupling a data-driven summary to a decorative animation's schedule.
 function renderAppSum() {
   // A failed score query (model.scoreFailed) leaves every app's .s null — the same shape as
-  // "no data yet" — so this summary must not compute OK/DEGRADED/DOWN/NO DATA counts from it on
-  // a failure; that's the "0 OK ... 42 NO DATA" the panel's own error state (data-panel-message)
-  // is there to replace, not sit beside.
-  if (model.scoreFailed) { $('appsum').textContent = '—'; return; }
+  // "no data yet" — so this reads from the shared sample scores (appsSample, set in
+  // renderStatic) either way, same as the hex grid, rather than sitting on a blank summary.
   const scores = apps.map((a, i) => (appsSample ? sampleAppScore(i) : a.s));
   const ok = scores.filter((s) => s != null && s >= SCORE_OK_MIN).length;
   const warn = scores.filter((s) => s != null && s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
   const bad = scores.filter((s) => s != null && s < SCORE_DEGRADED_MIN).length;
-  const unk = appsSample ? 0 : scores.filter((s) => s == null).length;
-  $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>${unk ? ` · <span style="color:var(--dim)">${unk} NO DATA</span>` : ''}`;
+  $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`;
 }
 
 /* ---------------- topology (3D, or 2D on software GL) ---------------- */
 const topo = $('topo'), labels = $('labels');
-const clusterHealth = (g) => { const s = g.apps.map((n) => appIndex[n]?.s).filter((v) => v != null); return s.length ? s.reduce((a, b) => a + b, 0) / s.length : null; };
+// Falls back to the shared sample scores (appsSample, set in renderStatic) the same way the hex
+// grid and appsum do — otherwise every cluster label would show '—' whenever the apps panel is
+// itself showing stand-in data.
+const clusterHealth = (g) => {
+  if (appsSample) return g.apps.reduce((a, n) => a + sampleAppScore(apps.findIndex((x) => x.n === n)), 0) / (g.apps.length || 1);
+  const s = g.apps.map((n) => appIndex[n]?.s).filter((v) => v != null);
+  return s.length ? s.reduce((a, b) => a + b, 0) / s.length : null;
+};
 const labelEls = groups.map((g) => { const el = document.createElement('div'); el.className = 'vl'; el.style.color = g.c; labels.appendChild(el); return el; });
 function updateLabels() {
   groups.forEach((g, i) => {
@@ -449,31 +460,31 @@ if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
 // renderStatic below), stand in for the single "pending" line. Never written into `model`.
 $('blkrows').innerHTML = SAMPLE_BLOCKED.map((b) => `<div class="br"><span>${esc(b.time)}</span><span class="f">${b.flag}</span><span class="cc">${esc(b.country)}</span><span>${esc(b.source)}</span><span class="why">${esc(b.reason)}</span><span class="d">${esc(b.ago)} ago</span></div>`).join('');
 $('fwrows').innerHTML = SAMPLE_ALLOWED.map((f) => `<div class="fr ${f.action}"><span>${esc(f.time)}</span><span class="a">${esc(f.action.toUpperCase())}</span><span>${esc(f.proto)}</span><span>${esc(f.desc)}</span><span>${esc(f.dest)}</span><span class="d">${esc(f.ago)} ago</span></div>`).join('');
+$('blkrate').textContent = `${SAMPLE_BLOCKED.length}/min`;
+$('fwrate').textContent = `${SAMPLE_ALLOWED.length}/min`;
 
 /* ---------------- boot ---------------- */
 function renderStatic() {
+  // D5: an app with no Gatus series at all is "no data" for that one cell (see drawHex/appsum),
+  // never reason to pend the whole panel — only a total scoring failure does. Either way (no
+  // data yet, or the query failing outright) falls back to the shared sample scores — computed
+  // before renderHeader/buildNodes so the estate ring and hex grid see it on their first paint.
+  const scored = apps.some((app) => app.s != null);
+  appsSample = !scored;
   buildNodes(); renderHeader(); renderStorage(); renderLlm(); updateLabels();
-  setState($('nodes'), 'pending', 'NO GPU EXPORTER');
-  setState($('topo'), 'pending', 'WAN EXPORTER PENDING');
+  setState($('nodes'), 'pending');
+  setState($('topo'), 'pending');
   // No WAN exporter exists yet — a fixed sample readout, badged, replaces the topology panel's
   // single "pending" line. Never written into `model`, so nothing here is mistaken for live data.
   $('wan').innerHTML = SAMPLE_WAN.map((w) => `${w.name} &darr;<b>${w.down}</b> / &uarr;<b>${w.up}</b> Mbps &middot; <b>${w.latency}</b>ms`).join('<br>');
   setSampleBadge($('topo'), true);
-  // D5: an app with no Gatus series at all is "no data" for that one cell (see drawHex/appsum),
-  // never reason to pend the whole panel — only a total scoring failure does.
-  // A query that failed outright (settle() -> null) is 'error', never silently "no data".
-  const scored = apps.some((app) => app.s != null);
-  appsSample = !model.scoreFailed && !scored;
-  setState($('apps'), model.scoreFailed ? 'error' : scored ? 'ok' : 'empty',
-    model.scoreFailed ? 'SCORE QUERY FAILED' : scored ? '' : 'NO SERVICE DATA');
+  setState($('apps'), model.scoreFailed ? 'error' : scored ? 'ok' : 'empty');
   setSampleBadge($('apps'), appsSample);
   renderAppSum();
-  setState($('storage'), model.storageFailed ? 'error' : model.storage.length ? 'ok' : 'empty',
-    model.storageFailed ? 'STORAGE QUERY FAILED' : model.storage.length ? '' : 'STORAGE METRICS EMPTY');
-  setState($('fw'), 'pending', 'SPLUNK FEED PENDING');
+  setState($('storage'), model.storageFailed ? 'error' : model.storage.length ? 'ok' : 'empty');
+  setState($('fw'), 'pending');
   setSampleBadge($('fw'), true);
-  setState($('llm'), model.llmFailed ? 'error' : model.llm.length ? 'ok' : 'pending',
-    model.llmFailed ? 'ROUTER QUERY FAILED' : model.llm.length ? '' : 'ROUTER METRICS PENDING');
+  setState($('llm'), model.llmFailed ? 'error' : model.llm.length ? 'ok' : 'pending');
   const up = model.nodes.filter((n) => !n.pending).length;
   $('fstats').innerHTML = `NODES UP<b>${up}</b><br>APPS SCORED<b>${apps.filter((a) => a.s != null).length}/${apps.length}</b><br>MODELS UP<b>${model.llm.filter((m) => m.state < 2).length}</b><br>UPDATED<b>${new Date(model.updated).toTimeString().slice(0, 8)}</b>`;
 }
