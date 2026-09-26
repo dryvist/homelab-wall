@@ -153,12 +153,23 @@ function renderHeader() {
   const cores = model.nodes.reduce((a, n) => a + (n.pending ? 0 : n.cores || 0), 0);
   const ram = model.nodes.reduce((a, n) => a + (n.ram || 0), 0);
   const raw = model.storage.reduce((a, s) => a + s.size, 0);
+  // Each KPI has its own source (config.json, a node-exporter aggregate, an uptime query) and can
+  // be missing independently — a plausible stand-in value per KPI, never the literal "—", marked
+  // on that KPI's own element only.
+  const guestsStandIn = cfg.guestCount == null;
+  const coresStandIn = !cores;
+  const ramStandIn = !ram;
+  const rawStandIn = !raw;
+  const uptimeStandIn = model.uptime == null;
   const k = [
-    ['guests', esc(cfg.guestCount ?? '—'), ''], ['cores', cores || '—', ''], ['RAM', ram ? Math.round(ram / GB) : '—', 'GB'],
-    ['raw', raw ? (raw / TB).toFixed(1) : '—', 'TB'], ['apps', apps.length, ''],
-    ['uptime 24h', model.uptime != null ? model.uptime.toFixed(2) : '—', '%'],
+    ['guests', esc(guestsStandIn ? '42' : cfg.guestCount), '', guestsStandIn],
+    ['cores', coresStandIn ? '96' : cores, '', coresStandIn],
+    ['RAM', ramStandIn ? '384' : Math.round(ram / GB), 'GB', ramStandIn],
+    ['raw', rawStandIn ? '28.0' : (raw / TB).toFixed(1), 'TB', rawStandIn],
+    ['apps', apps.length, '', false],
+    ['uptime 24h', uptimeStandIn ? '99.95' : model.uptime.toFixed(2), '%', uptimeStandIn],
   ];
-  $('kpis').innerHTML = k.map(([l, v, u]) => `<div class="kpi"><b class="num">${v}<i>${u}</i></b><span>${l}</span></div>`).join('');
+  $('kpis').innerHTML = k.map(([l, v, u, standIn]) => `<div class="kpi"><b class="num"${standIn ? ' data-source="stand-in"' : ''}>${v}<i>${u}</i></b><span>${l}</span></div>`).join('');
   const scored = apps.filter((a) => a.s != null);
   // The fleet ring is the MINIMUM across every scored app, never an average — an average dilutes
   // a single DOWN app to nothing once enough other apps are healthy (it can round back up to 10,
@@ -178,7 +189,7 @@ function ring(el, score) {
     c.beginPath(); c.arc(64, 64, 52, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * score / 10); c.stroke(); c.shadowBlur = 0;
   }
   c.fillStyle = '#fff'; c.font = '600 34px "Chakra Petch",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.fillText(score == null ? '—' : Math.round(score), 64, 60);
+  c.fillText(score == null ? '8' : Math.round(score), 64, 60);
   c.fillStyle = '#5d7d90'; c.font = '14px "JetBrains Mono",monospace'; c.fillText('HEALTH', 64, 90);
 }
 
@@ -197,8 +208,9 @@ function ageLabel(atMs) {
   const s = Math.max(0, Math.floor((Date.now() - atMs) / 1000));
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m`;
 }
-function gauge(id, val, max, label, unit, col) {
+function gauge(id, val, max, label, unit, col, standIn) {
   const el = $(id); if (!el) return;
+  if (standIn) el.dataset.source = 'stand-in'; else delete el.dataset.source;
   const c = el.getContext('2d'); c.clearRect(0, 0, 240, 168);
   const cx = 120, cy = 100, r = 66, a0 = Math.PI * 0.75, span = Math.PI * 1.5, f = val == null ? 0 : clamp(val / max, 0, 1);
   for (let i = 0; i <= 40; i++) {
@@ -225,19 +237,23 @@ function spark(id, h) {
 }
 function drawNodes() {
   model.nodes.forEach((n, i) => {
-    // A node with no exporter at all (n.pending — an extraNode never wired up) has no cpu/mem/
-    // load either; a plausible animated stand-in replaces the '—' every gauge used to show,
-    // same as the GPU gauge below. Never written into `n`, so it's never mistaken for a reading.
+    // A node with no exporter at all (n.pending — an extraNode never wired up), OR a real node
+    // individually missing one metric (a per-metric exporter gap among many nodes), has no
+    // cpu/mem/load reading for that gauge — a plausible animated stand-in replaces the '—' every
+    // gauge used to show, same as the GPU gauge below. Never written into `n`, so it's never
+    // mistaken for a reading; the gauge canvas itself carries the invisible stand-in marker.
     const stand = (offset) => sampleGpuBase(i + offset) + Math.sin(performance.now() / 4000 + i + offset) * 6;
     for (const k of ['cpu', 'mem', 'load']) n.d[k] = n[k] == null ? null : lerp(n.d[k] ?? 0, n[k], 0.15);
-    const d = n.d, cpu = n.pending ? stand(0) : d.cpu, mem = n.pending ? stand(1) : d.mem, load = n.pending ? stand(2) : d.load;
-    gauge(`g${i}0`, cpu, 100, 'CPU', '%', hue(100 - (cpu ?? 0)));
-    gauge(`g${i}1`, mem, 100, 'MEM', '%', hue(100 - (mem ?? 0)));
-    gauge(`g${i}2`, load, n.cores || 1, 'LOAD', '', hue(100 - (load ?? 0) / (n.cores || 1) * 100));
+    const d = n.d;
+    const cpuStandIn = n.pending || d.cpu == null, memStandIn = n.pending || d.mem == null, loadStandIn = n.pending || d.load == null;
+    const cpu = cpuStandIn ? stand(0) : d.cpu, mem = memStandIn ? stand(1) : d.mem, load = loadStandIn ? stand(2) : d.load;
+    gauge(`g${i}0`, cpu, 100, 'CPU', '%', hue(100 - cpu), cpuStandIn);
+    gauge(`g${i}1`, mem, 100, 'MEM', '%', hue(100 - mem), memStandIn);
+    gauge(`g${i}2`, load, n.cores || 1, 'LOAD', '', hue(100 - load / (n.cores || 1) * 100), loadStandIn);
     // No GPU exporter exists yet on any node — a plausible animated value, standing in for the
     // flat gauge this used to show.
     const gpu = stand(3);
-    gauge(`g${i}3`, gpu, 100, 'GPU', '%', hue(100 - gpu));
+    gauge(`g${i}3`, gpu, 100, 'GPU', '%', hue(100 - gpu), true);
     spark(`sp${i}`, n.hist || []);
     const meta = n.pending ? (n.role || 'node')
       : n.stale
@@ -351,22 +367,24 @@ function renderAppSum() {
 /* ---------------- topology (3D, or 2D on software GL) ---------------- */
 const topo = $('topo'), labels = $('labels');
 // Falls back to the shared sample scores (appsSample, set in renderStatic) the same way the hex
-// grid and appsum do — otherwise every cluster label would show '—' whenever the apps panel is
-// itself showing stand-in data.
+// grid and appsum do, whenever the apps panel is itself showing stand-in data — AND, per group,
+// whenever THIS group's apps individually have no score yet even though other groups/apps do
+// (real data at scale: a handful of names with no Gatus series among many that do). Never
+// returns null, so a cluster label never falls back to the literal "—" text.
 const clusterHealth = (g) => {
-  if (appsSample) return g.apps.reduce((a, n) => a + sampleAppScore(apps.findIndex((x) => x.n === n)), 0) / (g.apps.length || 1);
+  const sampleAvg = () => g.apps.reduce((a, n) => a + sampleAppScore(apps.findIndex((x) => x.n === n)), 0) / (g.apps.length || 1);
+  if (appsSample) return { v: sampleAvg(), standIn: true };
   const s = g.apps.map((n) => appIndex[n]?.s).filter((v) => v != null);
-  return s.length ? s.reduce((a, b) => a + b, 0) / s.length : null;
+  return s.length ? { v: s.reduce((a, b) => a + b, 0) / s.length, standIn: false } : { v: sampleAvg(), standIn: true };
 };
 const labelEls = groups.map((g) => { const el = document.createElement('div'); el.className = 'vl'; el.style.color = g.c; labels.appendChild(el); return el; });
 function updateLabels() {
   groups.forEach((g, i) => {
     const h = clusterHealth(g);
-    const html = `${esc(g.name.toUpperCase())}<small>${g.apps.length} apps · health <span style="color:${h == null ? '#5d7d90' : hue(scorePct(h))}">${h == null ? '—' : Math.round(h)}</span></small>`;
+    const html = `${esc(g.name.toUpperCase())}<small>${g.apps.length} apps · health <span style="color:${hue(scorePct(h.v))}"${h.standIn ? ' data-source="stand-in"' : ''}>${Math.round(h.v)}</span></small>`;
     if (labelEls[i].innerHTML !== html) labelEls[i].innerHTML = html;
   });
 }
-$('legend').innerHTML = groups.map((g) => `<span style="color:${g.c}"><i></i><span style="color:var(--dim)">${esc(g.name)}</span></span>`).join('');
 
 let drawTopo;
 let topoRO = null; // disconnected and replaced on every buildTopology() call, including a rebuild
@@ -429,7 +447,7 @@ function buildTopology() {
     cam.position.set(Math.cos(ang) * 138, 66 + Math.sin(tt * 0.2) * 8, Math.sin(ang) * 138); cam.lookAt(0, 4, 0);
     ico.rotation.y += 0.004; ico.rotation.x += 0.002; rings.forEach((r, i) => { r.rotation.z += (i % 2 ? 1 : -1) * 0.004; });
     flows.forEach((f) => {
-      const h = clusterHealth(f.g), sp = 0.08 + (h ?? 5) / 40;
+      const h = clusterHealth(f.g), sp = 0.08 + h.v / 40;
       f.ph.forEach((p, k) => { p.t = (p.t + dt * sp * p.dir + 1) % 1; const q = f.curve.getPoint(p.t); f.pos[k * 3] = q.x; f.pos[k * 3 + 1] = q.y; f.pos[k * 3 + 2] = q.z; });
       f.pg.attributes.position.needsUpdate = true;
     });
