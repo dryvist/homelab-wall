@@ -53,8 +53,11 @@ export function observeCanvas(cell, canvas, onResize) {
     const w = Math.round(cell.clientWidth * dpr), h = Math.round(cell.clientHeight * dpr);
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; onResize?.(w, h); }
   };
-  new ResizeObserver(apply).observe(cell);
+  const ro = new ResizeObserver(apply);
+  ro.observe(cell);
   apply();
+  onDispose(() => ro.disconnect());
+  return ro;
 }
 
 // True when WebGL is backed by real hardware. A software rasteriser
@@ -71,15 +74,92 @@ export function hardwareGL() {
   }
 }
 
-// requestAnimationFrame capped at `fps`.
+// ---------------------------------------------------------------------------
+// Disposal registry: a page registers cleanup (renderer/geometry/material/
+// texture disposal, clearInterval, ResizeObserver#disconnect) here, and it all
+// runs once on `pagehide` — the kiosk never navigates away without unloading,
+// so this is the only teardown hook a page needs.
+const disposers = [];
+export function onDispose(cleanup) {
+  disposers.push(cleanup);
+  return cleanup;
+}
+window.addEventListener('pagehide', () => {
+  while (disposers.length) {
+    try { disposers.pop()(); } catch (e) { console.warn('dispose', e); }
+  }
+}, { once: true });
+
+// Standard three.js teardown: walk the scene disposing every geometry/material
+// (and any texture maps a material holds), then release the renderer's own GPU
+// context. Traversal-based rather than a hand-built per-object registry — it
+// reaches everything actually attached to the scene with no bookkeeping.
+export function disposeThreeScene(renderer, scene) {
+  scene?.traverse((obj) => {
+    obj.geometry?.dispose?.();
+    const mats = Array.isArray(obj.material) ? obj.material : obj.material ? [obj.material] : [];
+    for (const m of mats) {
+      for (const k of ['map', 'alphaMap', 'aoMap', 'emissiveMap', 'envMap', 'lightMap', 'normalMap']) m[k]?.dispose?.();
+      m.dispose?.();
+    }
+  });
+  renderer?.dispose();
+  renderer?.forceContextLoss();
+}
+
+// WebGL context loss/restore: the browser can reclaim a context under GPU
+// pressure at any time. `preventDefault()` on the loss event is what tells the
+// browser this page will rebuild instead of staying dead; `rebuild` runs once
+// the context is usable again.
+export function onContextLoss(canvas, rebuild) {
+  canvas.addEventListener('webglcontextlost', (e) => e.preventDefault(), false);
+  canvas.addEventListener('webglcontextrestored', rebuild, false);
+}
+
+// ---------------------------------------------------------------------------
+// Render/idle lifecycle: the rotator (site/rotator/rotator.js) posts
+// {wall:'idle'|'active'} to a same-origin slide as it goes off/on screen, and
+// a page's own tab visibility does the same thing locally — either one pauses
+// every loop() on this page rather than rendering behind a slide no one sees.
+let idle = document.hidden;
+const wakers = new Set();
+function setIdle(v) {
+  if (idle === v) return;
+  idle = v;
+  if (!idle) for (const wake of wakers) wake();
+}
+document.addEventListener('visibilitychange', () => setIdle(document.hidden));
+window.addEventListener('message', (e) => {
+  if (e.source !== window.parent) return;
+  if (e.data?.wall === 'idle') setIdle(true);
+  else if (e.data?.wall === 'active') setIdle(false);
+});
+
+// requestAnimationFrame capped at `fps` (never above 30), paused while idle
+// (see above) and disposed on pagehide. Posts {wall:'ready'} to the parent
+// frame once its first frame has painted, for the rotator's G3 probe.
 export function loop(fps, fn) {
-  const min = 1000 / fps;
-  let last = 0;
-  const tick = (now) => {
-    if (now - last >= min - 1) { fn(now, Math.min((now - last) / 1000, 0.1)); last = now; }
-    requestAnimationFrame(tick);
+  const min = 1000 / Math.min(fps, 30);
+  let last = 0, handle = null, signaled = false;
+  const signalReady = () => {
+    if (signaled) return;
+    signaled = true;
+    try { window.parent?.postMessage({ wall: 'ready' }, location.origin); } catch { /* no parent to tell */ }
   };
-  requestAnimationFrame(tick);
+  const tick = (now) => {
+    handle = null;
+    if (idle) return; // wake() restarts the rAF chain once active again
+    if (now - last >= min - 1) {
+      fn(now, Math.min((now - last) / 1000, 0.1));
+      last = now;
+      requestAnimationFrame(signalReady); // one frame after this one is committed
+    }
+    handle = requestAnimationFrame(tick);
+  };
+  const wake = () => { if (handle == null) handle = requestAnimationFrame(tick); };
+  wakers.add(wake);
+  wake();
+  onDispose(() => { if (handle != null) cancelAnimationFrame(handle); wakers.delete(wake); });
 }
 
 export async function loadConfig() {

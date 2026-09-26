@@ -4,7 +4,10 @@
 // Gatus-derived health score as mc1.
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { hardwareGL, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, setSampleBadge } from '/lib/stage.js';
+import {
+  hardwareGL, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, setSampleBadge,
+  observeCanvas, onDispose, onContextLoss, disposeThreeScene,
+} from '/lib/stage.js';
 import { sampleAppScore, SAMPLE_THREAT_STATS } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
@@ -55,25 +58,12 @@ document.querySelectorAll('#tstats div b').forEach((b, i) => {
 });
 setSampleBadge($('threat'), true);
 
-// ponytail: duplicated (not imported) from the in-flight fluid rewrite of site/lib/stage.js
-// (fix/mc1-layout-feedback-loop, not yet on develop) — this lane doesn't touch that file.
-// Swap for the shared observeCanvas() once this branch rebases onto that PR.
-function observeCanvas(cell, canvas, onResize) {
-  const apply = () => {
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    const w = Math.round(cell.clientWidth * dpr), h = Math.round(cell.clientHeight * dpr);
-    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; onResize?.(w, h); }
-  };
-  new ResizeObserver(apply).observe(cell);
-  apply();
-}
-
 const threatPanel = $('threat');
 const globeCanvas = $('globe');
 const forced = new URLSearchParams(location.search).get('gl');
 let drawGlobe;
 
-if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
+function buildGlobe() {
   const THREE = window.THREE;
   const renderer = new THREE.WebGLRenderer({ canvas: globeCanvas, antialias: true, alpha: true });
   renderer.setPixelRatio(1); // backing-store pixels are set explicitly below
@@ -95,7 +85,18 @@ if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
   group.add(new THREE.Mesh(new THREE.SphereGeometry(79, 40, 40), new THREE.MeshBasicMaterial({ color: 0x14040a, transparent: true, opacity: 0.9 })));
   scene.add(new THREE.Mesh(new THREE.SphereGeometry(86, 40, 40), new THREE.MeshBasicMaterial({ color: 0xff2d55, transparent: true, opacity: 0.07, side: THREE.BackSide })));
   observeCanvas(threatPanel, globeCanvas, (w, h) => { renderer.setSize(w, h, false); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); });
-  drawGlobe = (now) => { group.rotation.y = RM ? 0.6 : now / 9000; renderer.render(scene, cam); };
+  const render = (now) => { group.rotation.y = RM ? 0.6 : now / 9000; renderer.render(scene, cam); };
+  return { render, renderer, scene };
+}
+
+if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
+  let globe3d = buildGlobe();
+  drawGlobe = (now) => globe3d.render(now);
+  onContextLoss(globeCanvas, () => {
+    disposeThreeScene(globe3d.renderer, globe3d.scene);
+    globe3d = buildGlobe();
+  });
+  onDispose(() => disposeThreeScene(globe3d.renderer, globe3d.scene));
 } else {
   const c = globeCanvas.getContext('2d');
   observeCanvas(threatPanel, globeCanvas);
@@ -114,9 +115,12 @@ if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
 
 /* ---------------- boot ---------------- */
 const tickClock = () => { const d = new Date(); $('clock').innerHTML = `${d.toTimeString().slice(0, 8)}<small>${d.toDateString().toUpperCase()}</small>`; };
-tickClock(); setInterval(tickClock, 1000);
+tickClock();
+const clockId = setInterval(tickClock, 1000);
+onDispose(() => clearInterval(clockId));
 await refresh().catch((e) => console.warn('refresh', e));
-setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+onDispose(() => clearInterval(refreshId));
 loop(30, (now) => drawGlobe(now));
 // Nightly reload keeps a 24/7 kiosk's memory flat.
 setTimeout(() => location.reload(), 24 * 3600 * 1000);

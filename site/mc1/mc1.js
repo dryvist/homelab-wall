@@ -4,6 +4,7 @@ import { Q } from '/lib/queries.js';
 import {
   clamp, hue, lerp, esc, observeCanvas, hardwareGL, loop, loadConfig, setState,
   SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge,
+  onDispose, onContextLoss, disposeThreeScene,
 } from '/lib/stage.js';
 import { lastGoodGet, lastGoodSet } from '/lib/lastGood.js';
 import { sampleAppScore, SAMPLE_STORAGE, SAMPLE_LLM, SAMPLE_WAN, SAMPLE_BLOCKED, SAMPLE_ALLOWED } from '/lib/sampleData.js';
@@ -343,8 +344,9 @@ function updateLabels() {
 $('legend').innerHTML = groups.map((g) => `<span style="color:${g.c}"><i></i><span style="color:var(--dim)">${esc(g.name)}</span></span>`).join('');
 
 let drawTopo;
+let topoRO = null; // disconnected and replaced on every buildTopology() call, including a rebuild
 const forced = new URLSearchParams(location.search).get('gl');
-if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
+function buildTopology() {
   const THREE = window.THREE;
   const renderer = new THREE.WebGLRenderer({ canvas: $('gl'), antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -393,10 +395,12 @@ if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
     if (!w || !h) return;
     renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix();
   };
-  new ResizeObserver(resize).observe(topo);
+  topoRO?.disconnect();
+  topoRO = new ResizeObserver(resize);
+  topoRO.observe(topo);
   resize();
   const v3 = new THREE.Vector3();
-  drawTopo = (now, dt) => {
+  const render = (now, dt) => {
     const tt = now / 1000, ang = RM ? 0.6 : tt * 0.06;
     cam.position.set(Math.cos(ang) * 138, 66 + Math.sin(tt * 0.2) * 8, Math.sin(ang) * 138); cam.lookAt(0, 4, 0);
     ico.rotation.y += 0.004; ico.rotation.x += 0.002; rings.forEach((r, i) => { r.rotation.z += (i % 2 ? 1 : -1) * 0.004; });
@@ -412,6 +416,16 @@ if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
     });
     renderer.render(scene, cam);
   };
+  return { render, renderer, scene };
+}
+if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
+  let topo3d = buildTopology();
+  drawTopo = (now, dt) => topo3d.render(now, dt);
+  onContextLoss($('gl'), () => {
+    disposeThreeScene(topo3d.renderer, topo3d.scene);
+    topo3d = buildTopology();
+  });
+  onDispose(() => { disposeThreeScene(topo3d.renderer, topo3d.scene); topoRO?.disconnect(); });
 } else {
   // 2D fallback: clusters orbit a core on a plain canvas.
   $('topostate').textContent = '2D MODE';
@@ -464,9 +478,12 @@ function renderStatic() {
   $('fstats').innerHTML = `NODES UP<b>${up}</b><br>APPS SCORED<b>${apps.filter((a) => a.s != null).length}/${apps.length}</b><br>MODELS UP<b>${model.llm.filter((m) => m.state < 2).length}</b><br>UPDATED<b>${new Date(model.updated).toTimeString().slice(0, 8)}</b>`;
 }
 const tickClock = () => { const d = new Date(); $('clock').innerHTML = `${d.toTimeString().slice(0, 8)}<small>${d.toDateString().toUpperCase()}</small>`; };
-tickClock(); setInterval(tickClock, 1000);
+tickClock();
+const clockId = setInterval(tickClock, 1000);
+onDispose(() => clearInterval(clockId));
 await refresh().catch((e) => console.warn('refresh', e));
-setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+onDispose(() => clearInterval(refreshId));
 let lastNodes = 0;
 loop(30, (now, dt) => {
   drawTopo(now, dt); drawHex(now);
