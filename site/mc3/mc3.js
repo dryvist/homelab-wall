@@ -108,7 +108,7 @@ function renderApps() {
 let reactorList = SAMPLE_LLM.map((m) => ({ n: m.n, up: m.state < 2, tok: m.tok }));
 // Queue depth and p50 latency have no litellm metric exposed at all yet (see Q, site/lib/queries.js)
 // — unlike tok/s and UP/DOWN, which are real once the router feed answers, these two columns are
-// always synthetic. Deterministic per-model (name hash + tok rate), not random, so the dense
+// always stand-in. Deterministic per-model (name hash + tok rate), not random, so the dense
 // readout doesn't jitter between polls; setStandIn on .modeltab (below) flags the whole row.
 function hashN(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
 function standInQueueLatency(m) {
@@ -200,7 +200,7 @@ function renderCoreExtra(list) {
     drawSpark(canvas, tokHistory.get(m.n) || [0], m.up ? '#3ee6ff' : '#ff3b5c');
   }
 
-  // Synthetic recent-request feed: one row per tick from a randomly-picked UP model, cadence
+  // Stand-in recent-request feed: one row per tick from a randomly-picked UP model, cadence
   // scaled by how many models are actually serving traffic. Never scheduled twice (feedTimer
   // guards against overlapping timers across refresh ticks, the same pattern MC2's blocked-feed
   // scheduler uses).

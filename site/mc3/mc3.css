@@ -39,7 +39,7 @@ header{grid-column:1/-1;display:flex;align-items:center;gap:clamp(16px,2.4vmin,3
 .ar b{color:var(--dim);font-weight:600}
 
 /* Dense fill for the rest of the fleet-health column, below the 3 app rows: req/min, a GPU/VRAM
-   stand-in gauge, per-model tok/s sparklines, and a scrolling synthetic request feed. No live
+   stand-in gauge, per-model tok/s sparklines, and a scrolling stand-in request feed. No live
    GPU/VRAM or per-request metric exists (see Q, site/lib/queries.js) — this whole block is
    stand-in, marked via [data-source] on the elements that carry no real number at all
    (cxGpu/gauge/feed); cxReqMin mirrors the real header KPI, so it stays unmarked. */
