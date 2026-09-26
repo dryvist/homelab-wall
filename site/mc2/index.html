@@ -15,17 +15,23 @@
     <div class="clock num" id="clock">--:--:--<small>--</small></div>
   </header>
 
-  <section class="panel" id="threat" data-panel="threat" data-state="pending">
-    <h2>Edge <span style="color:var(--red)">//</span> block telemetry<span data-panel-message></span></h2>
-    <canvas id="globe"></canvas>
-    <div class="stat" id="tstats">
-      <div>Blocked today<b>PENDING</b></div>
-      <div>Unique sources<b>PENDING</b></div>
-      <div>Top sources<b>PENDING</b></div>
-    </div>
-  </section>
+  <div class="row2">
+    <section class="panel" id="threat" data-panel="threat" data-state="pending">
+      <h2>Edge <span style="color:var(--red)">//</span> block telemetry<span data-panel-message></span></h2>
+      <canvas id="globe"></canvas>
+      <div class="stat" id="tstats">
+        <div>Blocked today<b></b></div>
+        <div>Unique sources<b></b></div>
+        <div>Top sources<b></b></div>
+      </div>
+    </section>
+    <section class="panel" id="blocked" data-panel="blocked" data-state="pending">
+      <h2>Blocked <span style="color:var(--red)">//</span> live feed<span data-panel-message></span></h2>
+      <div class="feed" id="feed"></div>
+    </section>
+  </div>
 </div>
-<script src="/vendor/three.min.js"></script>
+<script type="importmap">{"imports": {"three": "/vendor/three/three.module.js", "three/addons/": "/vendor/three/addons/"}}</script>
 <script type="module" src="/mc2/mc2.js"></script>
 </body>
 </html>

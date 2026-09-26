@@ -1,8 +1,13 @@
 // Mission Control 3: AI inference core, driven by live litellm_router + Gatus data.
+import * as THREE from 'three';
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge, onDispose } from '/lib/stage.js';
-import { sampleAppScore } from '/lib/sampleData.js';
+import { makeBloom } from '/lib/bloom.js';
+import {
+  clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct,
+  setSampleBadge, onDispose, onContextLoss, disposeThreeScene, hardwareGL,
+} from '/lib/stage.js';
+import { sampleAppScore, SAMPLE_LLM } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -49,6 +54,7 @@ function render() {
   renderApps();
   renderCore();
   renderKpis();
+  core3d?.sync(model.models);
 }
 
 /* ---------------- header ---------------- */
@@ -95,27 +101,108 @@ function renderApps() {
 }
 
 /* ---------------- AI core (models table + reactor) ---------------- */
+// The router metrics feed is real (Q.llmState), but has nothing yet on some deployments — the
+// shared LLM sample dataset (site/lib/sampleData.js), reshaped to this page's {n,up,tok}, stands
+// in instead of a blank/pending table. reactorList mirrors whichever list rendered last, so the
+// decorative reactor canvas (drawReactor below) always animates real or stand-in state, never "N/A".
+let reactorList = SAMPLE_LLM.map((m) => ({ n: m.n, up: m.state < 2, tok: m.tok }));
 function renderCore() {
-  const list = model.models;
-  $('modeltab').innerHTML = list.length ? list.map((m) => {
+  const sample = !model.models.length;
+  const list = sample ? SAMPLE_LLM.map((m) => ({ n: m.n, up: m.state < 2, tok: m.tok })) : model.models;
+  reactorList = list;
+  $('modeltab').innerHTML = list.map((m) => {
     const col = m.up ? (m.tok > 0.05 ? 'var(--green)' : 'var(--cyan)') : 'var(--red)';
     const status = m.up ? (m.tok > 0.05 ? `${m.tok.toFixed(0)} tok/s` : 'idle') : 'health check failing';
     return `<div class="mc"><div class="mch"><b title="${esc(m.n)}">${esc(m.n.split('/').pop())}</b><span style="color:${col}">${m.up ? 'UP' : 'DOWN'}</span></div>
       <div class="mcv">${status}</div>
       <div class="mcbar"><div style="width:${m.up ? clamp(m.tok * 2, 6, 100) : 100}%;background:${col}"></div></div></div>`;
-  }).join('') : '<div class="pending">router metrics pending</div>';
+  }).join('');
   const up = list.filter((m) => m.up).length;
-  $('coresum').textContent = list.length ? `${up}/${list.length} UP` : 'N/A';
-  setState($('cores'), list.length ? 'ok' : 'pending', list.length ? '' : 'ROUTER METRICS PENDING');
+  $('coresum').textContent = `${up}/${list.length} UP`;
+  setSampleBadge($('cores'), sample);
+  setState($('cores'), 'ok');
 }
 
-/* ---------------- reactor canvas: orbiting rings + per-model status points ---------------- */
+/* ---------------- reactor: 3D hero (sketch scene 88) or 2D fallback ---------------- */
 const reactor = $('reactor');
 function fitCanvas(cv) {
   const dpr = Math.min(devicePixelRatio || 1, 2);
   const w = Math.max(1, Math.round(cv.clientWidth * dpr)), h = Math.max(1, Math.round(cv.clientHeight * dpr));
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
   return dpr;
+}
+
+// Three spinning "model core" groups (nested nested tori + wireframe icosahedron + orbiting
+// particles + a glow column whose height tracks load) — one per served model, ported from
+// scratchpad/wall-sketches.html scene 88. Capped at 3 (the sketch's layout is 3 columns); with
+// fewer real models the remaining columns just show as idle/dim, never fabricated ones.
+const CORE_COLS = 3;
+function build3DCore() {
+  const renderer = new THREE.WebGLRenderer({ canvas: reactor, antialias: true, alpha: true });
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(42, 1, 1, 2000);
+  cam.position.set(0, 30, 210);
+  const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.25, radius: 0.55, threshold: 0.1 });
+
+  const spacing = 78;
+  const cores = Array.from({ length: CORE_COLS }, (_, i) => {
+    const g = new THREE.Group();
+    g.position.x = (i - (CORE_COLS - 1) / 2) * spacing;
+    scene.add(g);
+    const col = new THREE.Color(PALETTE[i % PALETTE.length]);
+    const rings = Array.from({ length: 7 }, (_, r) => {
+      const t = new THREE.Mesh(new THREE.TorusGeometry(12 + r * 4, 0.35, 8, 64), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85 - r * 0.1 }));
+      t.rotation.x = Math.PI / 2 + r * 0.25; t.rotation.y = r * 0.4;
+      g.add(t);
+      return t;
+    });
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(7, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true }));
+    g.add(core);
+    const N = 220, pos = new Float32Array(N * 3), pg = new THREE.BufferGeometry();
+    pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.add(new THREE.Points(pg, new THREE.PointsMaterial({ color: col, size: 1.4, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+    const ph = Array.from({ length: N }, () => ({ a: Math.random() * Math.PI * 2, r: 14 + Math.random() * 26, y: (Math.random() - 0.5) * 18, s: 0.4 + Math.random() }));
+    const glow = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 1, 8, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending }));
+    glow.position.y = -26; g.add(glow);
+    return { g, rings, core, pos, pg, ph, glow, util: 0, name: '', up: false };
+  });
+
+  const resizeAt = (w, h) => { renderer.setSize(w, h, false); bloomFx.setSize(w, h); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); };
+  const ro = new ResizeObserver(() => { fitCanvas(reactor); resizeAt(reactor.width, reactor.height); });
+  ro.observe(reactor.parentElement);
+  fitCanvas(reactor); resizeAt(reactor.width, reactor.height);
+
+  function sync(list) {
+    cores.forEach((c, i) => {
+      const m = list[i];
+      c.name = m?.n?.split('/').pop() ?? '';
+      c.up = !!m?.up;
+      c.util = m ? clamp((m.tok || 0) * 3 + (m.up ? 25 : 0), 5, 99) : 0;
+    });
+  }
+  function render(now) {
+    const t = RM ? 0 : now / 1000;
+    cam.position.x = Math.sin(t * 0.12) * 24;
+    cam.lookAt(0, 4, 0);
+    cores.forEach((c) => {
+      const sp = 0.004 + c.util / 4000;
+      c.rings.forEach((rg, i) => { rg.rotation.z += sp * (i % 2 ? -1 : 1) * (1 + i * 0.2); });
+      c.core.rotation.y += sp * 3; c.core.rotation.x += sp;
+      c.ph.forEach((p, k) => {
+        p.a += sp * p.s * 3;
+        c.pos[k * 3] = Math.cos(p.a) * p.r;
+        c.pos[k * 3 + 1] = p.y + Math.sin(t * 2 + k) * 1.5;
+        c.pos[k * 3 + 2] = Math.sin(p.a) * p.r;
+      });
+      c.pg.attributes.position.needsUpdate = true;
+      const targetH = c.up ? c.util * 0.5 : 2;
+      c.glow.scale.y += (targetH - c.glow.scale.y) * 0.05;
+      c.glow.position.y = -26 + c.glow.scale.y / 2;
+      c.glow.material.opacity = c.up ? 0.35 : 0.08;
+    });
+    bloomFx.render();
+  }
+  return { render, sync, renderer, scene, ro, dispose: () => { bloomFx.dispose(); ro.disconnect(); } };
 }
 function drawReactor(now) {
   const dpr = fitCanvas(reactor);
@@ -125,7 +212,7 @@ function drawReactor(now) {
   g.addColorStop(0, 'rgba(255,79,216,.10)'); g.addColorStop(1, 'rgba(4,3,8,0)');
   c.fillStyle = g; c.fillRect(0, 0, W, H);
 
-  const list = model.models;
+  const list = reactorList;
   const upFrac = list.length ? list.filter((m) => m.up).length / list.length : 0;
   const col = list.length ? hue(upFrac * 100) : '#3a2440';
   const t = RM ? 0 : now / 1000;
@@ -155,13 +242,32 @@ function drawReactor(now) {
 }
 
 /* ---------------- boot ---------------- */
+const forced = new URLSearchParams(location.search).get('gl');
+let core3d = null;
+let drawScene = drawReactor;
+if (forced === '3d' || (forced !== '2d' && hardwareGL())) {
+  core3d = build3DCore();
+  drawScene = (now) => core3d.render(now);
+  onContextLoss(reactor, () => {
+    core3d.dispose();
+    disposeThreeScene(core3d.renderer, core3d.scene);
+    core3d = build3DCore();
+    core3d.sync(model.models);
+  });
+  onDispose(() => { core3d.dispose(); disposeThreeScene(core3d.renderer, core3d.scene); });
+}
+
 const tickClock = () => { const d = new Date(); $('clock').innerHTML = `${d.toTimeString().slice(0, 8)}<small>${d.toDateString().toUpperCase()}</small>`; };
 tickClock();
 const clockId = setInterval(tickClock, 1000);
 onDispose(() => clearInterval(clockId));
+// The render loop (and the 'ready' postMessage it fires — site/lib/stage.js) starts before the
+// first data refresh resolves. Gating it behind `await refresh()` is what let a slow/failing
+// litellm query on this very page delay 'ready' past the rotator's probe window and get MC3
+// skipped as broken on the live wall.
+loop(30, (now) => drawScene(now));
 await refresh().catch((e) => console.warn('refresh', e));
 const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
 onDispose(() => clearInterval(refreshId));
-loop(30, (now) => drawReactor(now));
 // Nightly reload keeps a 24/7 kiosk's memory flat.
 setTimeout(() => location.reload(), 24 * 3600 * 1000);

@@ -121,6 +121,46 @@ test('a broken slide is skipped, never shown, with no application errors', async
   expect(faults).toEqual([]);
 });
 
+// Track: a layer whose readyPromise settled false must not be skipped forever — every
+// REPROBE_MS (rotator.js) it reloads and re-arms. `?reprobe=<ms>` is a test-only override
+// (mirrors the existing `?fast=` pattern), never read by real config.
+test('a broken slide is re-probed and rejoins rotation once it recovers', async ({ page }) => {
+  await page.clock.install();
+  let brokenRequests = 0;
+  await page.route('**/config.json', (r) => r.fulfill({ json: { slides: SLIDES, holdSeconds: 30 } }));
+  await page.route('**/slide-a*', (r) => r.fulfill({
+    contentType: 'text/html',
+    body: `<!doctype html><title>Slide A</title><script>parent.postMessage({wall:'ready'},'*')</script>`,
+  }));
+  await page.route('**/slide-c*', (r) => r.fulfill({
+    contentType: 'text/html',
+    body: `<!doctype html><title>Slide C</title><script>parent.postMessage({wall:'ready'},'*')</script>`,
+  }));
+  // slide-b: 404 the first time (broken at boot), then answer ready on every later request (as if
+  // it recovered) — brokenRequests counts how many times its iframe actually re-navigated to it.
+  await page.route('**/slide-b*', (r) => {
+    brokenRequests += 1;
+    if (brokenRequests === 1) return r.fulfill({ status: 404, body: 'not found' });
+    return r.fulfill({
+      contentType: 'text/html',
+      body: `<!doctype html><title>Slide B</title><script>parent.postMessage({wall:'ready'},'*')</script>`,
+    });
+  });
+
+  await page.goto('/?reprobe=1000'); // 1s re-probe interval instead of the real 5 minutes
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-a');
+  expect(brokenRequests).toBe(1); // broken once at boot, not reprobed yet
+
+  // slide-b's own PROBE_TIMEOUT_MS (5s) must lapse — settling it ok:false — before a re-probe
+  // tick has anything to act on; 6s covers that plus at least one 1s re-probe tick after.
+  await page.clock.fastForward(6_000);
+  await expect.poll(() => brokenRequests).toBeGreaterThan(1); // rotator.js reloaded it
+
+  // Cycle around to slide-b (skipped once already at boot) and confirm it now shows, not skips.
+  await page.clock.fastForward(10_000); // slide-a -> slide-b
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-b');
+});
+
 test('no console errors across a full run', async ({ page }) => {
   const faults = watchFaults(page);
   await page.clock.install();

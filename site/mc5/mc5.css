@@ -24,7 +24,7 @@ header{grid-area:hd;display:flex;align-items:center;gap:clamp(12px,2vmin,26px)}
 .clock small{display:block;font:400 clamp(7px,.9vmin,11px)/1.6 var(--mono);color:var(--dim);letter-spacing:.2em}
 #ring{width:clamp(38px,5vmin,64px);height:clamp(38px,5vmin,64px)}
 
-.panel{position:relative;min-height:0;min-width:0;background:linear-gradient(180deg,rgba(14,16,48,.78),rgba(6,7,20,.78));
+.panel{position:relative;min-height:0;min-width:0;overflow:hidden;background:linear-gradient(180deg,rgba(14,16,48,.78),rgba(6,7,20,.78));
   border:1px solid #2a2f77;clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
 .panel>h2{margin:0;padding:clamp(5px,.8vmin,8px) clamp(10px,1.4vmin,14px) clamp(4px,.6vmin,6px);
   font:600 clamp(9px,1.2vmin,12px)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:#9aa3ff;
@@ -36,7 +36,7 @@ header{grid-area:hd;display:flex;align-items:center;gap:clamp(12px,2vmin,26px)}
   background:var(--green);box-shadow:0 0 8px var(--green);animation:mc5blink 1.4s steps(2) infinite}
 @keyframes mc5blink{50%{opacity:.15}}
 
-#apps{grid-area:ap;height:clamp(64px,11vmin,110px);display:flex;flex-direction:column}
+#apps{grid-area:ap;height:clamp(76px,13vmin,132px);display:flex;flex-direction:column}
 #apps canvas{flex:1;width:100%;display:block}
 
 #github{grid-area:gh}
@@ -49,8 +49,14 @@ header{grid-area:hd;display:flex;align-items:center;gap:clamp(12px,2vmin,26px)}
 #activity{grid-area:ac;height:clamp(70px,12vmin,140px);display:flex;flex-direction:column}
 #activity .body{flex:1;overflow:hidden;padding:clamp(6px,1vmin,10px) clamp(8px,1.2vmin,12px)}
 
-.pending-row{color:var(--faint);letter-spacing:.16em;text-transform:uppercase;font-size:clamp(9px,1vmin,12px);
-  height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center}
-.pending-row::before{content:"◌";font-size:clamp(18px,3vmin,32px);color:#2a2f77;text-shadow:0 0 12px rgba(123,140,255,.4)}
+/* Stand-in rows for a feed with no live source at all yet (github/infra/activity — see
+   site/lib/stage.js setStandIn): styled the same as a real data row, not a faint placeholder
+   line, so the panel reads as a finished part of the wall. */
+.feed-row{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;
+  padding:5px 0;font-size:clamp(10px,1.05vmin,13px);border-bottom:1px solid #171a45}
+.feed-row:last-child{border-bottom:none}
+.feed-row .name{color:var(--ink);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.feed-row .status{font-weight:600}
+.feed-row .ago{color:var(--dim);font:11px var(--mono)}
 
 @media (prefers-reduced-motion:reduce){.mc5 *{animation:none!important}}
