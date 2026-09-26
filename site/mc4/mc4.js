@@ -7,7 +7,7 @@ import {
   clamp, esc, loadConfig, setState, loop, SCORE_OK_MIN, SCORE_DEGRADED_MIN, setSampleBadge,
   setStandIn, onDispose, onContextLoss, disposeThreeScene, hardwareGL, adaptiveBloomOn, adaptiveDpr,
 } from '/lib/stage.js';
-import { sampleAppScore, SAMPLE_ACQ_CARDS, SAMPLE_LIBRARY_CARDS } from '/lib/sampleData.js';
+import { sampleAppScore } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -49,144 +49,109 @@ function renderApps() {
   model.fleetUpFrac = scores.length ? ok / scores.length : null;
 }
 
-/* ---------------- stand-in panels — no download/library exporter exists yet ---------------- */
+/* ---------------- stand-in panels — no download/library/arr exporter exists yet ---------------- */
 // No download-client/library/VPN/arr-stack exporter exists yet — stand-in content throughout,
 // machine-flagged only (setStandIn: no visible badge/pending text — site/lib/stage.js). Never
-// written into any live model, and never substituted for a real feed once one exists.
-function card(title, note) {
-  return `<div class="card"><div class="ct">${esc(title)}</div><div class="cn">${esc(note)}</div></div>`;
-}
-function statgrid(pairs) {
-  return `<div class="card statgrid">${pairs.map(([l, v]) => `<div><span>${esc(l)}</span><b>${esc(v)}</b></div>`).join('')}</div>`;
+// written into any live model, and never substituted for a real feed once one exists. Content set
+// and card shapes port the approved sketch (scene 125) 1:1: QBITTORRENT/LIBRARY STORAGE/PLEX on
+// the left, TORRENTS/ARR STACK on the right, a poster strip along the bottom — no throughput
+// chart (the sketch has none; the QBITTORRENT numerals carry that signal instead).
+function statCard(title, rows) {
+  return `<div class="card"><div class="ct">${esc(title)}</div><div class="qgrid">${rows.map(([v, l, c]) => `<div><b class="num${c ? ` ${c}` : ''}">${esc(v)}</b><span>${esc(l)}</span></div>`).join('')}</div></div>`;
 }
 
-// Download queue: a handful of generic in-progress items (never a real filename), each with a
-// deterministic-but-varying progress bar and speed so the panel reads as active, not frozen.
-const QUEUE_NAMES = ['collection.s01e04', 'archive-part-07', 'release.pack.2160p', 'media-item-12', 'bundle-vol-03'];
-function renderQueue() {
-  const el = $('queuerows');
-  if (!el) return;
-  const now = Date.now() / 1000;
-  el.innerHTML = QUEUE_NAMES.map((n, i) => {
-    const pct = Math.round(20 + ((now / (6 + i)) % 1) * 78);
-    const mbps = (4 + ((now / (3 + i * 1.3)) % 1) * 38).toFixed(1);
-    return `<div class="qrow"><span class="qn">${esc(n)}</span><span class="qs">${mbps} MB/s</span>
-      <div class="qbar"><div style="width:${pct}%"></div></div></div>`;
+// A handful of in-progress items drive both the QBITTORRENT summary numerals and the TORRENTS
+// list below — one shared array, like the sketch's own `tor`. Names are real public-domain films
+// (Blender Foundation open movies, a public-domain classic) and generic Linux ISOs, same mix the
+// sketch itself uses — never an invented-looking placeholder string.
+const TORRENT_NAMES = ['Sintel.2010.4K', 'Big.Buck.Bunny.2008.2160p', 'Tears.of.Steel.2012.1080p', 'Cosmos.Laundromat.2015', 'Spring.2019.4K', 'Night.of.the.Living.Dead.1968', 'ubuntu-24.04-desktop-amd64.iso', 'debian-13.2-netinst.iso', 'archlinux-2026.09.01.iso', 'fedora-42-workstation.iso'];
+const TORRENTS = TORRENT_NAMES.map((n, i) => ({ n, seed: i % 3 === 0, ratio: 0.3 + ((i * 37) % 100) / 25 }));
+const downAt = (t) => clamp(42 + Math.sin(t / 4) * 28 + (Math.sin(t * 1.7) * 0.5) * 10, 2, 100);
+const upAt = (t) => clamp(9 + Math.sin(t / 6 + 1) * 6 + Math.sin(t * 2.3) * 4, 0.5, 30);
+
+function renderQbit(now) {
+  const downloading = TORRENTS.filter((t) => !t.seed).length, seeding = TORRENTS.length - downloading;
+  const ratio = TORRENTS.reduce((a, t) => a + t.ratio, 0) / TORRENTS.length;
+  const peers = Math.round(180 + ((now / 11) % 1) * 240);
+  const dht = Math.round(300 + ((now / 17) % 1) * 300);
+  return statCard('QBITTORRENT', [
+    [`↓ ${downAt(now).toFixed(1)}`, 'MB/s download', 'green'],
+    [`↑ ${upAt(now).toFixed(1)}`, 'MB/s upload', 'cyan'],
+    [`${downloading} / ${seeding}`, 'downloading / seeding'],
+    [ratio.toFixed(2), 'global ratio (est.)', 'amber'],
+    [String(peers), 'peers connected'],
+    ['HEALTHY', `DHT ${dht} nodes`, 'green'],
+  ]);
+}
+
+function renderTorrents(now) {
+  const rows = TORRENTS.map((t, i) => {
+    const rate = t.seed ? clamp(1 + ((now / (5 + i)) % 1) * 8, 0.2, 9) : clamp(3 + ((now / (4 + i * 1.3)) % 1) * 40, 1, 45);
+    const pct = t.seed ? 100 : Math.round(10 + ((now / (7 + i)) % 1) * 88);
+    return `<div class="trow"><span class="tn">${t.seed ? '▲' : '▼'} ${esc(t.n)}</span><span class="tr" style="color:${t.seed ? 'var(--cyan)' : 'var(--green)'}">${rate.toFixed(1)} ${t.seed ? '↑' : '↓'}</span><span class="tratio">r ${t.ratio.toFixed(2)}</span>
+      <div class="tbar"><i style="width:${pct}%;background:${t.seed ? 'var(--cyan)' : 'linear-gradient(90deg,var(--amber),var(--green))'}"></i></div></div>`;
   }).join('');
+  return `<div class="card"><div class="ct">TORRENTS</div>${rows}</div>`;
 }
 
-// Arr-stack activity: a scrolling feed of grab/import events. Titles are generic placeholders,
-// never a real media name.
-const ARR_ACTIONS = ['grabbed', 'imported', 'upgraded'];
-const ARR_TITLES = ['Series Title S02E07', 'Feature Film (2024)', 'Series Title S04E01', 'Feature Film (2019)', 'Series Title S01E11'];
-let arrTimer = null;
-onDispose(() => { if (arrTimer) clearTimeout(arrTimer); });
-// Cap well above what any panel height needs (the CSS opacity ladder below fades rows past ~15
-// visually) so a tall panel still reads as continuously full rather than running out of rows.
-const ARR_MAX_ROWS = 60;
-function addArrRow(animate) {
-  const action = ARR_ACTIONS[Math.floor(Math.random() * ARR_ACTIONS.length)];
-  const title = ARR_TITLES[Math.floor(Math.random() * ARR_TITLES.length)];
-  const feed = $('arrfeed');
-  if (!feed) return;
-  // Only the newest row or two read bright/"live"; demote the previous newest back to normal
-  // brightness as soon as another one arrives, instead of every row staying uniformly bright.
-  feed.querySelectorAll('.afrow-new').forEach((el) => el.classList.remove('afrow-new'));
-  const row = document.createElement('div');
-  row.className = animate ? 'afrow afrow-in afrow-new' : 'afrow';
-  row.innerHTML = `<b>${esc(action)}</b> · ${esc(title)}`;
-  feed.prepend(row);
-  while (feed.children.length > ARR_MAX_ROWS) feed.lastElementChild.remove();
-}
-function scheduleArrFeed() {
-  arrTimer = setTimeout(() => {
-    arrTimer = null;
-    addArrRow(true);
-    scheduleArrFeed();
-  }, RM ? 4000 : 600 + Math.random() * 900);
+// Library storage breakdown (sketch scene 125's LIBRARY STORAGE card): a fixed total/used split
+// by media type, each bar sized relative to the largest category (not the total), same as the
+// sketch's own bar math.
+const LIBRARY = { total: 60, used: 38.2, parts: [['Movies', 15.8, 'amber'], ['TV', 17.9, 'red'], ['Music', 1.6, 'mag'], ['Downloads', 2.9, 'cyan']] };
+const LIBRARY_MAX = Math.max(...LIBRARY.parts.map(([, v]) => v));
+function renderLibraryStorage() {
+  const pct = Math.round((LIBRARY.used / LIBRARY.total) * 100);
+  const rows = LIBRARY.parts.map(([n, v, c]) => `<div class="lrow"><span>${esc(n)}</span><div class="lbar"><i style="width:${((v / LIBRARY_MAX) * 100).toFixed(0)}%;background:var(--${c})"></i></div><b>${v} TB</b></div>`).join('');
+  return `<div class="card"><div class="ct">LIBRARY STORAGE</div><div class="lbig"><b>${LIBRARY.used}</b><i> / ${LIBRARY.total} TB · ${pct}%</i></div>${rows}</div>`;
 }
 
-// Throughput area chart (down + up), 1s cadence — no download-client exporter exists yet, so
-// this is stand-in like everything else in the panel, but it fills the dead space above the
-// QBITTORRENT card instead of leaving it empty.
-const THROUGHPUT_N = 60;
-const downAt = (t) => clamp(42 + Math.sin(t / 4) * 28 + (Math.random() - 0.5) * 10, 2, 100);
-const upAt = (t) => clamp(9 + Math.sin(t / 6 + 1) * 6 + (Math.random() - 0.5) * 4, 0.5, 30);
-const seedNow = Date.now() / 1000;
-// Seeded across the last THROUGHPUT_N seconds (not a flat 0 baseline) so the chart reads as an
-// established trend on first paint instead of an empty history that only starts filling in live.
-const throughput = {
-  down: Array.from({ length: THROUGHPUT_N }, (_, i) => downAt(seedNow - (THROUGHPUT_N - 1 - i))),
-  up: Array.from({ length: THROUGHPUT_N }, (_, i) => upAt(seedNow - (THROUGHPUT_N - 1 - i))),
-};
-function tickThroughput() {
+// PLEX card: figures and "now playing" titles ported 1:1 from the sketch (it hardcodes these
+// too) — real public-domain films, never an invented-looking placeholder string.
+const PLEX_STREAMS = [['Sintel', '4K direct', 'living room'], ['Tears of Steel', '1080p transcode', 'phone'], ['Big Buck Bunny', '4K HDR', 'office']];
+function renderPlex() {
+  const rows = PLEX_STREAMS.map(([t, q, w]) => `<div>▶ ${esc(t)} · ${esc(q)} · ${esc(w)}</div>`).join('');
+  return `<div class="card"><div class="ct">PLEX</div><div class="p3grid"><div><b>3</b><span>streams</span></div><div><b>1</b><span>transcode</span></div><div><b>85</b><span>Mb/s out</span></div></div><div class="pstreams">${rows}</div></div>`;
+}
+
+// ARR STACK (sketch scene 125): a fixed 6-service status grid, not a scrolling feed — one row
+// (index 3) is deliberately shown degraded, matching the sketch, so the panel never reads as an
+// all-green wall that hides real trouble.
+const ARR_SERVICES = ['sonarr', 'radarr', 'prowlarr', 'bazarr', 'overseerr', 'tautulli'];
+function renderArrStack() {
+  const rows = ARR_SERVICES.map((s, i) => {
+    const bad = i === 3;
+    return `<div class="arow${bad ? ' bad' : ''}"><i></i>${esc(s)}<em>${bad ? 'degraded' : `q${(i * 2) % 5} · ok`}</em></div>`;
+  }).join('');
+  return `<div class="card"><div class="ct">ARR STACK</div><div class="agrid">${rows}</div></div>`;
+}
+
+// Recently-added poster strip: the sketch's own 8 titles, verbatim — all real public-domain
+// Blender Foundation films.
+const POSTER_TITLES = ['Sintel', 'Big Buck Bunny', 'Tears of Steel', 'Spring', 'Cosmos Laundromat', 'Agent 327', 'Caminandes', 'Charge'];
+function renderPosters(now) {
+  const cards = POSTER_TITLES.map((p, i) => {
+    const age = Math.round(1 + ((now / (9 + i)) % 1) * 47);
+    return `<div class="poster" style="background:linear-gradient(${i * 45}deg,hsl(${20 + i * 40} 70% 30%),hsl(${200 + i * 20} 55% 14%))">${esc(p)}<span>${age}h ago</span></div>`;
+  }).join('');
+  $('posters').innerHTML = `<div class="ct">RECENTLY ADDED</div><div class="pgrid">${cards}</div>`;
+}
+
+function renderMediaPanels() {
   const now = Date.now() / 1000;
-  throughput.down.push(downAt(now));
-  throughput.down.shift();
-  throughput.up.push(upAt(now));
-  throughput.up.shift();
-  drawThroughput();
+  $('acqbody').innerHTML = renderQbit(now) + renderLibraryStorage() + renderPlex();
+  $('pipebody').innerHTML = renderTorrents(now) + renderArrStack();
+  renderPosters(now);
 }
-function drawThroughput() {
-  const canvas = $('throughSpark');
-  if (!canvas) return;
-  const dpr = adaptiveDpr();
-  const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
-  if (canvas.width !== w) canvas.width = w;
-  if (canvas.height !== h) canvas.height = h;
-  const c = canvas.getContext('2d');
-  c.clearRect(0, 0, w, h);
-  const max = Math.max(1, ...throughput.down, ...throughput.up);
-  const area = (series, color, fill) => {
-    c.beginPath();
-    series.forEach((v, i) => {
-      const x = (i / (series.length - 1)) * w, y = h - (v / max) * (h - 4 * dpr) - 2 * dpr;
-      i === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
-    });
-    c.lineTo(w, h); c.lineTo(0, h); c.closePath();
-    c.fillStyle = fill; c.fill();
-    c.beginPath();
-    series.forEach((v, i) => {
-      const x = (i / (series.length - 1)) * w, y = h - (v / max) * (h - 4 * dpr) - 2 * dpr;
-      i === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
-    });
-    c.strokeStyle = color; c.lineWidth = 1.5 * dpr; c.stroke();
-  };
-  area(throughput.up, '#38ff9c', 'rgba(56,255,156,.15)');
-  area(throughput.down, '#ffb347', 'rgba(255,179,71,.18)');
-}
-let throughputId = null;
-
-function renderAcqPanel() {
-  const [qbit] = SAMPLE_ACQ_CARDS;
-  $('acqbody').innerHTML = `<div class="card"><div class="ct">Throughput <span style="color:var(--amber)">down</span> / <span style="color:var(--green)">up</span></div><canvas id="throughSpark" class="through"></canvas></div>`
-    + card(qbit.title, qbit.note)
-    + `<div class="card"><div class="ct">Queue</div><div id="queuerows"></div></div>`
-    + statgrid([['tunnel', 'up'], ['peers', '3'], ['handshake', '41s ago'], ['rx / tx', '1.2 / 0.3 GB']]);
-  renderQueue();
-  tickThroughput();
-  if (!throughputId) throughputId = setInterval(tickThroughput, 1000);
-}
-onDispose(() => { if (throughputId) clearInterval(throughputId); });
-function renderPipePanel() {
-  const [plex, , storage] = SAMPLE_LIBRARY_CARDS;
-  $('pipebody').innerHTML = card(plex.title, plex.note)
-    + statgrid([['movies', '1,204'], ['shows', '86'], ['episodes', '9,417'], ['added (7d)', '23']])
-    + `<div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column"><div class="ct">Arr activity</div><div class="afeed" id="arrfeed"></div></div>`
-    + card(storage.title, storage.note);
-}
-renderAcqPanel();
-renderPipePanel();
-for (let i = 0; i < 26; i += 1) addArrRow(false); // seed so the feed fills the panel on first paint
-scheduleArrFeed();
+renderMediaPanels();
 setState($('acq'), 'ok', '');
 setState($('pipe'), 'ok', '');
 setStandIn($('acq'), true);
 setStandIn($('pipe'), true);
 $('vpn').textContent = '● WIREGUARD · CONNECTED';
+$('vpnDetail').textContent = 'tunnel exit · handshake 32s ago · killswitch ARMED · leaks 0 · port-fwd OPEN';
 setStandIn($('vpn'), true);
-const queueId = setInterval(renderQueue, 2000);
-onDispose(() => clearInterval(queueId));
+const mediaPanelsId = setInterval(renderMediaPanels, 2000);
+onDispose(() => clearInterval(mediaPanelsId));
 
 /* ---------------- centre hero: 3D acquisition flow (sketch scene 125) or 2D fallback ---------------- */
 const coreCanvas = $('corecanvas');
@@ -200,62 +165,49 @@ function build3DFlow() {
   const renderer = new THREE.WebGLRenderer({ canvas: coreCanvas, antialias: true, alpha: false });
   renderer.setClearColor(0x000000, 1);
   const scene = new THREE.Scene();
-  // Shock-and-awe: the canvas is now a full-viewport layer (mc4.css #corecanvas), not confined
-  // to the old "core" panel box, so distance/fov are tuned to sweep the tori/tube/particles
-  // across the WHOLE screen (behind the header and side panels) rather than one panel.
-  const cam = new THREE.PerspectiveCamera(50, 1, 1, 2000);
-  cam.position.set(0, 18, 165);
+  // Camera and every geometry value below are ported 1:1 from the approved sketch (scene 125,
+  // scratchpad/wall-sketches.html) — same FOV/distance, same radii/opacities/sizes, no rescale
+  // hack — so the canvas (a full-viewport 16:9 layer, same as the sketch's own #stage) reproduces
+  // the promised framing exactly instead of a shrunk-down approximation.
+  const cam = new THREE.PerspectiveCamera(45, 1, 1, 2000);
+  cam.position.set(0, 40, 300);
   cam.lookAt(0, 0, 0);
   const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.35, radius: 0.4, threshold: 0.5 });
 
   const group = new THREE.Group(); scene.add(group);
 
-  // Nested glowing tori around the core (sketch scene 125) — concentric rings at alternating
-  // tilts, tinted through the same amber/green/cyan palette as the flow tubes below.
-  const TORUS_COLS = [0xffb347, 0x38ff9c, 0x3ee6ff];
-  const tori = Array.from({ length: 5 }, (_, i) => {
-    const t = new THREE.Mesh(
-      new THREE.TorusGeometry(16 + i * 5, 0.4, 8, 64),
-      new THREE.MeshBasicMaterial({ color: TORUS_COLS[i % TORUS_COLS.length], transparent: true, opacity: 0.8 - i * 0.1 }),
-    );
-    t.rotation.x = Math.PI / 2 + i * 0.3; t.rotation.y = i * 0.5;
-    group.add(t);
-    return t;
-  });
-  const P = []; for (let i = 0; i < 380; i += 1) {
-    const u = Math.random() * Math.PI * 2, v = Math.acos(Math.random() * 2 - 1), rr = 65 + Math.random() * 18;
+  // Dust shell around the flow (sketch scene 125): 260 points on a lumpy sphere shell.
+  const P = []; for (let i = 0; i < 260; i += 1) {
+    const u = Math.random() * Math.PI * 2, v = Math.acos(Math.random() * 2 - 1), rr = 150 + Math.random() * 40;
     P.push(Math.sin(v) * Math.cos(u) * rr, Math.cos(v) * rr * 0.6, Math.sin(v) * Math.sin(u) * rr);
   }
   const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
-  group.add(new THREE.Points(pg, new THREE.PointsMaterial({ color: 0xffb347, size: 1.4, transparent: true, opacity: 0.8 })));
+  group.add(new THREE.Points(pg, new THREE.PointsMaterial({ color: 0xffb347, size: 2.4, transparent: true, opacity: 0.8 })));
 
-  const path1 = new THREE.CatmullRomCurve3([new THREE.Vector3(-100, 13, -26), new THREE.Vector3(-52, 26, 0), new THREE.Vector3(-17, 4, 17), new THREE.Vector3(0, 0, 0)]);
-  group.add(new THREE.Mesh(new THREE.TubeGeometry(path1, 100, 4, 12, false), new THREE.MeshBasicMaterial({ color: 0x38ff9c, wireframe: true, transparent: true, opacity: 0.25 })));
-  const path2 = new THREE.CatmullRomCurve3([new THREE.Vector3(100, -9, -26), new THREE.Vector3(52, -22, 9), new THREE.Vector3(17, -4, 17), new THREE.Vector3(0, 0, 0)]);
-  group.add(new THREE.Mesh(new THREE.TubeGeometry(path2, 100, 2.6, 12, false), new THREE.MeshBasicMaterial({ color: 0x3ee6ff, wireframe: true, transparent: true, opacity: 0.18 })));
+  const path1 = new THREE.CatmullRomCurve3([new THREE.Vector3(-230, 30, -60), new THREE.Vector3(-120, 60, 0), new THREE.Vector3(-40, 10, 40), new THREE.Vector3(0, 0, 0)]);
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(path1, 120, 9, 16, false), new THREE.MeshBasicMaterial({ color: 0x38ff9c, wireframe: true, transparent: true, opacity: 0.25 })));
+  const path2 = new THREE.CatmullRomCurve3([new THREE.Vector3(230, -20, -60), new THREE.Vector3(120, -50, 20), new THREE.Vector3(40, -10, 40), new THREE.Vector3(0, 0, 0)]);
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(path2, 120, 6, 12, false), new THREE.MeshBasicMaterial({ color: 0x3ee6ff, wireframe: true, transparent: true, opacity: 0.18 })));
 
-  const core = new THREE.Mesh(new THREE.OctahedronGeometry(9.5, 1), new THREE.MeshBasicMaterial({ color: 0xffb347, wireframe: true }));
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(22, 1), new THREE.MeshBasicMaterial({ color: 0xffb347, wireframe: true }));
   group.add(core);
-  const shield = new THREE.Mesh(new THREE.SphereGeometry(14.5, 24, 24), new THREE.MeshBasicMaterial({ color: 0x38ff9c, wireframe: true, transparent: true, opacity: 0.15 }));
+  const shield = new THREE.Mesh(new THREE.SphereGeometry(34, 24, 24), new THREE.MeshBasicMaterial({ color: 0x38ff9c, wireframe: true, transparent: true, opacity: 0.15 }));
   group.add(shield);
 
   const mkFlow = (curve, col, n, dir) => {
     const pos = new Float32Array(n * 3), g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    group.add(new THREE.Points(g, new THREE.PointsMaterial({ color: col, size: 1.7, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+    group.add(new THREE.Points(g, new THREE.PointsMaterial({ color: col, size: 4, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
     return { curve, pos, g, ph: Array.from({ length: n }, () => Math.random()), dir };
   };
-  const flows = [mkFlow(path1, 0x38ff9c, 190, 1), mkFlow(path2, 0x3ee6ff, 95, -1)];
+  const flows = [mkFlow(path1, 0x38ff9c, 140, 1), mkFlow(path2, 0x3ee6ff, 70, -1)];
 
   // Accretion disk: two coplanar rings (a lit outer ring, a dim base underneath so the "gap" reads
   // as a disk rather than a flat circle).
-  const disk = new THREE.Mesh(new THREE.RingGeometry(25, 31, 90, 1, 0, Math.PI * 2 * 0.86), new THREE.MeshBasicMaterial({ color: 0xffb347, side: THREE.DoubleSide, transparent: true, opacity: 0.6 }));
-  disk.rotation.x = -Math.PI / 2; disk.position.y = -17; group.add(disk);
-  const diskBase = new THREE.Mesh(new THREE.RingGeometry(25, 31, 90), new THREE.MeshBasicMaterial({ color: 0x3a2208, side: THREE.DoubleSide }));
-  diskBase.rotation.x = -Math.PI / 2; diskBase.position.y = -17.2; group.add(diskBase);
-  // Lead review (round 2): 1.8x so the tube runs full viewport width, edge to edge, behind both
-  // side columns, not confined to the centre.
-  group.scale.setScalar(1.8);
+  const disk = new THREE.Mesh(new THREE.RingGeometry(60, 74, 90, 1, 0, Math.PI * 2 * 0.86), new THREE.MeshBasicMaterial({ color: 0xffb347, side: THREE.DoubleSide, transparent: true, opacity: 0.6 }));
+  disk.rotation.x = -Math.PI / 2; disk.position.y = -40; group.add(disk);
+  const diskBase = new THREE.Mesh(new THREE.RingGeometry(60, 74, 90), new THREE.MeshBasicMaterial({ color: 0x3a2208, side: THREE.DoubleSide }));
+  diskBase.rotation.x = -Math.PI / 2; diskBase.position.y = -40.2; group.add(diskBase);
 
   const resizeAt = (w, h) => { renderer.setSize(w, h, false); bloomFx.setSize(w, h); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); };
   // The canvas is a full-viewport fixed layer now (mc4.css #corecanvas), not the "core" panel's
@@ -270,17 +222,17 @@ function build3DFlow() {
     // Brightness/spin tied to the real fleet up-fraction (model.fleetUpFrac) — the one live
     // signal this decorative scene has any business reflecting; never fabricated.
     const health = model.fleetUpFrac ?? 0.8;
-    // Slow camera drift (shock-and-awe): a gentle orbit around the default position so the hero
-    // scene reads as alive even beyond its own spin/flow animation.
+    // Slow camera drift (shock-and-awe): a gentle orbit around the sketch's own default position
+    // so the hero scene reads as alive even beyond its own spin/flow animation.
     if (!RM) {
-      cam.position.x = Math.sin(t * 0.1) * 36;
-      cam.position.y = 18 + Math.sin(t * 0.07) * 16;
+      cam.position.x = Math.sin(t * 0.1) * 50;
+      cam.position.y = 40 + Math.sin(t * 0.07) * 20;
       cam.lookAt(0, 0, 0);
     }
+    const spin = 0.4 + health;
     group.rotation.y = Math.sin(t * 0.15) * 0.35;
-    core.rotation.y += 0.01; core.rotation.x += 0.004;
+    core.rotation.y += 0.01 * spin; core.rotation.x += 0.004 * spin;
     shield.rotation.y -= 0.003; shield.scale.setScalar(1 + Math.sin(t * 3) * 0.03 * health);
-    tori.forEach((tr, i) => { tr.rotation.z += 0.003 * (i % 2 ? -1 : 1) * (1 + i * 0.15) * (0.4 + health); });
     disk.rotation.z += 0.002; diskBase.rotation.z += 0.002;
     flows.forEach((f) => {
       f.ph.forEach((p, k) => {
