@@ -256,15 +256,18 @@ function build3DCore() {
   const renderer = new THREE.WebGLRenderer({ canvas: reactor, antialias: true, alpha: false });
   renderer.setClearColor(0x000000, 1);
   const scene = new THREE.Scene();
-  const cam = new THREE.PerspectiveCamera(42, 1, 1, 2000);
-  cam.position.set(0, 30, 210);
+  // Shock-and-awe: the canvas is now a full-viewport layer (mc3.css #reactor), not confined to
+  // the old "cores" panel box, so distance/spacing are tuned to sweep the cores/hub/particle
+  // streams across the WHOLE screen (behind the header and side panel) rather than one panel.
+  const cam = new THREE.PerspectiveCamera(46, 1, 1, 2000);
+  cam.position.set(0, 30, 260);
   // threshold 0.1 + radius 0.55 bloomed nearly every lit pixel in the scene, not just the bright
   // cores/hub — that wide, low-threshold blur is what read as a teal/grey fog wash across the
   // whole canvas instead of solid black. A much higher threshold (only genuinely HDR pixels
   // bloom) and a tighter radius confine the glow to the objects themselves.
   const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.1, radius: 0.32, threshold: 0.65 });
 
-  const spacing = 78;
+  const spacing = 98;
   const cores = Array.from({ length: CORE_COLS }, (_, i) => {
     const g = new THREE.Group();
     g.position.x = (i - (CORE_COLS - 1) / 2) * spacing;
@@ -278,7 +281,7 @@ function build3DCore() {
     });
     const core = new THREE.Mesh(CORE_GEOMETRIES[i % CORE_GEOMETRIES.length](), new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true }));
     g.add(core);
-    const N = 220, pos = new Float32Array(N * 3), pg = new THREE.BufferGeometry();
+    const N = 320, pos = new Float32Array(N * 3), pg = new THREE.BufferGeometry();
     pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     g.add(new THREE.Points(pg, new THREE.PointsMaterial({ color: col, size: 1.4, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
     const ph = Array.from({ length: N }, () => ({ a: Math.random() * Math.PI * 2, r: 14 + Math.random() * 26, y: (Math.random() - 0.5) * 18, s: 0.4 + Math.random() }));
@@ -305,7 +308,7 @@ function build3DCore() {
   // Per-vertex colour (not a flat material colour) tapers brighter toward the hub end — a static
   // screenshot still reads flow direction (dim at the core, bright arriving at the hub), not just
   // motion over time.
-  const STREAM_N = 140;
+  const STREAM_N = 200;
   const streams = cores.map((c) => {
     const pos = new Float32Array(STREAM_N * 3), pgcol = new Float32Array(STREAM_N * 3), pg = new THREE.BufferGeometry();
     pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -333,7 +336,8 @@ function build3DCore() {
   }
   function render(now) {
     const t = RM ? 0 : now / 1000;
-    cam.position.x = Math.sin(t * 0.12) * 24;
+    cam.position.x = Math.sin(t * 0.12) * 40;
+    cam.position.y = 30 + Math.sin(t * 0.08) * 14;
     cam.lookAt(0, 4, 0);
     hub.rotation.y += 0.006; hub.rotation.x += 0.003;
     hubGlow.scale.setScalar(1 + Math.sin(t * 1.8) * 0.12);
@@ -435,7 +439,7 @@ onDispose(() => clearInterval(clockId));
 // first data refresh resolves. Gating it behind `await refresh()` is what let a slow/failing
 // litellm query on this very page delay 'ready' past the rotator's probe window and get MC3
 // skipped as broken on the live wall.
-loop(30, (now) => drawScene(now));
+loop(0, (now) => drawScene(now)); // uncapped: native refresh rate, the display has headroom to spare
 await refresh().catch((e) => console.warn('refresh', e));
 const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
 onDispose(() => clearInterval(refreshId));

@@ -125,7 +125,6 @@ scheduleFeed();
 onDispose(() => clearTimeout(feedId));
 
 /* ---------------- globe: real land mask, animated great-circle arcs ---------------- */
-const threatPanel = $('threat');
 const globeCanvas = $('globe');
 const forced = new URLSearchParams(location.search).get('gl');
 let drawGlobe;
@@ -145,21 +144,27 @@ function isLand(lat, lon) {
 }
 
 function buildGlobe() {
-  const renderer = new THREE.WebGLRenderer({ canvas: globeCanvas, antialias: true, alpha: true });
+  // alpha:false + an explicit black clear (not a transparent canvas) — see bloom.js's threshold
+  // comment: a transparent canvas + low bloom threshold blooms almost every pixel into a fog wash.
+  const renderer = new THREE.WebGLRenderer({ canvas: globeCanvas, antialias: true, alpha: false });
+  renderer.setClearColor(0x000000, 1);
   renderer.setPixelRatio(1); // backing-store pixels are set explicitly below
   const scene = new THREE.Scene();
-  // fov/distance tuned so the WHOLE globe (including its atmosphere rim) fits inside the panel
-  // with margin (~80-85% of panel height), never clipped — see the half-height/atmosphere-radius
-  // comment inline below for the math.
-  const cam = new THREE.PerspectiveCamera(46, 1, 1, 1000);
-  cam.position.set(0, 0, 260);
+  // Shock-and-awe: the canvas is now a full-viewport layer (site/mc2/mc2.css #globe), not confined
+  // to the old "threat" panel box, so fov/distance are tuned to sweep the globe/arcs across the
+  // WHOLE screen (behind the header and side panels) rather than fitting inside one panel.
+  const cam = new THREE.PerspectiveCamera(48, 1, 1, 1000);
+  cam.position.set(0, 0, 285);
   const group = new THREE.Group();
+  // Lead review (round 2): 1.3x so the globe overflows the top/bottom edges and reaches further
+  // into the screen's empty left half instead of sitting small and centre-right.
+  group.scale.setScalar(1.3);
   scene.add(group);
 
   // Land-mask point cloud: a Fibonacci sphere distribution, kept only where the real coastline
   // mask (above) says land — dense enough that continents read as continents, not a blob.
   const pts = [];
-  const N = 42000;
+  const N = 60000;
   for (let i = 0; i < N; i++) {
     const y = 1 - (i / (N - 1)) * 2, rr = Math.sqrt(Math.max(0, 1 - y * y)), t = i * 2.399963;
     const x = Math.cos(t) * rr, z = Math.sin(t) * rr;
@@ -204,8 +209,16 @@ function buildGlobe() {
       }),
     );
   }
-  scene.add(fresnelShell(80.6, new THREE.Color(1.6, 0.45, 0.6), 6, 1)); // thin crisp rim
-  scene.add(fresnelShell(88, new THREE.Color(0.9, 0.2, 0.35), 3.5, 0.14)); // subtle wide outer glow
+  group.add(fresnelShell(80.6, new THREE.Color(1.6, 0.45, 0.6), 6, 1)); // thin crisp rim
+  group.add(fresnelShell(88, new THREE.Color(0.9, 0.2, 0.35), 3.5, 0.14)); // subtle wide outer glow
+  // A faint wide orbit ring, well outside the globe — fills the screen's dead space (especially
+  // the empty left half) instead of leaving it flat black.
+  const orbitRing = new THREE.Mesh(
+    new THREE.RingGeometry(118, 119.4, 96, 1, 0, Math.PI * 2 * 0.94),
+    new THREE.MeshBasicMaterial({ color: 0xff3350, transparent: true, opacity: 0.22, side: THREE.DoubleSide }),
+  );
+  orbitRing.rotation.x = Math.PI / 2.35;
+  group.add(orbitRing);
 
   const llToVec = (lat, lon, h = 80) => {
     const la = lat * Math.PI / 180, lo = lon * Math.PI / 180;
@@ -244,7 +257,7 @@ function buildGlobe() {
   // concurrent arcs is enough bloom-eligible surface area to fog the whole panel.
   const tubeMat = () => new THREE.MeshBasicMaterial({ color: 0xffb454, transparent: true, opacity: 1 });
   function spawnArc() {
-    if (arcs.length >= 20) return;
+    if (arcs.length >= 26) return;
     const src = THREAT_SOURCES[(Math.random() * THREAT_SOURCES.length) | 0];
     const a = llToVec(src.lat, src.lon);
     // Apex fixed to 0.25-0.4 globe radii above the surface (never scaled by source distance, so
@@ -260,7 +273,7 @@ function buildGlobe() {
     group.add(head);
     arcs.push({ tube, tubeGeo, curve, head, t: 0 });
   }
-  const spawnId = RM ? null : setInterval(spawnArc, 300);
+  const spawnId = RM ? null : setInterval(spawnArc, 140);
   onDispose(() => { if (spawnId) clearInterval(spawnId); });
 
   const pulseMat = () => { const m = new THREE.MeshBasicMaterial({ color: 0x9beeff, transparent: true, opacity: 0.85, side: THREE.DoubleSide }); m.color.multiplyScalar(1.6); return m; };
@@ -268,7 +281,7 @@ function buildGlobe() {
     // Cap concurrent pulses: several overlapping additive-blended rings at the same point stack
     // into a blown-out white blob instead of reading as a beacon — a hard cap keeps HOME a crisp
     // pulsing point no matter how many arcs land close together.
-    if (pulses.length >= 3) return;
+    if (pulses.length >= 6) return;
     const ring = new THREE.Mesh(new THREE.RingGeometry(1, 1.7, 28), pulseMat());
     ring.position.copy(home);
     ring.lookAt(0, 0, 0);
@@ -277,13 +290,25 @@ function buildGlobe() {
   }
   let beaconT = 0;
 
-  const bloomFx = makeBloom(renderer, scene, cam, { strength: 0.85, radius: 0.3, threshold: 0.7 });
-  observeCanvas(threatPanel, globeCanvas, (w, h) => { renderer.setSize(w, h, false); bloomFx.setSize(w, h); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); });
+  const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.25, radius: 0.4, threshold: 0.52 });
+  // The canvas is a full-viewport fixed layer now (mc2.css #globe), not the "threat" panel's box —
+  // size the backing store from the viewport itself (document.documentElement's ResizeObserver
+  // fires on viewport resize) rather than any one panel.
+  observeCanvas(document.documentElement, globeCanvas, (w, h) => { renderer.setSize(w, h, false); bloomFx.setSize(w, h); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); });
   const render = (now) => {
     // A gentle yaw wobble around the aligned orientation (not a full spin) — HOME stays on the
     // visible face at all times, per the alignment above, instead of orbiting away each cycle.
     const wobble = RM ? 0.08 : Math.sin(now / 9000) * 0.12;
     group.quaternion.copy(alignQuat).multiply(new THREE.Quaternion().setFromAxisAngle(wobbleAxis, wobble));
+    orbitRing.rotation.z += RM ? 0 : 0.0016;
+    // Slow camera drift (shock-and-awe): the globe's own orientation is pinned (HOME must stay
+    // on the visible face), so the "alive, not static" motion comes from the camera instead — a
+    // slow figure-eight-ish orbit around the default position, never enough to lose the globe.
+    if (!RM) {
+      cam.position.x = Math.sin(now / 14000) * 18;
+      cam.position.y = Math.sin(now / 21000) * 10;
+      cam.lookAt(0, 0, 0);
+    }
     homeMarker.scale.setScalar(1 + 0.22 * Math.sin(now / 260));
     beaconT += RM ? 0.02 : 0.014;
     if (beaconT >= 1) { beaconT = 0; spawnPulse(); }
@@ -322,7 +347,7 @@ if (forced === '3d' || (forced !== '2d' && hardwareGL())) {
   onDispose(() => { globe3d.dispose(); disposeThreeScene(globe3d.renderer, globe3d.scene); });
 } else {
   const c = globeCanvas.getContext('2d');
-  observeCanvas(threatPanel, globeCanvas);
+  observeCanvas(document.documentElement, globeCanvas);
   drawGlobe = (now) => {
     const w = globeCanvas.width, h = globeCanvas.height, cx = w / 2, cy = h / 2, rad = Math.min(w, h) * 0.32;
     c.clearRect(0, 0, w, h);
@@ -341,7 +366,7 @@ const tickClock = () => { const d = new Date(); $('clock').innerHTML = `${d.toTi
 tickClock();
 const clockId = setInterval(tickClock, 1000);
 onDispose(() => clearInterval(clockId));
-loop(30, (now) => drawGlobe(now));
+loop(0, (now) => drawGlobe(now)); // uncapped: native refresh rate, the display has headroom to spare
 await refresh().catch((e) => console.warn('refresh', e));
 const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
 onDispose(() => clearInterval(refreshId));
