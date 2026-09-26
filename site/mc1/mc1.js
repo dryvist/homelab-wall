@@ -277,10 +277,20 @@ function drawHex(t) {
     c.textAlign = 'center'; c.fillStyle = '#fff'; c.font = `600 ${r * 0.4}px "Chakra Petch",sans-serif`; c.fillText(unknown ? '?' : Math.round(a.d), x, y + r * 0.06);
     c.fillStyle = '#cfe9f5'; c.font = `${Math.min(r * 0.22, 22)}px "JetBrains Mono",monospace`; c.fillText(a.n.length > 11 ? a.n.slice(0, 10) + '…' : a.n, x, y + r * 0.38);
   });
-  // A failed score query (model.scoreFailed, renderStatic) leaves every app's .s null — the
-  // same shape as "no data yet" — so this summary must not compute OK/DEGRADED/DOWN/NO DATA
-  // counts from it on a failure; that's the "0 OK ... 42 NO DATA" the panel's own error state
-  // (data-panel-message) is there to replace, not sit beside.
+}
+
+// #appsum reflects apps[].s (fresh from refresh()), never apps[].d (the hex glyphs' own
+// lerp-eased decorative decay, drawHex above) -- so it must be written the moment data arrives,
+// synchronously from renderStatic(), not from inside the 30fps rAF loop that drives drawHex.
+// It used to live in drawHex itself: correct on Chromium, where the next animation frame is
+// effectively immediate, but under WebKit a starved/backgrounded rAF can lag several seconds
+// (the summary sat on its placeholder "—" past a 5s test timeout under CI's 8-way parallel
+// matrix) -- a symptom of coupling a data-driven summary to a decorative animation's schedule.
+function renderAppSum() {
+  // A failed score query (model.scoreFailed) leaves every app's .s null — the same shape as
+  // "no data yet" — so this summary must not compute OK/DEGRADED/DOWN/NO DATA counts from it on
+  // a failure; that's the "0 OK ... 42 NO DATA" the panel's own error state (data-panel-message)
+  // is there to replace, not sit beside.
   if (model.scoreFailed) { $('appsum').textContent = '—'; return; }
   const ok = apps.filter((a) => a.s != null && a.s >= 90).length, warn = apps.filter((a) => a.s != null && a.s >= 50 && a.s < 90).length;
   const bad = apps.filter((a) => a.s != null && a.s < 50).length, unk = apps.filter((a) => a.s == null).length;
@@ -403,6 +413,7 @@ function renderStatic() {
   const scored = apps.some((app) => app.s != null);
   setState($('apps'), model.scoreFailed ? 'error' : scored ? 'ok' : 'empty',
     model.scoreFailed ? 'SCORE QUERY FAILED' : scored ? '' : 'NO SERVICE DATA');
+  renderAppSum();
   setState($('storage'), model.storageFailed ? 'error' : model.storage.length ? 'ok' : 'empty',
     model.storageFailed ? 'STORAGE QUERY FAILED' : model.storage.length ? '' : 'STORAGE METRICS EMPTY');
   setState($('fw'), 'pending', 'SPLUNK FEED PENDING');
