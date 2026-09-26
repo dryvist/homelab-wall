@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.0](https://github.com/dryvist/homelab-wall/compare/v0.5.0...v0.6.0) (2026-09-26)
+
+
+### Features
+
+* **mc3:** AI Core revamp — hero geometries, hub streams, dense stats ([#37](https://github.com/dryvist/homelab-wall/issues/37)) ([ff21048](https://github.com/dryvist/homelab-wall/commit/ff210484abb71913c68f7b6c6bbd966e60dbe5da))
+* **mc4:** dense acquisition/library panels, nested tori, solid black bg ([#40](https://github.com/dryvist/homelab-wall/issues/40)) ([9d2ddb7](https://github.com/dryvist/homelab-wall/commit/9d2ddb7b243eafb649e54d4f501616d31ae4463d))
+* **rotator:** reload the wall every 30 minutes ([#39](https://github.com/dryvist/homelab-wall/issues/39)) ([a072c5b](https://github.com/dryvist/homelab-wall/commit/a072c5be91bc0f2da4f8d8ec6487ed1eb6f7608f))
+
 ## [0.5.0](https://github.com/dryvist/homelab-wall/compare/v0.4.1...v0.5.0) (2026-09-26)
 
 
