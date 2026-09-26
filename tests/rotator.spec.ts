@@ -161,6 +161,56 @@ test('a broken slide is re-probed and rejoins rotation once it recovers', async 
   await expect.poll(() => activeSlideUrl(page)).toContain('/slide-b');
 });
 
+// Track: the wall reloads itself periodically so a new release appears without anyone touching
+// the kiosk. `?reloadms=` (this file only, never read by real config) shortens the interval so
+// the test doesn't wait out the real 30-minute default. A page-level marker (set via evaluate,
+// which targets the main frame only) disappearing proves the top document actually reloaded —
+// simpler and less frame-ambiguous than listening for `beforeunload`, which also fires on each
+// slide iframe's own first navigation. The reload itself tears down the page's execution
+// context mid-poll, so the polled predicate treats that teardown as "gone" too.
+async function markerGone(page: import('@playwright/test').Page) {
+  try {
+    return (await page.evaluate(() => (window as any).__marker)) === undefined;
+  } catch {
+    return true; // execution context destroyed by the reload navigation
+  }
+}
+
+test('the page reloads after the configured interval', async ({ page }) => {
+  await page.clock.install();
+  await mockSlides(page);
+  await page.goto('/?reloadms=10000');
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-a');
+  await page.evaluate(() => { (window as any).__marker = 'alive'; });
+
+  await page.clock.fastForward(9_000);
+  expect(await markerGone(page)).toBe(false);
+
+  await page.clock.fastForward(2_000);
+  await expect.poll(() => markerGone(page)).toBe(true);
+});
+
+test('reloadMinutes from /config.json overrides the default interval', async ({ page }) => {
+  await page.clock.install();
+  // MIN_RELOAD_MINUTES clamps below 5, so 5 is the shortest real interval this can exercise.
+  await page.route('**/config.json', (r) => r.fulfill({ json: { slides: SLIDES, holdSeconds: 30, reloadMinutes: 5 } }));
+  for (const s of SLIDES) {
+    await page.route(`**${s.url}`, (r) => r.fulfill({
+      contentType: 'text/html',
+      body: `<!doctype html><title>${s.name}</title><script>parent.postMessage({wall:'ready'},'*')</script>`,
+    }));
+  }
+  await page.goto('/');
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-a');
+  await page.evaluate(() => { (window as any).__marker = 'alive'; });
+
+  await page.clock.fastForward(4 * 60_000 + 59_000); // reloadMinutes: 5 -> 300_000ms, not yet due
+  expect(await markerGone(page)).toBe(false);
+
+  await page.clock.fastForward(2_000);
+  await expect.poll(() => markerGone(page)).toBe(true);
+});
+
 test('no console errors across a full run', async ({ page }) => {
   const faults = watchFaults(page);
   await page.clock.install();
