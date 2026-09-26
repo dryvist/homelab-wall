@@ -15,6 +15,9 @@ const MIN_HOLD = 30;
 const MAX_HOLD = 60;
 const DEFAULT_HOLD = 45;
 const DEFAULT_SECONDS = 10;
+const MIN_RELOAD_MINUTES = 5;
+const MAX_RELOAD_MINUTES = 1440;
+const DEFAULT_RELOAD_MINUTES = 30;
 const IDLE_HIDE_MS = 3000;
 const PROBE_TIMEOUT_MS = 5000;
 const SKIP_NOTE_MS = 4000;
@@ -29,6 +32,7 @@ const CIRC = 2 * Math.PI * 6;
 
 let slides = DEFAULT_SLIDES;
 let holdSeconds = DEFAULT_HOLD;
+let reloadMinutes = DEFAULT_RELOAD_MINUTES;
 let layers = []; // one persistent { el, name, sameOrigin, readyPromise, finish, hideTimer } per slide
 let current = 0;
 let paused = false;
@@ -51,6 +55,9 @@ const holdMs = () => FAST_MS || (slides[current]?.seconds ?? DEFAULT_SECONDS) * 
 // A test-only override (never read by real config), mirroring `?fast=`: shortens the re-probe
 // interval so a test can exercise it without waiting out the real 5 minutes.
 const REPROBE_OVERRIDE_MS = Number(new URLSearchParams(location.search).get('reprobe')) || 0;
+// A test-only override (never read by real config), mirroring `?fast=`/`?reprobe=`: shortens the
+// periodic full-page reload so a test can exercise it without waiting out real minutes.
+const RELOAD_OVERRIDE_MS = Number(new URLSearchParams(location.search).get('reloadms')) || 0;
 const sameOrigin = (url) => {
   try { return new URL(url, location.href).origin === location.origin; } catch { return false; }
 };
@@ -284,12 +291,10 @@ document.addEventListener('keydown', (e) => {
   else pin();
 });
 
-function scheduleNightlyReload() {
-  const now = new Date();
-  const next = new Date(now);
-  next.setHours(4, 0, 0, 0);
-  if (next <= now) next.setDate(next.getDate() + 1);
-  setTimeout(() => location.reload(), next - now);
+// Reloads the whole page every `reloadMinutes` so a new deployed release shows up on the kiosk
+// without anyone touching it — a fresh document pulls in whatever build is currently live.
+function scheduleReload() {
+  setTimeout(() => location.reload(), RELOAD_OVERRIDE_MS || reloadMinutes * 60 * 1000);
 }
 
 async function init() {
@@ -298,6 +303,9 @@ async function init() {
     const cfg = await res.json();
     if (Array.isArray(cfg.slides) && cfg.slides.length) slides = cfg.slides;
     if (typeof cfg.holdSeconds === 'number') holdSeconds = clamp(cfg.holdSeconds, MIN_HOLD, MAX_HOLD);
+    if (typeof cfg.reloadMinutes === 'number') {
+      reloadMinutes = clamp(cfg.reloadMinutes, MIN_RELOAD_MINUTES, MAX_RELOAD_MINUTES);
+    }
   } catch { /* keep defaults */ }
   buildLayers();
   const idx = await resolveSlide(0);
@@ -305,7 +313,7 @@ async function init() {
   activateLayer(current);
   renderDots();
   scheduleRotate();
-  scheduleNightlyReload();
+  scheduleReload();
 }
 
 init();
