@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/dryvist/homelab-wall/compare/v0.7.0...v0.7.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* **wall:** purge N/A/placeholder text, 8-model MC3 satellites, remove redundant legend ([#47](https://github.com/dryvist/homelab-wall/issues/47)) ([d198a77](https://github.com/dryvist/homelab-wall/commit/d198a777b0d1c3eac559af2bca61a579b295b498))
+
 ## [0.7.0](https://github.com/dryvist/homelab-wall/compare/v0.6.0...v0.7.0) (2026-09-26)
 
 
