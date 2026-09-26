@@ -163,7 +163,7 @@ test('a broken slide is re-probed and rejoins rotation once it recovers', async 
 
 // Track: the wall reloads itself periodically so a new release appears without anyone touching
 // the kiosk. `?reloadms=` (this file only, never read by real config) shortens the interval so
-// the test doesn't wait out the real 30-minute default. A page-level marker (set via evaluate,
+// the test doesn't wait out the real 60-minute default. A page-level marker (set via evaluate,
 // which targets the main frame only) disappearing proves the top document actually reloaded —
 // simpler and less frame-ambiguous than listening for `beforeunload`, which also fires on each
 // slide iframe's own first navigation. The reload itself tears down the page's execution
