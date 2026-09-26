@@ -1,8 +1,10 @@
 /* Mission Control 4: media acquisition. Fluid grid — wall.css's shared .stage rule already
    supplies the 100vw/100dvh fluid surface; this only lays out the page's own tracks. */
+/* Solid black stage (operator's standing dark-mode rule): no radial haze behind the panels —
+   amber stays an accent colour (borders, text, bloom), never a background wash. */
 #stage.mc4{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) minmax(0,1fr);
   grid-template-rows:auto minmax(0,1fr);gap:clamp(6px,1vmin,14px);padding:clamp(8px,1.3vmin,16px) clamp(9px,1.5vmin,18px);
-  box-sizing:border-box;background:radial-gradient(1200px 700px at 50% 45%,#2a1604 0%,var(--void) 70%)}
+  box-sizing:border-box;background:#000}
 
 header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:center;gap:clamp(12px,2vmin,26px);padding:0 clamp(4px,1vmin,10px)}
 .brand{font:700 clamp(16px,2.4vmin,30px)/1 var(--disp);letter-spacing:.14em;color:#fff;text-shadow:0 0 18px rgba(255,179,71,.55)}
@@ -18,7 +20,7 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
 .clock small{display:block;font:400 clamp(8px,.9vmin,11px)/1.6 var(--mono);color:var(--dim);letter-spacing:.2em}
 
 .mc4 .panel{position:relative;z-index:1;grid-row:2;display:flex;flex-direction:column;min-height:0;min-width:0;
-  background:linear-gradient(180deg,rgba(30,16,4,.82),rgba(8,5,2,.85));border:1px solid rgba(255,179,71,.35);
+  background:#050301;border:1px solid rgba(255,179,71,.35);
   clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
 #acq{grid-column:1}
 #core{grid-column:2;padding:0}
@@ -41,3 +43,28 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
   clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
 .card .ct{font:600 clamp(11px,1.2vmin,14px) var(--disp);letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:8px}
 .card .cn{color:var(--faint);letter-spacing:.1em;font-size:clamp(11px,1.2vmin,15px);line-height:1.5}
+
+/* Dense fill: download queue rows, a VPN stat grid, and a scrolling arr-stack activity feed —
+   all stand-in (no download-client/VPN/arr-stack exporter exists yet), machine-flagged only. */
+.qrow{display:grid;grid-template-columns:1fr auto;gap:4px 8px;font-size:clamp(10px,1vmin,12px);color:var(--ink)}
+.qrow .qn{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.qrow .qs{color:var(--dim);font-size:clamp(9px,.9vmin,11px);white-space:nowrap}
+.qbar{grid-column:1/-1;height:4px;background:#241203}
+.qbar div{height:100%;background:var(--amber)}
+.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
+.statgrid div{display:flex;flex-direction:column;gap:2px}
+.statgrid span{font-size:clamp(9px,.85vmin,10px);color:var(--dim);letter-spacing:.12em;text-transform:uppercase}
+.statgrid b{font:600 clamp(13px,1.4vmin,17px)/1 var(--disp);color:#fff}
+.afeed{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:3px}
+.afrow{font-size:clamp(9px,.9vmin,11px);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.afrow b{color:var(--ink);font-weight:600}
+.afrow:nth-child(n+6){opacity:.7}
+.afrow:nth-child(n+11){opacity:.45}
+.afrow:nth-child(n+20){opacity:.28}
+/* The newest row (or two, briefly overlapping during the insert animation) reads brighter/live —
+   full ink colour plus an amber glow — instead of every row sitting at the same dim brightness. */
+.afrow-new{color:var(--ink);text-shadow:0 0 6px rgba(255,179,71,.35)}
+.afrow-new b{color:var(--amber)}
+.afrow-in{animation:afrow-in .35s ease-out}
+.through{width:100%;height:clamp(48px,7vh,84px);display:block}
+@keyframes afrow-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}

@@ -50,20 +50,143 @@ function renderApps() {
 }
 
 /* ---------------- stand-in panels — no download/library exporter exists yet ---------------- */
-// No download-client/library/VPN exporter exists yet — stand-in cards, machine-flagged only
-// (setStandIn: no visible badge/pending text — site/lib/stage.js). Never written into any live
-// model, and never substituted for a real feed once one exists.
+// No download-client/library/VPN/arr-stack exporter exists yet — stand-in content throughout,
+// machine-flagged only (setStandIn: no visible badge/pending text — site/lib/stage.js). Never
+// written into any live model, and never substituted for a real feed once one exists.
 function card(title, note) {
   return `<div class="card"><div class="ct">${esc(title)}</div><div class="cn">${esc(note)}</div></div>`;
 }
-$('acqbody').innerHTML = SAMPLE_ACQ_CARDS.map((c) => card(c.title, c.note)).join('');
-$('pipebody').innerHTML = SAMPLE_LIBRARY_CARDS.map((c) => card(c.title, c.note)).join('');
+function statgrid(pairs) {
+  return `<div class="card statgrid">${pairs.map(([l, v]) => `<div><span>${esc(l)}</span><b>${esc(v)}</b></div>`).join('')}</div>`;
+}
+
+// Download queue: a handful of generic in-progress items (never a real filename), each with a
+// deterministic-but-varying progress bar and speed so the panel reads as active, not frozen.
+const QUEUE_NAMES = ['collection.s01e04', 'archive-part-07', 'release.pack.2160p', 'media-item-12', 'bundle-vol-03'];
+function renderQueue() {
+  const el = $('queuerows');
+  if (!el) return;
+  const now = Date.now() / 1000;
+  el.innerHTML = QUEUE_NAMES.map((n, i) => {
+    const pct = Math.round(20 + ((now / (6 + i)) % 1) * 78);
+    const mbps = (4 + ((now / (3 + i * 1.3)) % 1) * 38).toFixed(1);
+    return `<div class="qrow"><span class="qn">${esc(n)}</span><span class="qs">${mbps} MB/s</span>
+      <div class="qbar"><div style="width:${pct}%"></div></div></div>`;
+  }).join('');
+}
+
+// Arr-stack activity: a scrolling feed of grab/import events. Titles are generic placeholders,
+// never a real media name.
+const ARR_ACTIONS = ['grabbed', 'imported', 'upgraded'];
+const ARR_TITLES = ['Series Title S02E07', 'Feature Film (2024)', 'Series Title S04E01', 'Feature Film (2019)', 'Series Title S01E11'];
+let arrTimer = null;
+onDispose(() => { if (arrTimer) clearTimeout(arrTimer); });
+// Cap well above what any panel height needs (the CSS opacity ladder below fades rows past ~15
+// visually) so a tall panel still reads as continuously full rather than running out of rows.
+const ARR_MAX_ROWS = 60;
+function addArrRow(animate) {
+  const action = ARR_ACTIONS[Math.floor(Math.random() * ARR_ACTIONS.length)];
+  const title = ARR_TITLES[Math.floor(Math.random() * ARR_TITLES.length)];
+  const feed = $('arrfeed');
+  if (!feed) return;
+  // Only the newest row or two read bright/"live"; demote the previous newest back to normal
+  // brightness as soon as another one arrives, instead of every row staying uniformly bright.
+  feed.querySelectorAll('.afrow-new').forEach((el) => el.classList.remove('afrow-new'));
+  const row = document.createElement('div');
+  row.className = animate ? 'afrow afrow-in afrow-new' : 'afrow';
+  row.innerHTML = `<b>${esc(action)}</b> · ${esc(title)}`;
+  feed.prepend(row);
+  while (feed.children.length > ARR_MAX_ROWS) feed.lastElementChild.remove();
+}
+function scheduleArrFeed() {
+  arrTimer = setTimeout(() => {
+    arrTimer = null;
+    addArrRow(true);
+    scheduleArrFeed();
+  }, RM ? 4000 : 600 + Math.random() * 900);
+}
+
+// Throughput area chart (down + up), 1s cadence — no download-client exporter exists yet, so
+// this is stand-in like everything else in the panel, but it fills the dead space above the
+// QBITTORRENT card instead of leaving it empty.
+const THROUGHPUT_N = 60;
+const downAt = (t) => clamp(42 + Math.sin(t / 4) * 28 + (Math.random() - 0.5) * 10, 2, 100);
+const upAt = (t) => clamp(9 + Math.sin(t / 6 + 1) * 6 + (Math.random() - 0.5) * 4, 0.5, 30);
+const seedNow = Date.now() / 1000;
+// Seeded across the last THROUGHPUT_N seconds (not a flat 0 baseline) so the chart reads as an
+// established trend on first paint instead of an empty history that only starts filling in live.
+const throughput = {
+  down: Array.from({ length: THROUGHPUT_N }, (_, i) => downAt(seedNow - (THROUGHPUT_N - 1 - i))),
+  up: Array.from({ length: THROUGHPUT_N }, (_, i) => upAt(seedNow - (THROUGHPUT_N - 1 - i))),
+};
+function tickThroughput() {
+  const now = Date.now() / 1000;
+  throughput.down.push(downAt(now));
+  throughput.down.shift();
+  throughput.up.push(upAt(now));
+  throughput.up.shift();
+  drawThroughput();
+}
+function drawThroughput() {
+  const canvas = $('throughSpark');
+  if (!canvas) return;
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w) canvas.width = w;
+  if (canvas.height !== h) canvas.height = h;
+  const c = canvas.getContext('2d');
+  c.clearRect(0, 0, w, h);
+  const max = Math.max(1, ...throughput.down, ...throughput.up);
+  const area = (series, color, fill) => {
+    c.beginPath();
+    series.forEach((v, i) => {
+      const x = (i / (series.length - 1)) * w, y = h - (v / max) * (h - 4 * dpr) - 2 * dpr;
+      i === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+    });
+    c.lineTo(w, h); c.lineTo(0, h); c.closePath();
+    c.fillStyle = fill; c.fill();
+    c.beginPath();
+    series.forEach((v, i) => {
+      const x = (i / (series.length - 1)) * w, y = h - (v / max) * (h - 4 * dpr) - 2 * dpr;
+      i === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+    });
+    c.strokeStyle = color; c.lineWidth = 1.5 * dpr; c.stroke();
+  };
+  area(throughput.up, '#38ff9c', 'rgba(56,255,156,.15)');
+  area(throughput.down, '#ffb347', 'rgba(255,179,71,.18)');
+}
+let throughputId = null;
+
+function renderAcqPanel() {
+  const [qbit] = SAMPLE_ACQ_CARDS;
+  $('acqbody').innerHTML = `<div class="card"><div class="ct">Throughput <span style="color:var(--amber)">down</span> / <span style="color:var(--green)">up</span></div><canvas id="throughSpark" class="through"></canvas></div>`
+    + card(qbit.title, qbit.note)
+    + `<div class="card"><div class="ct">Queue</div><div id="queuerows"></div></div>`
+    + statgrid([['tunnel', 'up'], ['peers', '3'], ['handshake', '41s ago'], ['rx / tx', '1.2 / 0.3 GB']]);
+  renderQueue();
+  tickThroughput();
+  if (!throughputId) throughputId = setInterval(tickThroughput, 1000);
+}
+onDispose(() => { if (throughputId) clearInterval(throughputId); });
+function renderPipePanel() {
+  const [plex, , storage] = SAMPLE_LIBRARY_CARDS;
+  $('pipebody').innerHTML = card(plex.title, plex.note)
+    + statgrid([['movies', '1,204'], ['shows', '86'], ['episodes', '9,417'], ['added (7d)', '23']])
+    + `<div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column"><div class="ct">Arr activity</div><div class="afeed" id="arrfeed"></div></div>`
+    + card(storage.title, storage.note);
+}
+renderAcqPanel();
+renderPipePanel();
+for (let i = 0; i < 26; i += 1) addArrRow(false); // seed so the feed fills the panel on first paint
+scheduleArrFeed();
 setState($('acq'), 'ok', '');
 setState($('pipe'), 'ok', '');
 setStandIn($('acq'), true);
 setStandIn($('pipe'), true);
 $('vpn').textContent = '● WIREGUARD · CONNECTED';
 setStandIn($('vpn'), true);
+const queueId = setInterval(renderQueue, 2000);
+onDispose(() => clearInterval(queueId));
 
 /* ---------------- centre hero: 3D acquisition flow (sketch scene 125) or 2D fallback ---------------- */
 const corePanel = $('core');
@@ -71,14 +194,32 @@ const coreCanvas = $('corecanvas');
 const forced = new URLSearchParams(location.search).get('gl');
 
 function build3DFlow() {
-  const renderer = new THREE.WebGLRenderer({ canvas: coreCanvas, antialias: true, alpha: true });
+  // alpha:false + opaque black clear, and a much higher bloom threshold/tighter radius: a
+  // transparent canvas plus a low threshold (0.12) bloomed nearly every lit pixel, reading as a
+  // colour fog wash across the whole panel instead of solid black with glow on the objects only
+  // (same class of bug MC3's reactor hit).
+  const renderer = new THREE.WebGLRenderer({ canvas: coreCanvas, antialias: true, alpha: false });
+  renderer.setClearColor(0x000000, 1);
   const scene = new THREE.Scene();
   const cam = new THREE.PerspectiveCamera(45, 1, 1, 2000);
   cam.position.set(0, 18, 130);
   cam.lookAt(0, 0, 0);
-  const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.0, radius: 0.55, threshold: 0.12 });
+  const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.0, radius: 0.32, threshold: 0.6 });
 
   const group = new THREE.Group(); scene.add(group);
+
+  // Nested glowing tori around the core (sketch scene 125) — concentric rings at alternating
+  // tilts, tinted through the same amber/green/cyan palette as the flow tubes below.
+  const TORUS_COLS = [0xffb347, 0x38ff9c, 0x3ee6ff];
+  const tori = Array.from({ length: 5 }, (_, i) => {
+    const t = new THREE.Mesh(
+      new THREE.TorusGeometry(16 + i * 5, 0.4, 8, 64),
+      new THREE.MeshBasicMaterial({ color: TORUS_COLS[i % TORUS_COLS.length], transparent: true, opacity: 0.8 - i * 0.1 }),
+    );
+    t.rotation.x = Math.PI / 2 + i * 0.3; t.rotation.y = i * 0.5;
+    group.add(t);
+    return t;
+  });
   const P = []; for (let i = 0; i < 260; i += 1) {
     const u = Math.random() * Math.PI * 2, v = Math.acos(Math.random() * 2 - 1), rr = 65 + Math.random() * 18;
     P.push(Math.sin(v) * Math.cos(u) * rr, Math.cos(v) * rr * 0.6, Math.sin(v) * Math.sin(u) * rr);
@@ -124,6 +265,7 @@ function build3DFlow() {
     group.rotation.y = Math.sin(t * 0.15) * 0.35;
     core.rotation.y += 0.01; core.rotation.x += 0.004;
     shield.rotation.y -= 0.003; shield.scale.setScalar(1 + Math.sin(t * 3) * 0.03 * health);
+    tori.forEach((tr, i) => { tr.rotation.z += 0.003 * (i % 2 ? -1 : 1) * (1 + i * 0.15) * (0.4 + health); });
     disk.rotation.z += 0.002; diskBase.rotation.z += 0.002;
     flows.forEach((f) => {
       f.ph.forEach((p, k) => {
