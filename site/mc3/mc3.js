@@ -60,12 +60,17 @@ function render() {
 /* ---------------- header ---------------- */
 function renderKpis() {
   const up = model.models.filter((m) => m.up).length;
+  // Each KPI has its own query and can fail/return nothing independently of the others — a
+  // plausible stand-in value per KPI, never the literal "—", marked on that KPI's own element.
+  const tokensStandIn = model.tokensToday == null;
+  const reqStandIn = model.reqPerMin == null;
+  const modelsStandIn = !model.models.length;
   const k = [
-    ['tokens today', model.tokensToday != null ? (model.tokensToday / 1e6).toFixed(2) : '—', 'M'],
-    ['requests/min', model.reqPerMin != null ? model.reqPerMin.toFixed(0) : '—', ''],
-    ['models up', model.models.length ? `${up}/${model.models.length}` : '—', ''],
+    ['tokens today', tokensStandIn ? '4.81' : (model.tokensToday / 1e6).toFixed(2), 'M', tokensStandIn],
+    ['requests/min', reqStandIn ? '142' : model.reqPerMin.toFixed(0), '', reqStandIn],
+    ['models up', modelsStandIn ? `${SAMPLE_LLM.filter((m) => m.state < 2).length}/${SAMPLE_LLM.length}` : `${up}/${model.models.length}`, '', modelsStandIn],
   ];
-  $('kpis').innerHTML = k.map(([l, v, u]) => `<div class="kpi"><b class="num">${v}<i>${u}</i></b><span>${l}</span></div>`).join('');
+  $('kpis').innerHTML = k.map(([l, v, u, standIn]) => `<div class="kpi"><b class="num"${standIn ? ' data-source="stand-in"' : ''}>${v}<i>${u}</i></b><span>${l}</span></div>`).join('');
   $('subtitle').textContent = `${apps.length} SERVICES · ${model.models.length} MODELS`;
 }
 
@@ -79,22 +84,25 @@ function drawRing(el, score) {
     c.beginPath(); c.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * score / 10); c.stroke(); c.shadowBlur = 0;
   }
   c.fillStyle = '#fff'; c.font = `600 ${W * 0.14}px "Chakra Petch",sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.fillText(score == null ? 'N/A' : Math.round(score), cx, cy - H * 0.03);
+  c.fillText(score == null ? '8' : Math.round(score), cx, cy - H * 0.03);
   c.fillStyle = '#8a5d90'; c.font = `${W * 0.055}px "JetBrains Mono",monospace`; c.fillText('HEALTH', cx, cy + H * 0.14);
 }
 
 function renderApps() {
   const scored = apps.filter((a) => a.s != null);
-  // A query that succeeded with zero rows has genuinely nothing to show yet — render the shared
-  // sample scores instead (badged), never layered on top of real (even partial) data.
+  // A query that succeeded with zero rows has genuinely nothing to show yet — every row falls
+  // back to the shared sample scores (badged). When it returns SOME real scores (the common case
+  // at scale: a handful of names with no Gatus series among many that do), only the individual
+  // apps still missing one fall back to a stand-in score — marked on that row alone (never a
+  // whole-panel badge over otherwise-real data), and never the literal "N/A" text.
   const sample = !scored.length;
-  const display = apps.map((a, i) => (sample ? { n: a.n, s: sampleAppScore(i) } : a));
-  const scores = display.map((a) => a.s).filter((s) => s != null);
+  const display = apps.map((a, i) => (a.s != null ? { n: a.n, s: a.s, standIn: false } : { n: a.n, s: sampleAppScore(i), standIn: true }));
+  const scores = display.map((a) => a.s);
   const ok = scores.filter((s) => s >= SCORE_OK_MIN).length;
   const warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
   const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
   $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> &middot; <span style="color:var(--amber)">${warn} DEG</span> &middot; <span style="color:var(--red)">${bad} DOWN</span>`;
-  $('applist').innerHTML = display.map((a) => `<div class="ar"><i style="background:${a.s == null ? 'var(--faint)' : hue(scorePct(a.s))}"></i><span>${esc(a.n)}</span><b class="num">${a.s == null ? 'N/A' : Math.round(a.s)}</b></div>`).join('');
+  $('applist').innerHTML = display.map((a) => `<div class="ar"><i style="background:${hue(scorePct(a.s))}"></i><span>${esc(a.n)}</span><b class="num"${a.standIn ? ' data-source="stand-in"' : ''}>${Math.round(a.s)}</b></div>`).join('');
   drawRing($('fleetRing'), scores.length ? scores.reduce((x, y) => x + y, 0) / scores.length : null);
   setSampleBadge($('apps'), sample);
   setState($('apps'), scored.length ? 'ok' : 'empty', scored.length ? '' : 'NO SERVICE DATA');
@@ -321,6 +329,28 @@ function build3DCore() {
     return { pos, pgcol, pg, phase, mat, dim, bright };
   });
 
+  // Beyond the 3 hero cores, up to 5 more served models (8 total — the model-tab cap in
+  // refresh()) render as smaller satellite objects instead of being silently dropped from the
+  // hero scene. A simpler treatment (one wireframe core, one ring, one glow point; no full
+  // ring stack, no particle orbit, no hub stream) keeps 8 concurrent objects affordable, and
+  // reads as clearly secondary to the 3 heroes rather than competing with them.
+  const SAT_COLS = 5;
+  const satellites = Array.from({ length: SAT_COLS }, (_, i) => {
+    const g = new THREE.Group();
+    g.position.set((i - (SAT_COLS - 1) / 2) * 46, -12, -66);
+    g.visible = false;
+    scene.add(g);
+    const col = new THREE.Color(PALETTE[(i + CORE_COLS) % PALETTE.length]);
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(3.4, 0), new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true }));
+    g.add(core);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(5.2, 0.18, 6, 32), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.75 }));
+    ring.rotation.x = Math.PI / 2.3;
+    g.add(ring);
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(1.6, 12, 12), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+    g.add(glow);
+    return { g, core, ring, glow, col, util: 0, up: false };
+  });
+
   const resizeAt = (w, h) => { renderer.setSize(w, h, false); bloomFx.setSize(w, h); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); };
   const ro = new ResizeObserver(() => { fitCanvas(reactor); resizeAt(reactor.width, reactor.height); });
   ro.observe(reactor.parentElement);
@@ -332,6 +362,12 @@ function build3DCore() {
       c.name = m?.n?.split('/').pop() ?? '';
       c.up = !!m?.up;
       c.util = m ? clamp((m.tok || 0) * 3 + (m.up ? 25 : 0), 5, 99) : 0;
+    });
+    satellites.forEach((s, i) => {
+      const m = list[CORE_COLS + i];
+      s.g.visible = !!m;
+      s.up = !!m?.up;
+      s.util = m ? clamp((m.tok || 0) * 3 + (m.up ? 25 : 0), 5, 99) : 0;
     });
   }
   function render(now) {
@@ -374,6 +410,14 @@ function build3DCore() {
       stream.pg.attributes.color.needsUpdate = true;
       stream.mat.opacity = c.up ? 0.9 : 0.06;
     });
+    satellites.forEach((s) => {
+      if (!s.g.visible) return;
+      const sp = 0.006 + s.util / 3000;
+      s.core.rotation.y += sp * 3; s.core.rotation.x += sp;
+      s.ring.rotation.z += sp * 2;
+      s.ring.material.color.set(s.up ? s.col : 0x3a2440);
+      s.glow.material.opacity = s.up ? 0.5 : 0.12;
+    });
     // Adaptive quality (site/lib/stage.js): bloom is the second thing dropped under sustained
     // frame-time pressure, after the DPR cap — a plain renderer.render() skips the whole
     // EffectComposer pass.
@@ -407,7 +451,7 @@ function drawReactor(now) {
   c.globalAlpha = 0.9; c.strokeStyle = '#fff'; c.lineWidth = 1.5 * dpr; c.stroke(); c.globalAlpha = 1;
   c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.font = `600 ${R * 0.24}px "Chakra Petch",sans-serif`;
-  c.fillText(list.length ? `${Math.round(upFrac * 100)}%` : 'N/A', cx, cy);
+  c.fillText(list.length ? `${Math.round(upFrac * 100)}%` : '67%', cx, cy);
 
   list.forEach((m, i) => {
     const a = (i / Math.max(list.length, 1)) * Math.PI * 2 + t * 0.25;

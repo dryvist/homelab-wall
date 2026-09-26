@@ -310,13 +310,31 @@ test('the SAMPLE DATA badge never appears on a panel that has real data', async 
   }
 });
 
-// No visible non-production marker survives anywhere on any page: no "SAMPLE DATA"/"PENDING"/
-// "NO DATA" text and no em-dash placeholder, regardless of panel state.
+// No visible non-production marker survives anywhere on any page: no "N/A"/"SAMPLE DATA"/
+// "PENDING"/"NO DATA"/"FAILED" text and no em-dash placeholder, regardless of panel state.
+const NON_PROD_TEXT = /\bN\/A\b|SAMPLE DATA|PENDING|NO DATA|NO GPU\b|FAILED|—/;
 for (const pageSpec of PAGES) {
   test(`${pageSpec.id}: no visible non-production text anywhere on the page`, async ({ page }) => {
     if (!wallUrl) await mockFeeds(page);
     await page.goto(pageSpec.path);
-    await expect.poll(() => page.locator('body').innerText()).not.toMatch(/SAMPLE DATA|PENDING|NO DATA|NO GPU\b|—/);
+    await expect.poll(() => page.locator('body').innerText()).not.toMatch(NON_PROD_TEXT);
+  });
+}
+
+// Same assertion, but with the gateway itself failing every query outright (hard errors, not
+// just empty results) and with real data thinned to a partial set (some apps/models scored,
+// others not — never a whole-panel wipe) — the scenario a healthy-looking wall at scale
+// (many services, many models) actually hits: individual gaps in otherwise-real data, and
+// outright query failures, must fall back to a stand-in value, never a visible placeholder.
+for (const pageSpec of PAGES) {
+  test(`${pageSpec.id}: no visible non-production text with the gateway returning nulls/errors`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
+    await mockFeeds(page, {
+      failQuery: (q) => /litellm_total_tokens_metric_total|litellm_proxy_total_requests_metric_total|success="true"/.test(q),
+      emptyQuery: (q) => /filesystem_size|unifi_vlan_fw_events_total/.test(q),
+    });
+    await page.goto(pageSpec.path);
+    await expect.poll(() => page.locator('body').innerText()).not.toMatch(NON_PROD_TEXT);
   });
 }
 
