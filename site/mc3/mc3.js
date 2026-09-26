@@ -26,6 +26,8 @@ async function refresh() {
     tok: () => query(Q.llmTokRate),
     tokensToday: () => query(Q.llmTokensToday),
     reqPerMin: () => query(Q.llmReqPerMin),
+    queue: () => query(Q.llmQueueSeconds),
+    latency: () => query(Q.llmLatencySeconds),
   });
 
   if (r.score) {
@@ -39,9 +41,16 @@ async function refresh() {
 
   if (r.state) {
     const tok = Object.fromEntries((r.tok || []).map((x) => [x.labels.model, x.value]));
+    const queue = Object.fromEntries((r.queue || []).map((x) => [x.labels.model, x.value]));
+    const latency = Object.fromEntries((r.latency || []).map((x) => [x.labels.model, x.value]));
     model.models = r.state.map((x) => {
       const n = x.labels.litellm_model_name;
-      return { n, up: x.value < 2, tok: tok[n] ?? 0 };
+      return {
+        n, up: x.value < 2, tok: tok[n] ?? 0,
+        // Both undefined for an idle model (no requests in the window -> no series) — real
+        // absence, not a failed query, so it renders a quiet idle state, never a stand-in badge.
+        queue: queue[n], latencyMs: Number.isFinite(latency[n]) ? latency[n] * 1000 : undefined,
+      };
     }).sort((a, b) => (b.up - a.up) || b.tok - a.tok || a.n.localeCompare(b.n)).slice(0, 8);
   }
 
@@ -114,15 +123,17 @@ function renderApps() {
 // in instead of a blank/pending table. reactorList mirrors whichever list rendered last, so the
 // decorative reactor canvas (drawReactor below) always animates real or stand-in state, never "N/A".
 let reactorList = SAMPLE_LLM.map((m) => ({ n: m.n, up: m.state < 2, tok: m.tok }));
-// Queue depth and p50 latency have no litellm metric exposed at all yet (see Q, site/lib/queries.js)
-// — unlike tok/s and UP/DOWN, which are real once the router feed answers, these two columns are
-// always stand-in. Deterministic per-model (name hash + tok rate), not random, so the dense
-// readout doesn't jitter between polls; setStandIn on .modeltab (below) flags the whole row.
-function hashN(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
-function standInQueueLatency(m) {
-  if (!m.up) return { queue: 0, p50: null };
-  const base = hashN(m.n) % 7;
-  return { queue: base + Math.round(m.tok / 15), p50: 80 + base * 35 + Math.round(m.tok * 1.5) };
+// Queue time and API latency (Q.llmQueueSeconds/Q.llmLatencySeconds, site/lib/queries.js) are real
+// per-model averages from litellm's own sum/count metrics — litellm exposes no _bucket histogram,
+// so this is an average, not a true p50. A model with no requests in the 5m window (queue/latencyMs
+// both undefined on the model object) is genuinely idle, not a failed query: it renders a quiet
+// "idle" state, never a stand-in badge.
+function modelStats(m) {
+  if (!m.up) return { queue: 'offline', avg: 'offline' };
+  return {
+    queue: m.queue == null ? 'idle' : `${m.queue.toFixed(1)}s`,
+    avg: m.latencyMs == null ? 'idle' : `${Math.round(m.latencyMs)}ms`,
+  };
 }
 // Rolling per-model tok/s history for the sparklines (model cards + fleet-health column). Real
 // once the router feed answers (each refresh tick appends the live tok value); a brand-new name
@@ -166,12 +177,12 @@ function renderCore() {
   tab.innerHTML = list.map((m) => {
     const col = m.up ? (m.tok > 0.05 ? 'var(--green)' : 'var(--cyan)') : 'var(--red)';
     const status = m.up ? 'tok/s' : 'health check failing';
-    const { queue, p50 } = standInQueueLatency(m);
+    const { queue, avg } = modelStats(m);
     return `<div class="mc"><div class="mch"><b title="${esc(m.n)}">${esc(m.n.split('/').pop())}</b><span style="color:${col}">${m.up ? 'UP' : 'DOWN'}</span></div>
       <div class="mctok" style="color:${col}">${m.up ? m.tok.toFixed(0) : '0'}<i>${status}</i></div>
       <canvas class="mcspark" data-model="${esc(m.n)}"></canvas>
       <div class="mcbar"><div style="width:${m.up ? clamp(m.tok * 2, 6, 100) : 100}%;background:${col}"></div></div>
-      <div class="mcstats" data-source="stand-in">queue <b>${queue}</b> &middot; p50 <b>${p50 == null ? 'offline' : `${p50}ms`}</b></div></div>`;
+      <div class="mcstats">queue <b>${queue}</b> &middot; avg <b>${avg}</b></div></div>`;
   }).join('');
   for (const canvas of $('modeltab').querySelectorAll('.mcspark')) {
     const m = list.find((x) => x.n === canvas.dataset.model);

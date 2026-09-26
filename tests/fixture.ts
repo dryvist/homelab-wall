@@ -60,6 +60,10 @@ function answer(q: string): unknown[] {
   // mc3
   if (q.includes('litellm_total_tokens_metric_total')) return vec([[{}, 4_810_000]]);
   if (q.includes('litellm_proxy_total_requests_metric_total')) return vec([[{}, 142]]);
+  // model-coder deliberately has no row here: no requests in the window is a real, idle model,
+  // not a failed query — proves mc3 renders that as a quiet "idle" state, never a placeholder.
+  if (q.includes('litellm_request_queue_time_seconds_sum')) return vec([[{ model: 'model-large' }, 4.5]]);
+  if (q.includes('litellm_llm_api_latency_metric_sum')) return vec([[{ model: 'model-large' }, 0.842]]);
   return [];
 }
 
