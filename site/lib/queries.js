@@ -44,4 +44,8 @@ export const Q = {
   // mc3
   llmTokensToday: 'sum(increase(litellm_total_tokens_metric_total[24h]))',
   llmReqPerMin: 'sum(rate(litellm_proxy_total_requests_metric_total[5m])) * 60',
+  // Average, not p50: litellm exports only a sum/count pair per model, no _bucket histogram, so a
+  // true percentile isn't derivable from this feed.
+  llmQueueSeconds: 'sum by (model) (increase(litellm_request_queue_time_seconds_sum[5m])) / sum by (model) (increase(litellm_request_queue_time_seconds_count[5m]))',
+  llmLatencySeconds: 'sum by (model) (increase(litellm_llm_api_latency_metric_sum[5m])) / sum by (model) (increase(litellm_llm_api_latency_metric_count[5m]))',
 };
