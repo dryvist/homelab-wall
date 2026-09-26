@@ -1,6 +1,10 @@
 // PromQL used by the wall. APP_HEALTH_SCORE is the single base definition of
-// the 0-100 app health score; prometheus-homelab-rules records the identical
+// the 0-9(-10) app health score; prometheus-homelab-rules records the identical
 // expression as homelab:app_health_score, which Q.appScore prefers once it exists.
+//
+// KNOWN GAP: that precomputed metric is defined in a separate repo and still encodes the old
+// 0-100 formula. Q.appScore's "or" prefers it when present, so the live wall keeps showing 0-100
+// values until that definition is updated to match this expression — this file alone cannot fix it.
 const CATALOG = 'group=~"catalog-.+",group!="catalog-authed"';
 const NODE = 'job="pve_node_exporter"';
 // A network mount of another node's own pool reports the same bytes as that pool's own local
@@ -9,11 +13,15 @@ const NODE = 'job="pve_node_exporter"';
 // true-shared-device case: one mountpoint, several hosts).
 const FS = `${NODE},fstype!~"tmpfs|devtmpfs|overlay|squashfs|ramfs|fuse.*|nsfs|efivarfs|vfat|nfs.?|cifs|smb3|ceph.*|glusterfs"`;
 
-export const APP_HEALTH_SCORE = `100
- * (sum by (name) (increase(gatus_results_total{${CATALOG},success="true"}[24h]))
-    / sum by (name) (increase(gatus_results_total{${CATALOG}}[24h]))) ^ 2
- * clamp(1 - (max by (name) (quantile_over_time(0.95, gatus_results_duration_seconds{${CATALOG}}[1h])) - 0.25) / 2, 0.5, 1)
- * max by (name) (gatus_results_endpoint_success{${CATALOG}})`;
+// 0-9 is the normal scale (min(9, round(9 x 24h success ratio))); 10 is reserved for an app that
+// had 100% success over the trailing 30d — a second, longer-window ratio decides that bonus tier,
+// combined into this one expression so every consumer still makes a single query.
+const RATIO_24H = `(sum by (name) (increase(gatus_results_total{${CATALOG},success="true"}[24h])) / sum by (name) (increase(gatus_results_total{${CATALOG}}[24h])))`;
+const RATIO_30D = `(sum by (name) (increase(gatus_results_total{${CATALOG},success="true"}[30d])) / sum by (name) (increase(gatus_results_total{${CATALOG}}[30d])))`;
+
+export const APP_HEALTH_SCORE = `
+ (${RATIO_30D} == bool 1) * 10
+ + (${RATIO_30D} != bool 1) * clamp_max(round(9 * ${RATIO_24H}), 9)`;
 
 export const Q = {
   appScore: `homelab:app_health_score or (${APP_HEALTH_SCORE})`,

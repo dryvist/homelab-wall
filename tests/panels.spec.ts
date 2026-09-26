@@ -205,6 +205,66 @@ test('a failed health query renders an explicit error, never a silent zero count
   await expect(page.locator('#appsum')).not.toContainText(/\d/);
 });
 
+// A score query that succeeds with zero rows (never a failure — that's the error-state test
+// above) is genuinely empty, so the apps panel falls back to the shared sample scores
+// (site/lib/sampleData.js) with a visible SAMPLE DATA badge — and the badge appears only there,
+// never on a panel that has real data.
+test('the SAMPLE DATA badge appears on a no-data apps panel and never on a live one', async ({ page }) => {
+  test.skip(!!wallUrl, 'forces an empty score response against the fixture server only');
+  await mockFeeds(page, { emptyQuery: (q) => q.includes('gatus_results_total') && q.includes('by (name)') });
+  await page.goto('/mc1/');
+  const apps = page.locator('[data-panel="apps"]');
+  await expect(apps).toHaveAttribute('data-state', 'empty');
+  await expect(apps.locator('[data-sample-badge]')).toBeVisible();
+  await expect(apps.locator('[data-sample-badge]')).toHaveText('SAMPLE DATA');
+  // The badge is real content, not just an overlay: the panel's own summary reflects the sample
+  // scores rather than sitting on "NO SERVICE DATA" with nothing else to show.
+  await expect(page.locator('#appsum')).not.toContainText('—');
+
+  await page.goto('/mc2/');
+  await expect(page.locator('[data-panel="apps"] [data-sample-badge]')).toBeVisible();
+});
+
+// Every panel this fixture leaves permanently pending — because no live source is wired up for
+// it at all, never because a query happened to return nothing this poll — shows the same badge,
+// with sample content shaped like the eventual real feed. mc1's "nodes" panel is deliberately
+// excluded: it is forced 'pending' for an unrelated reason (no GPU exporter) while still showing
+// real per-node data, so it must never get a badge.
+const PENDING_PANELS: Record<string, string[]> = {
+  mc1: ['topology', 'firewall'],
+  mc2: ['threat'],
+  mc4: ['acquisition', 'pipeline'],
+  mc5: ['github', 'infra', 'activity', 'pipeline'],
+};
+
+for (const [pageId, panelIds] of Object.entries(PENDING_PANELS)) {
+  test(`${pageId}: every permanently-pending panel shows the SAMPLE DATA badge`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
+    await mockFeeds(page);
+    await page.goto(`/${pageId}/`);
+    for (const panelId of panelIds) {
+      const panel = page.locator(`[data-panel="${panelId}"]`);
+      await expect(panel, `${pageId} [data-panel="${panelId}"]`).toHaveAttribute('data-state', 'pending');
+      await expect(panel.locator('[data-sample-badge]'), `${pageId} [data-panel="${panelId}"] badge`).toHaveText('SAMPLE DATA');
+    }
+    // mc1's "nodes" panel: pending for an unrelated reason, has real data, never badged.
+    if (pageId === 'mc1') {
+      await expect(page.locator('[data-panel="nodes"] [data-sample-badge]')).toHaveCount(0);
+    }
+  });
+}
+
+test('the SAMPLE DATA badge never appears on a panel that has real data', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
+  await mockFeeds(page);
+  await page.goto('/mc1/?gl=2d');
+  await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
+  // Scoped to the panels that CAN have live data (nodes/topology/firewall are permanently
+  // pending on this page regardless of the fixture and are covered by the dedicated test above).
+  const liveCapable = page.locator('[data-panel="apps"], [data-panel="storage"], [data-panel="llm"]');
+  await expect(liveCapable.locator('[data-sample-badge]')).toHaveCount(0);
+});
+
 // D-mc1-2: a node that drops out of a single poll (a scrape gap, a restart) must keep its card
 // with its last known values, marked stale — never disappear. The operator's report was exactly
 // this: a real 4th PVE node (80 cores, like pve-r540) vanished from the panel entirely during a

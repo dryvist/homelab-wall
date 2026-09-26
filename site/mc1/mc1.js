@@ -1,8 +1,12 @@
 // Mission Control 1: estate overview, driven by live Prometheus data.
 import { query, range, settle, shortHost } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { clamp, hue, lerp, esc, observeCanvas, hardwareGL, loop, loadConfig, setState } from '/lib/stage.js';
+import {
+  clamp, hue, lerp, esc, observeCanvas, hardwareGL, loop, loadConfig, setState,
+  SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge,
+} from '/lib/stage.js';
 import { lastGoodGet, lastGoodSet } from '/lib/lastGood.js';
+import { sampleAppScore, SAMPLE_STORAGE, SAMPLE_LLM, SAMPLE_WAN, SAMPLE_BLOCKED, SAMPLE_ALLOWED } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -51,7 +55,7 @@ async function refresh() {
     const seen = new Set();
     for (const row of r.score) {
       const a = appIndex[row.labels.name];
-      if (a && Number.isFinite(row.value)) { a.s = clamp(row.value, 0, 100); seen.add(a.n); }
+      if (a && Number.isFinite(row.value)) { a.s = clamp(row.value, 0, 10); seen.add(a.n); }
     }
     for (const a of apps) if (!seen.has(a.n)) a.s = null;
   }
@@ -153,8 +157,8 @@ function ring(el, score) {
   const c = el.getContext('2d'); c.clearRect(0, 0, 128, 128); c.lineWidth = 10;
   c.strokeStyle = '#0d2233'; c.beginPath(); c.arc(64, 64, 52, 0, 7); c.stroke();
   if (score != null) {
-    c.strokeStyle = hue(score); c.shadowColor = hue(score); c.shadowBlur = 14;
-    c.beginPath(); c.arc(64, 64, 52, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * score / 100); c.stroke(); c.shadowBlur = 0;
+    c.strokeStyle = hue(scorePct(score)); c.shadowColor = hue(scorePct(score)); c.shadowBlur = 14;
+    c.beginPath(); c.arc(64, 64, 52, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * score / 10); c.stroke(); c.shadowBlur = 0;
   }
   c.fillStyle = '#fff'; c.font = '600 34px "Chakra Petch",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.fillText(score == null ? '—' : Math.round(score), 64, 60);
@@ -226,28 +230,39 @@ function drawNodes() {
 
 /* ---------------- storage ---------------- */
 function renderStorage() {
+  // A query that succeeded with zero rows (never storageFailed, which is its own 'error' state)
+  // has genuinely nothing to show yet — render the fixed sample dataset instead of a blank list,
+  // badged, rather than the real (empty) one.
+  const sample = !model.storageFailed && model.storage.length === 0;
+  const rows = sample ? SAMPLE_STORAGE : model.storage;
   const fmt = (b) => (b >= TB ? (b / TB).toFixed(1) + 'T' : Math.round(b / GB) + 'G');
-  $('strows').innerHTML = model.storage.length ? model.storage.map((s) => {
+  $('strows').innerHTML = rows.length ? rows.map((s) => {
     const p = s.used / s.size * 100, col = hue(100 - p);
     return `<div class="st"><span>${esc(s.host)} <em>${esc(s.name)}</em></span><div class="bar"><div style="width:${p}%;background:linear-gradient(90deg,${col.replace('hsl', 'hsla').replace(')', ',.2)')},${col});box-shadow:0 0 10px ${col}"></div></div><span class="v num"><b>${p.toFixed(0)}%</b> ${fmt(s.size)}</span></div>`;
   }).join('') : '<div class="st pending">storage metrics pending</div>';
-  const tot = model.storage.reduce((a, s) => a + s.size, 0), used = model.storage.reduce((a, s) => a + s.used, 0);
+  const tot = rows.reduce((a, s) => a + s.size, 0), used = rows.reduce((a, s) => a + s.used, 0);
   $('sttot').textContent = tot ? `${(used / TB).toFixed(1)} / ${(tot / TB).toFixed(1)} TB` : '—';
+  setSampleBadge($('storage'), sample);
 }
 
 /* ---------------- LLM panel ---------------- */
 function renderLlm() {
-  if (!model.llm.length) { $('llmrows').innerHTML = '<div class="pending">router metrics pending</div>'; $('llmsum').textContent = '—'; return; }
-  $('llmrows').innerHTML = model.llm.map((m, i) => {
+  // model.llmFailed (its own 'error' state, unaffected here) is a hard query failure; an empty
+  // list is genuinely no data yet — show the fixed sample dataset instead, badged.
+  const sample = !model.llmFailed && !model.llm.length;
+  const list = sample ? SAMPLE_LLM : model.llm;
+  setSampleBadge($('llm'), sample);
+  if (!list.length) { $('llmrows').innerHTML = '<div class="pending">router metrics pending</div>'; $('llmsum').textContent = '—'; return; }
+  $('llmrows').innerHTML = list.map((m, i) => {
     const up = m.state < 2, col = m.state === 0 ? (m.tok > 0 ? '#38ff9c' : '#3ee6ff') : m.state === 1 ? '#ffb347' : '#ff3b5c';
     return `<div class="lr"><i style="background:${col};box-shadow:0 0 8px ${col}"></i><span title="${esc(m.n)}">${esc(m.n.split('/').pop())}</span><canvas id="lc${i}" width="116" height="28"></canvas><span class="tk" style="color:${up ? '#fff' : '#ff3b5c'}">${!up ? 'DOWN' : m.tok > 0.05 ? m.tok.toFixed(0) + ' t/s' : 'idle'}</span><span class="h">${['ok', 'degraded', 'outage'][m.state] || '?'}</span></div>`;
   }).join('');
-  model.llm.forEach((m, i) => {
+  list.forEach((m, i) => {
     const c = $('lc' + i).getContext('2d'), mx = Math.max(10, ...m.hist);
     c.beginPath(); m.hist.forEach((h, k) => { const x = k / 29 * 116, y = 27 - h / mx * 26; k ? c.lineTo(x, y) : c.moveTo(x, y); });
     c.strokeStyle = m.state < 2 ? '#ff4fd8' : '#ff3b5c'; c.lineWidth = 2; c.stroke();
   });
-  const all = model.llmAll, up = all.filter((m) => m.state < 2).length;
+  const all = sample ? SAMPLE_LLM : model.llmAll, up = all.filter((m) => m.state < 2).length;
   $('llmsum').textContent = `${up}/${all.length} UP · ${all.reduce((a, m) => a + m.tok, 0).toFixed(0)} tok/s`;
 }
 
@@ -260,18 +275,24 @@ const hx = $('hex');
 // write it back as its resolution, which is itself part of what determines the rendered size)
 // is what grew the panel without bound.
 observeCanvas($('apps'), hx);
+// True only while the apps panel's own score data is empty (never on a hard failure) — drawHex
+// and renderAppSum then read sampleAppScore(i) instead of the real (null) a.s, so the panel shows
+// plausible content instead of a wall of "?" cells. Set from renderStatic(); never written back
+// into apps[].s itself, so the estate ring / cluster health / topology flows below (which use the
+// real score, unaffected) never see fabricated data.
+let appsSample = false;
 function drawHex(t) {
   const W = hx.width, H = hx.height;
   const c = hx.getContext('2d'); c.clearRect(0, 0, W, H);
-  for (const a of apps) a.d = lerp(a.d, a.s ?? 0, 0.1);
+  apps.forEach((a, i) => { a.d = lerp(a.d, appsSample ? sampleAppScore(i) : (a.s ?? 0), 0.1); });
   const n = Math.max(apps.length, 1), cols = n > 56 ? 9 : n > 42 ? 8 : 7;
   const r = W / (cols * Math.sqrt(3) + Math.sqrt(3) / 2), w = Math.sqrt(3) * r, rowsN = Math.ceil(n / cols), vh = r * 1.5 * 0.92;
   const oy = Math.max(r, (H - (rowsN - 1) * vh - 2 * r) / 2 + r);
   apps.forEach((a, i) => {
-    const row = i / cols | 0, col = i % cols, unknown = a.s == null, colr = unknown ? 'hsl(200,15%,35%)' : hue(a.d);
+    const row = i / cols | 0, col = i % cols, unknown = !appsSample && a.s == null, colr = unknown ? 'hsl(200,15%,35%)' : hue(scorePct(a.d));
     const x = w / 2 + col * w + (row % 2 ? w / 2 : 0), wave = RM ? 0 : Math.sin(t / 700 - col * 0.6 - row * 0.45) * r * 0.12;
-    const depth = r * 0.28 + (unknown ? 0 : a.d / 100) * r * 0.22, y = oy + row * vh + wave;
-    const pulse = !unknown && a.d < 50 ? Math.sin(t / 220 + i) * 0.5 + 0.5 : 0, pts = [];
+    const depth = r * 0.28 + (unknown ? 0 : a.d / 10) * r * 0.22, y = oy + row * vh + wave;
+    const pulse = !unknown && a.d < SCORE_DEGRADED_MIN ? Math.sin(t / 220 + i) * 0.5 + 0.5 : 0, pts = [];
     for (let k = 0; k < 6; k++) { const an = Math.PI / 3 * k + Math.PI / 6; pts.push([x + Math.cos(an) * (r - 5), y + Math.sin(an) * (r - 5) * 0.82]); }
     for (const [p, q] of [[0, 1], [1, 2], [5, 0]]) {
       c.beginPath(); c.moveTo(...pts[p]); c.lineTo(...pts[q]); c.lineTo(pts[q][0], pts[q][1] + depth); c.lineTo(pts[p][0], pts[p][1] + depth); c.closePath();
@@ -281,7 +302,7 @@ function drawHex(t) {
     c.beginPath(); pts.forEach((p, k) => (k ? c.lineTo(...p) : c.moveTo(...p))); c.closePath();
     const g = c.createRadialGradient(x - r * 0.3, y - r * 0.3, 2, x, y, r); g.addColorStop(0, colr.replace('55%', '42%')); g.addColorStop(1, 'rgba(6,12,20,.95)');
     c.fillStyle = g; c.fill(); c.lineWidth = 3 + pulse * 4; c.strokeStyle = colr; c.shadowColor = colr; c.shadowBlur = 10 + pulse * 30; c.stroke(); c.shadowBlur = 0;
-    if (!unknown) { const ang = t / 900 + i; c.beginPath(); c.ellipse(x, y, r * 0.62, r * 0.5, 0, ang, ang + Math.PI * 2 * a.d / 100); c.strokeStyle = colr; c.lineWidth = 2; c.globalAlpha = 0.55; c.stroke(); c.globalAlpha = 1; }
+    if (!unknown) { const ang = t / 900 + i; c.beginPath(); c.ellipse(x, y, r * 0.62, r * 0.5, 0, ang, ang + Math.PI * 2 * a.d / 10); c.strokeStyle = colr; c.lineWidth = 2; c.globalAlpha = 0.55; c.stroke(); c.globalAlpha = 1; }
     c.textAlign = 'center'; c.fillStyle = '#fff'; c.font = `600 ${r * 0.4}px "Chakra Petch",sans-serif`; c.fillText(unknown ? '?' : Math.round(a.d), x, y + r * 0.06);
     c.fillStyle = '#cfe9f5'; c.font = `${Math.min(r * 0.22, 22)}px "JetBrains Mono",monospace`; c.fillText(a.n.length > 11 ? a.n.slice(0, 10) + '…' : a.n, x, y + r * 0.38);
   });
@@ -300,8 +321,11 @@ function renderAppSum() {
   // a failure; that's the "0 OK ... 42 NO DATA" the panel's own error state (data-panel-message)
   // is there to replace, not sit beside.
   if (model.scoreFailed) { $('appsum').textContent = '—'; return; }
-  const ok = apps.filter((a) => a.s != null && a.s >= 90).length, warn = apps.filter((a) => a.s != null && a.s >= 50 && a.s < 90).length;
-  const bad = apps.filter((a) => a.s != null && a.s < 50).length, unk = apps.filter((a) => a.s == null).length;
+  const scores = apps.map((a, i) => (appsSample ? sampleAppScore(i) : a.s));
+  const ok = scores.filter((s) => s != null && s >= SCORE_OK_MIN).length;
+  const warn = scores.filter((s) => s != null && s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
+  const bad = scores.filter((s) => s != null && s < SCORE_DEGRADED_MIN).length;
+  const unk = appsSample ? 0 : scores.filter((s) => s == null).length;
   $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>${unk ? ` · <span style="color:var(--dim)">${unk} NO DATA</span>` : ''}`;
 }
 
@@ -312,7 +336,7 @@ const labelEls = groups.map((g) => { const el = document.createElement('div'); e
 function updateLabels() {
   groups.forEach((g, i) => {
     const h = clusterHealth(g);
-    const html = `${esc(g.name.toUpperCase())}<small>${g.apps.length} apps · health <span style="color:${h == null ? '#5d7d90' : hue(h)}">${h == null ? '—' : Math.round(h)}</span></small>`;
+    const html = `${esc(g.name.toUpperCase())}<small>${g.apps.length} apps · health <span style="color:${h == null ? '#5d7d90' : hue(scorePct(h))}">${h == null ? '—' : Math.round(h)}</span></small>`;
     if (labelEls[i].innerHTML !== html) labelEls[i].innerHTML = html;
   });
 }
@@ -377,7 +401,7 @@ if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
     cam.position.set(Math.cos(ang) * 138, 66 + Math.sin(tt * 0.2) * 8, Math.sin(ang) * 138); cam.lookAt(0, 4, 0);
     ico.rotation.y += 0.004; ico.rotation.x += 0.002; rings.forEach((r, i) => { r.rotation.z += (i % 2 ? 1 : -1) * 0.004; });
     flows.forEach((f) => {
-      const h = clusterHealth(f.g), sp = 0.08 + (h ?? 50) / 400;
+      const h = clusterHealth(f.g), sp = 0.08 + (h ?? 5) / 40;
       f.ph.forEach((p, k) => { p.t = (p.t + dt * sp * p.dir + 1) % 1; const q = f.curve.getPoint(p.t); f.pos[k * 3] = q.x; f.pos[k * 3 + 1] = q.y; f.pos[k * 3 + 2] = q.z; });
       f.pg.attributes.position.needsUpdate = true;
     });
@@ -407,24 +431,33 @@ if (window.THREE && (forced === '3d' || (forced !== '2d' && hardwareGL()))) {
 }
 
 /* ---------------- firewall + WAN (feed arrives with the Splunk app) ---------------- */
-$('blkrows').innerHTML = '<div class="pending" style="padding:14px">edge block feed pending</div>';
-$('fwrows').innerHTML = '<div class="pending" style="padding:14px">flow feed pending</div>';
+// No Splunk edge-block/flow feed exists yet — fixed sample rows, badged (setSampleBadge in
+// renderStatic below), stand in for the single "pending" line. Never written into `model`.
+$('blkrows').innerHTML = SAMPLE_BLOCKED.map((b) => `<div class="br"><span>${esc(b.time)}</span><span class="f">${b.flag}</span><span class="cc">${esc(b.country)}</span><span>${esc(b.source)}</span><span class="why">${esc(b.reason)}</span><span class="d">${esc(b.ago)} ago</span></div>`).join('');
+$('fwrows').innerHTML = SAMPLE_ALLOWED.map((f) => `<div class="fr ${f.action}"><span>${esc(f.time)}</span><span class="a">${esc(f.action.toUpperCase())}</span><span>${esc(f.proto)}</span><span>${esc(f.desc)}</span><span>${esc(f.dest)}</span><span class="d">${esc(f.ago)} ago</span></div>`).join('');
 
 /* ---------------- boot ---------------- */
 function renderStatic() {
   buildNodes(); renderHeader(); renderStorage(); renderLlm(); updateLabels();
   setState($('nodes'), 'pending', 'NO GPU EXPORTER');
   setState($('topo'), 'pending', 'WAN EXPORTER PENDING');
+  // No WAN exporter exists yet — a fixed sample readout, badged, replaces the topology panel's
+  // single "pending" line. Never written into `model`, so nothing here is mistaken for live data.
+  $('wan').innerHTML = SAMPLE_WAN.map((w) => `${w.name} &darr;<b>${w.down}</b> / &uarr;<b>${w.up}</b> Mbps &middot; <b>${w.latency}</b>ms`).join('<br>');
+  setSampleBadge($('topo'), true);
   // D5: an app with no Gatus series at all is "no data" for that one cell (see drawHex/appsum),
   // never reason to pend the whole panel — only a total scoring failure does.
   // A query that failed outright (settle() -> null) is 'error', never silently "no data".
   const scored = apps.some((app) => app.s != null);
+  appsSample = !model.scoreFailed && !scored;
   setState($('apps'), model.scoreFailed ? 'error' : scored ? 'ok' : 'empty',
     model.scoreFailed ? 'SCORE QUERY FAILED' : scored ? '' : 'NO SERVICE DATA');
+  setSampleBadge($('apps'), appsSample);
   renderAppSum();
   setState($('storage'), model.storageFailed ? 'error' : model.storage.length ? 'ok' : 'empty',
     model.storageFailed ? 'STORAGE QUERY FAILED' : model.storage.length ? '' : 'STORAGE METRICS EMPTY');
   setState($('fw'), 'pending', 'SPLUNK FEED PENDING');
+  setSampleBadge($('fw'), true);
   setState($('llm'), model.llmFailed ? 'error' : model.llm.length ? 'ok' : 'pending',
     model.llmFailed ? 'ROUTER QUERY FAILED' : model.llm.length ? '' : 'ROUTER METRICS PENDING');
   const up = model.nodes.filter((n) => !n.pending).length;

@@ -1,7 +1,8 @@
 // Mission Control 3: AI inference core, driven by live litellm_router + Gatus data.
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { clamp, hue, esc, loop, loadConfig, setState } from '/lib/stage.js';
+import { clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge } from '/lib/stage.js';
+import { sampleAppScore } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -26,7 +27,7 @@ async function refresh() {
     const seen = new Set();
     for (const row of r.score) {
       const a = appIndex[row.labels.name];
-      if (a && Number.isFinite(row.value)) { a.s = clamp(row.value, 0, 100); seen.add(a.n); }
+      if (a && Number.isFinite(row.value)) { a.s = clamp(row.value, 0, 10); seen.add(a.n); }
     }
     for (const a of apps) if (!seen.has(a.n)) a.s = null;
   }
@@ -68,8 +69,8 @@ function drawRing(el, score) {
   c.clearRect(0, 0, W, H); c.lineWidth = W * 0.08;
   c.strokeStyle = '#28102f'; c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.stroke();
   if (score != null) {
-    c.strokeStyle = hue(score); c.shadowColor = hue(score); c.shadowBlur = W * 0.05;
-    c.beginPath(); c.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * score / 100); c.stroke(); c.shadowBlur = 0;
+    c.strokeStyle = hue(scorePct(score)); c.shadowColor = hue(scorePct(score)); c.shadowBlur = W * 0.05;
+    c.beginPath(); c.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * score / 10); c.stroke(); c.shadowBlur = 0;
   }
   c.fillStyle = '#fff'; c.font = `600 ${W * 0.14}px "Chakra Petch",sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.fillText(score == null ? 'N/A' : Math.round(score), cx, cy - H * 0.03);
@@ -78,12 +79,18 @@ function drawRing(el, score) {
 
 function renderApps() {
   const scored = apps.filter((a) => a.s != null);
-  const ok = scored.filter((a) => a.s >= 90).length;
-  const warn = scored.filter((a) => a.s >= 50 && a.s < 90).length;
-  const bad = scored.filter((a) => a.s < 50).length;
+  // A query that succeeded with zero rows has genuinely nothing to show yet — render the shared
+  // sample scores instead (badged), never layered on top of real (even partial) data.
+  const sample = !scored.length;
+  const display = apps.map((a, i) => (sample ? { n: a.n, s: sampleAppScore(i) } : a));
+  const scores = display.map((a) => a.s).filter((s) => s != null);
+  const ok = scores.filter((s) => s >= SCORE_OK_MIN).length;
+  const warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
+  const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
   $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> &middot; <span style="color:var(--amber)">${warn} DEG</span> &middot; <span style="color:var(--red)">${bad} DOWN</span>`;
-  $('applist').innerHTML = apps.map((a) => `<div class="ar"><i style="background:${a.s == null ? 'var(--faint)' : hue(a.s)}"></i><span>${esc(a.n)}</span><b class="num">${a.s == null ? 'N/A' : Math.round(a.s)}</b></div>`).join('');
-  drawRing($('fleetRing'), scored.length ? scored.reduce((x, y) => x + y.s, 0) / scored.length : null);
+  $('applist').innerHTML = display.map((a) => `<div class="ar"><i style="background:${a.s == null ? 'var(--faint)' : hue(scorePct(a.s))}"></i><span>${esc(a.n)}</span><b class="num">${a.s == null ? 'N/A' : Math.round(a.s)}</b></div>`).join('');
+  drawRing($('fleetRing'), scores.length ? scores.reduce((x, y) => x + y, 0) / scores.length : null);
+  setSampleBadge($('apps'), sample);
   setState($('apps'), scored.length ? 'ok' : 'empty', scored.length ? '' : 'NO SERVICE DATA');
 }
 
