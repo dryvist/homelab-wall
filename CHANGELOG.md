@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.3](https://github.com/dryvist/homelab-wall/compare/v0.7.2...v0.7.3) (2026-09-26)
+
+
+### Bug Fixes
+
+* **rotator:** verify origin health before reload, add offline shell ([#54](https://github.com/dryvist/homelab-wall/issues/54)) ([a8e71a0](https://github.com/dryvist/homelab-wall/commit/a8e71a070a884bfd29da3cf689ca242349c4dc7e))
+
 ## [0.7.2](https://github.com/dryvist/homelab-wall/compare/v0.7.1...v0.7.2) (2026-09-26)
 
 
