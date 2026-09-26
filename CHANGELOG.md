@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/dryvist/homelab-wall/compare/v0.4.1...v0.5.0) (2026-09-26)
+
+
+### Features
+
+* **mc2:** real land-mask globe, glowing arcs, and a live blocked-feed panel ([#35](https://github.com/dryvist/homelab-wall/issues/35)) ([161bbd0](https://github.com/dryvist/homelab-wall/commit/161bbd029974b957555062230f59012d4d648d27))
+* **render:** three.js hero scenes, VLAN panel, and rotator re-probe ([#33](https://github.com/dryvist/homelab-wall/issues/33)) ([5b5f835](https://github.com/dryvist/homelab-wall/commit/5b5f835460bfba5074f3f197e34a5f7b02f001d9))
+
+
+### Bug Fixes
+
+* **wall:** render stand-in data instead of non-production placeholders ([#34](https://github.com/dryvist/homelab-wall/issues/34)) ([b65c8df](https://github.com/dryvist/homelab-wall/commit/b65c8df35034423a931959dc34f781c587bc9e3f))
+
 ## [0.4.1](https://github.com/dryvist/homelab-wall/compare/v0.4.0...v0.4.1) (2026-09-26)
 
 
