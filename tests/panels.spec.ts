@@ -296,6 +296,21 @@ test('mc1 VLAN readout shows real per-VLAN rates and drops the SAMPLE DATA badge
   await expect(vlans.locator('[data-sample-badge]')).toHaveCount(0);
 });
 
+// Q.llmQueueSeconds/Q.llmLatencySeconds (site/lib/queries.js) replaced a name-hash stand-in with
+// real per-model averages. model-large's tile must show the fixture's real numbers with no
+// stand-in marker; model-coder has no row in either query (no requests in the window — a real
+// idle model, not a failed query) and must render the quiet "idle" state, never "—"/"N/A".
+test('mc3 model tiles show real queue/avg values and render a quiet idle state when a model has none', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped queue/latency response only');
+  await mockFeeds(page);
+  await page.goto('/mc3/');
+  const tiles = page.locator('#modeltab .mc');
+  await expect(tiles.filter({ hasText: 'model-large' }).locator('.mcstats')).toContainText('4.5s');
+  await expect(tiles.filter({ hasText: 'model-large' }).locator('.mcstats')).toContainText('842ms');
+  await expect(tiles.filter({ hasText: 'model-large' }).locator('.mcstats')).not.toHaveAttribute('data-source', 'stand-in');
+  await expect(tiles.filter({ hasText: 'model-coder' }).locator('.mcstats')).toContainText('idle');
+});
+
 test('the SAMPLE DATA badge never appears on a panel that has real data', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
   await mockFeeds(page);
