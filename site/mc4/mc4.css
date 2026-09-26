@@ -14,9 +14,11 @@
 header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:center;gap:clamp(12px,2vmin,26px);padding:0 clamp(4px,1vmin,10px)}
 .brand{font:700 clamp(16px,2.4vmin,30px)/1 var(--disp);letter-spacing:.14em;color:#fff;text-shadow:0 0 18px rgba(255,179,71,.55)}
 .brand .acc{color:var(--amber)}
-/* Bigger and real (not a single faint line): the connection state is the headline, the detail
-   line secondary — legibility the live-wall finding explicitly called out as missing. */
-.vpn{font:700 clamp(13px,1.6vmin,18px)/1.5 var(--disp);letter-spacing:.06em;color:#fff;white-space:nowrap}
+/* Connection state is the headline; the detail line (exit/handshake/killswitch/leaks/port-fwd,
+   sketch scene 125) rides underneath it, same two-tier pattern as the clock. */
+.vpn{text-align:right;white-space:nowrap}
+.vpn b{display:block;font:700 clamp(13px,1.6vmin,18px)/1.3 var(--disp);letter-spacing:.06em;color:#fff}
+.vpn small{display:block;font:600 clamp(8px,.85vmin,11px)/1.5 var(--mono);letter-spacing:.06em;color:var(--ink)}
 .appstrip{flex:1;min-width:0;overflow:hidden}
 .appstrip h2{margin:0;font:600 clamp(9px,1vmin,13px)/1 var(--disp);letter-spacing:.18em;text-transform:uppercase;
   color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -24,67 +26,78 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
 .clock{text-align:right;font:600 clamp(18px,2.6vmin,34px)/1 var(--disp);color:#fff}
 .clock small{display:block;font:400 clamp(8px,.9vmin,11px)/1.6 var(--mono);color:var(--dim);letter-spacing:.2em}
 
-.mc4 .panel{position:relative;z-index:1;grid-row:2;display:flex;flex-direction:column;min-height:0;min-width:0;
-  clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
-/* Dark-glass side panels: the hero scene shows through, text stays legible. `contain` is
-   deliberately NOT used here (see the #corecanvas comment in index.html — it would make this
-   panel a containing block for any position:fixed descendant). */
-.panel-glass{background:rgba(0,0,0,.45);border:1px solid rgba(255,179,71,.35);
-  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
-/* The former hero-scene panel: frame and background gone, only the title remains, floating
-   directly over the fullscreen canvas. */
+/* Floating glass cards (sketch scene 125's mdL/mdR): NOT one opaque full-height panel box — each
+   `.card` below carries its own thin border/translucent fill, with real gaps between them, so the
+   hero canvas's tube/core/disk shows through behind and between them, edge to edge. */
+.hero-col{position:relative;z-index:1;grid-row:2;display:flex;min-width:0;min-height:0;overflow:hidden}
+.hero-col.colL{grid-column:1}
+.hero-col.colR{grid-column:3}
+.cardbody{flex:1;min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:clamp(10px,1.6vmin,18px);
+  padding:clamp(6px,1vmin,10px);transform:perspective(1200px) rotateY(10deg);transform-origin:left center}
+.colR .cardbody{transform:perspective(1200px) rotateY(-10deg);transform-origin:right center}
+
 .panel-frameless{background:none;border:none}
-#acq{grid-column:1}
-#core{grid-column:2;padding:0}
-#core h2{position:absolute;left:0;top:0;z-index:2;background:transparent;border:none}
-#pipe{grid-column:3}
+/* position:relative is load-bearing: #core h2 below is position:absolute;left:0;top:0, and
+   without a positioned ancestor here it resolves against the viewport instead of this panel,
+   landing on top of the page header (the bug a visual regression check caught). */
+#core{grid-column:2;grid-row:2;position:relative;z-index:1;padding:0}
+#core h2{position:absolute;left:0;top:0;z-index:2;background:transparent;border:none;margin:0;
+  padding:clamp(6px,.9vmin,10px) clamp(10px,1.4vmin,16px) clamp(4px,.6vmin,7px);
+  font:600 clamp(10px,1.1vmin,13px)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--amber)}
 
-.mc4 .panel>h2{margin:0;padding:clamp(6px,.9vmin,10px) clamp(10px,1.4vmin,16px) clamp(4px,.6vmin,7px);
-  font:600 clamp(10px,1.1vmin,13px)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--amber);
-  display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,179,71,.2)}
-.mc4 .panel>h2 span{color:var(--dim);letter-spacing:.1em}
-.mc4 .panel [data-panel-message]{color:var(--amber);font:600 9px/1 var(--mono);letter-spacing:.1em;white-space:nowrap}
-
-.cardbody{flex:1;min-height:0;overflow:auto;padding:clamp(6px,1vmin,12px) clamp(8px,1.2vmin,14px);
-  display:flex;flex-direction:column;gap:clamp(10px,1.6vmin,20px)}
-/* No-empty-space fix: the throughput card (always first in #acqbody, download client only —
-   NOT #pipebody, whose first card is PLEX's fixed-size stat card) grows to fill whatever space
-   the other, natural-height cards don't use, instead of the column centering fixed-height cards
-   with dead space above/below. */
-#acqbody>.card:first-child{flex:1;min-height:0;display:flex;flex-direction:column}
-#acqbody>.card:first-child .through{flex:1;height:auto;min-height:0}
-
-/* Legible download-client/library cards: bigger headline numbers, not tiny faint text
-   (the live-wall finding) — .ct/.cn sizes bumped from the pre-hero-scene layout. */
-.card{border:1px solid rgba(255,179,71,.3);background:rgba(20,10,2,.4);padding:clamp(8px,1.2vmin,14px) clamp(10px,1.4vmin,16px);
+/* Full sketch contrast: headline numbers in --ink (near-white) or a status colour, never the
+   near-black --faint token a card's text previously used — that read as dim/broken, not live.
+   Background opacity matches the sketch's own card() gradient (.8-.85) — translucent enough that
+   the hero scene's glow still shows around the card, opaque enough that its particles don't
+   speckle through the text as visual noise. */
+.card{border:1px solid rgba(255,179,71,.35);background:linear-gradient(180deg,rgba(30,18,6,.86),rgba(8,5,2,.92));
+  padding:clamp(8px,1.2vmin,14px) clamp(10px,1.4vmin,16px);
   clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
 .card .ct{font:600 clamp(11px,1.2vmin,14px) var(--disp);letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:8px}
-.card .cn{color:var(--faint);letter-spacing:.1em;font-size:clamp(11px,1.2vmin,15px);line-height:1.5}
 
-/* Dense fill: download queue rows, a VPN stat grid, and a scrolling arr-stack activity feed —
-   all stand-in (no download-client/VPN/arr-stack exporter exists yet), machine-flagged only. */
-.qrow{display:grid;grid-template-columns:1fr auto;gap:4px 8px;font-size:clamp(10px,1vmin,12px);color:var(--ink)}
-.qrow .qn{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.qrow .qs{color:var(--dim);font-size:clamp(9px,.9vmin,11px);white-space:nowrap}
-.qbar{grid-column:1/-1;height:4px;background:#241203}
-.qbar div{height:100%;background:var(--amber)}
-.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
-.statgrid div{display:flex;flex-direction:column;gap:2px}
-.statgrid span{font-size:clamp(9px,.85vmin,10px);color:var(--dim);letter-spacing:.12em;text-transform:uppercase}
-.statgrid b{font:600 clamp(13px,1.4vmin,17px)/1 var(--disp);color:#fff}
-.afeed{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:3px}
-/* flex:none — a flex column's default flex-shrink otherwise crushes these below their own
-   line-height as the feed grows, reading as overlapping/illegible text. The feed scrolls (its own
-   overflow:hidden clips excess rows out of view), it never compresses its rows to fit. */
-.afrow{flex:none;font-size:clamp(11px,1.05vmin,13px);line-height:1.6;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.afrow b{color:var(--ink);font-weight:600}
-.afrow:nth-child(n+6){opacity:.7}
-.afrow:nth-child(n+11){opacity:.45}
-.afrow:nth-child(n+20){opacity:.28}
-/* The newest row (or two, briefly overlapping during the insert animation) reads brighter/live —
-   full ink colour plus an amber glow — instead of every row sitting at the same dim brightness. */
-.afrow-new{color:var(--ink);text-shadow:0 0 6px rgba(255,179,71,.35)}
-.afrow-new b{color:var(--amber)}
-.afrow-in{animation:afrow-in .35s ease-out}
-.through{width:100%;height:clamp(48px,7vh,84px);display:block}
-@keyframes afrow-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+/* QBITTORRENT / stat-numeral cards: a 2-column grid of big headline numbers over a small caption,
+   same shape as the sketch's own QBITTORRENT card. */
+.qgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px clamp(10px,1.4vmin,18px)}
+.qgrid div{display:flex;flex-direction:column;gap:2px}
+.qgrid b{font:700 clamp(18px,2.2vmin,28px)/1 var(--disp);color:#fff}
+.qgrid b.green{color:var(--green)}.qgrid b.cyan{color:var(--cyan)}.qgrid b.amber{color:var(--amber)}
+.qgrid span{color:var(--ink);font-size:clamp(9px,.9vmin,11px);letter-spacing:.04em}
+
+/* LIBRARY STORAGE: a headline used/total figure, then one bar per media type. */
+.lbig{font:700 clamp(20px,2.6vmin,32px)/1 var(--disp);color:#fff;margin-bottom:10px}
+.lbig i{font-style:normal;font-size:.5em;color:var(--ink)}
+.lrow{display:grid;grid-template-columns:64px 1fr 56px;gap:8px;align-items:center;margin-top:6px;font-size:clamp(10px,1vmin,12px);color:var(--ink)}
+.lbar{height:7px;background:#241203}
+.lbar i{display:block;height:100%}
+.lrow b{color:#fff;font-weight:600;text-align:right}
+
+/* PLEX: 3-up headline grid + a short list of generic "now playing" lines. */
+.p3grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center;margin-bottom:8px}
+.p3grid b{display:block;font:700 clamp(16px,2vmin,24px)/1 var(--disp);color:#fff}
+.p3grid span{color:var(--ink);font-size:clamp(9px,.85vmin,10px)}
+.pstreams{color:var(--ink);font-size:clamp(10px,1vmin,12px);line-height:1.7}
+
+/* TORRENTS: one row per item, a thin progress bar underneath. */
+.trow{display:grid;grid-template-columns:1fr 60px 56px;gap:8px;align-items:center;margin:6px 0;font-size:clamp(10px,1vmin,12px)}
+.trow .tn{color:var(--ink);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.trow .tr{text-align:right;font-weight:600}
+.trow .tratio{color:var(--amber);text-align:right}
+.tbar{grid-column:1/-1;height:4px;background:#241203}
+.tbar i{display:block;height:100%}
+
+/* ARR STACK: a fixed 6-service status grid — dot, name, queue/degraded — not a scrolling feed. */
+.agrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 8px}
+.arow{color:var(--green);font-size:clamp(10px,1vmin,12px)}
+.arow.bad{color:var(--amber)}
+.arow i{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px;box-shadow:0 0 6px currentColor}
+.arow em{display:block;font-style:normal;color:var(--ink);margin-top:2px}
+
+/* Recently-added poster strip (sketch scene 125's bottom band): sits behind the side columns in
+   the same grid row, aligned to the bottom, so it never competes with them for width. */
+.posters{grid-column:1/-1;grid-row:2;z-index:1;align-self:end;justify-self:center;width:min(1240px,76vw);
+  padding-bottom:clamp(10px,1.6vmin,20px)}
+.posters .ct{font:600 clamp(10px,1.1vmin,13px) var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--amber);margin-bottom:8px}
+.pgrid{display:grid;grid-template-columns:repeat(8,1fr);gap:clamp(6px,1vmin,12px)}
+.poster{aspect-ratio:2/3;border:1px solid rgba(255,179,71,.4);display:flex;flex-direction:column;justify-content:flex-end;
+  padding:6px;font:600 clamp(9px,1vmin,12px) var(--disp);color:#fff;box-shadow:0 10px 30px rgba(0,0,0,.6)}
+.poster span{color:#fc9;font:clamp(8px,.85vmin,10px) var(--mono);margin-top:2px}

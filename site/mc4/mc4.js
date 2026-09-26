@@ -7,7 +7,7 @@ import {
   clamp, esc, loadConfig, setState, loop, SCORE_OK_MIN, SCORE_DEGRADED_MIN, setSampleBadge,
   setStandIn, onDispose, onContextLoss, disposeThreeScene, hardwareGL, adaptiveBloomOn, adaptiveDpr,
 } from '/lib/stage.js';
-import { sampleAppScore, SAMPLE_ACQ_CARDS, SAMPLE_LIBRARY_CARDS } from '/lib/sampleData.js';
+import { sampleAppScore } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -49,144 +49,107 @@ function renderApps() {
   model.fleetUpFrac = scores.length ? ok / scores.length : null;
 }
 
-/* ---------------- stand-in panels — no download/library exporter exists yet ---------------- */
+/* ---------------- stand-in panels — no download/library/arr exporter exists yet ---------------- */
 // No download-client/library/VPN/arr-stack exporter exists yet — stand-in content throughout,
 // machine-flagged only (setStandIn: no visible badge/pending text — site/lib/stage.js). Never
-// written into any live model, and never substituted for a real feed once one exists.
-function card(title, note) {
-  return `<div class="card"><div class="ct">${esc(title)}</div><div class="cn">${esc(note)}</div></div>`;
-}
-function statgrid(pairs) {
-  return `<div class="card statgrid">${pairs.map(([l, v]) => `<div><span>${esc(l)}</span><b>${esc(v)}</b></div>`).join('')}</div>`;
+// written into any live model, and never substituted for a real feed once one exists. Content set
+// and card shapes port the approved sketch (scene 125) 1:1: QBITTORRENT/LIBRARY STORAGE/PLEX on
+// the left, TORRENTS/ARR STACK on the right, a poster strip along the bottom — no throughput
+// chart (the sketch has none; the QBITTORRENT numerals carry that signal instead).
+function statCard(title, rows) {
+  return `<div class="card"><div class="ct">${esc(title)}</div><div class="qgrid">${rows.map(([v, l, c]) => `<div><b class="num${c ? ` ${c}` : ''}">${esc(v)}</b><span>${esc(l)}</span></div>`).join('')}</div></div>`;
 }
 
-// Download queue: a handful of generic in-progress items (never a real filename), each with a
-// deterministic-but-varying progress bar and speed so the panel reads as active, not frozen.
-const QUEUE_NAMES = ['collection.s01e04', 'archive-part-07', 'release.pack.2160p', 'media-item-12', 'bundle-vol-03'];
-function renderQueue() {
-  const el = $('queuerows');
-  if (!el) return;
-  const now = Date.now() / 1000;
-  el.innerHTML = QUEUE_NAMES.map((n, i) => {
-    const pct = Math.round(20 + ((now / (6 + i)) % 1) * 78);
-    const mbps = (4 + ((now / (3 + i * 1.3)) % 1) * 38).toFixed(1);
-    return `<div class="qrow"><span class="qn">${esc(n)}</span><span class="qs">${mbps} MB/s</span>
-      <div class="qbar"><div style="width:${pct}%"></div></div></div>`;
+// A handful of generic in-progress items (never a real filename) drive both the QBITTORRENT
+// summary numerals and the TORRENTS list below — one shared array, like the sketch's own `tor`.
+const TORRENT_NAMES = ['collection.s01e04', 'archive-part-07', 'release.pack.2160p', 'media-item-12', 'bundle-vol-03', 'image-mirror-01', 'open-source.iso', 'restore-set-02', 'archive-part-11', 'linux-distro.iso'];
+const TORRENTS = TORRENT_NAMES.map((n, i) => ({ n, seed: i % 3 === 0, ratio: 0.3 + ((i * 37) % 100) / 25 }));
+const downAt = (t) => clamp(42 + Math.sin(t / 4) * 28 + (Math.sin(t * 1.7) * 0.5) * 10, 2, 100);
+const upAt = (t) => clamp(9 + Math.sin(t / 6 + 1) * 6 + Math.sin(t * 2.3) * 4, 0.5, 30);
+
+function renderQbit(now) {
+  const downloading = TORRENTS.filter((t) => !t.seed).length, seeding = TORRENTS.length - downloading;
+  const ratio = TORRENTS.reduce((a, t) => a + t.ratio, 0) / TORRENTS.length;
+  const peers = Math.round(180 + ((now / 11) % 1) * 240);
+  const dht = Math.round(300 + ((now / 17) % 1) * 300);
+  return statCard('QBITTORRENT', [
+    [`↓ ${downAt(now).toFixed(1)}`, 'MB/s download', 'green'],
+    [`↑ ${upAt(now).toFixed(1)}`, 'MB/s upload', 'cyan'],
+    [`${downloading} / ${seeding}`, 'downloading / seeding'],
+    [ratio.toFixed(2), 'global ratio (est.)', 'amber'],
+    [String(peers), 'peers connected'],
+    ['HEALTHY', `DHT ${dht} nodes`, 'green'],
+  ]);
+}
+
+function renderTorrents(now) {
+  const rows = TORRENTS.map((t, i) => {
+    const rate = t.seed ? clamp(1 + ((now / (5 + i)) % 1) * 8, 0.2, 9) : clamp(3 + ((now / (4 + i * 1.3)) % 1) * 40, 1, 45);
+    const pct = t.seed ? 100 : Math.round(10 + ((now / (7 + i)) % 1) * 88);
+    return `<div class="trow"><span class="tn">${t.seed ? '▲' : '▼'} ${esc(t.n)}</span><span class="tr" style="color:${t.seed ? 'var(--cyan)' : 'var(--green)'}">${rate.toFixed(1)} ${t.seed ? '↑' : '↓'}</span><span class="tratio">r ${t.ratio.toFixed(2)}</span>
+      <div class="tbar"><i style="width:${pct}%;background:${t.seed ? 'var(--cyan)' : 'linear-gradient(90deg,var(--amber),var(--green))'}"></i></div></div>`;
   }).join('');
+  return `<div class="card"><div class="ct">TORRENTS</div>${rows}</div>`;
 }
 
-// Arr-stack activity: a scrolling feed of grab/import events. Titles are generic placeholders,
-// never a real media name.
-const ARR_ACTIONS = ['grabbed', 'imported', 'upgraded'];
-const ARR_TITLES = ['Series Title S02E07', 'Feature Film (2024)', 'Series Title S04E01', 'Feature Film (2019)', 'Series Title S01E11'];
-let arrTimer = null;
-onDispose(() => { if (arrTimer) clearTimeout(arrTimer); });
-// Cap well above what any panel height needs (the CSS opacity ladder below fades rows past ~15
-// visually) so a tall panel still reads as continuously full rather than running out of rows.
-const ARR_MAX_ROWS = 60;
-function addArrRow(animate) {
-  const action = ARR_ACTIONS[Math.floor(Math.random() * ARR_ACTIONS.length)];
-  const title = ARR_TITLES[Math.floor(Math.random() * ARR_TITLES.length)];
-  const feed = $('arrfeed');
-  if (!feed) return;
-  // Only the newest row or two read bright/"live"; demote the previous newest back to normal
-  // brightness as soon as another one arrives, instead of every row staying uniformly bright.
-  feed.querySelectorAll('.afrow-new').forEach((el) => el.classList.remove('afrow-new'));
-  const row = document.createElement('div');
-  row.className = animate ? 'afrow afrow-in afrow-new' : 'afrow';
-  row.innerHTML = `<b>${esc(action)}</b> · ${esc(title)}`;
-  feed.prepend(row);
-  while (feed.children.length > ARR_MAX_ROWS) feed.lastElementChild.remove();
-}
-function scheduleArrFeed() {
-  arrTimer = setTimeout(() => {
-    arrTimer = null;
-    addArrRow(true);
-    scheduleArrFeed();
-  }, RM ? 4000 : 600 + Math.random() * 900);
+// Library storage breakdown (sketch scene 125's LIBRARY STORAGE card): a fixed total/used split
+// by media type, each bar sized relative to the largest category (not the total), same as the
+// sketch's own bar math.
+const LIBRARY = { total: 60, used: 38.2, parts: [['Movies', 15.8, 'amber'], ['TV', 17.9, 'red'], ['Music', 1.6, 'mag'], ['Downloads', 2.9, 'cyan']] };
+const LIBRARY_MAX = Math.max(...LIBRARY.parts.map(([, v]) => v));
+function renderLibraryStorage() {
+  const pct = Math.round((LIBRARY.used / LIBRARY.total) * 100);
+  const rows = LIBRARY.parts.map(([n, v, c]) => `<div class="lrow"><span>${esc(n)}</span><div class="lbar"><i style="width:${((v / LIBRARY_MAX) * 100).toFixed(0)}%;background:var(--${c})"></i></div><b>${v} TB</b></div>`).join('');
+  return `<div class="card"><div class="ct">LIBRARY STORAGE</div><div class="lbig"><b>${LIBRARY.used}</b><i> / ${LIBRARY.total} TB · ${pct}%</i></div>${rows}</div>`;
 }
 
-// Throughput area chart (down + up), 1s cadence — no download-client exporter exists yet, so
-// this is stand-in like everything else in the panel, but it fills the dead space above the
-// QBITTORRENT card instead of leaving it empty.
-const THROUGHPUT_N = 60;
-const downAt = (t) => clamp(42 + Math.sin(t / 4) * 28 + (Math.random() - 0.5) * 10, 2, 100);
-const upAt = (t) => clamp(9 + Math.sin(t / 6 + 1) * 6 + (Math.random() - 0.5) * 4, 0.5, 30);
-const seedNow = Date.now() / 1000;
-// Seeded across the last THROUGHPUT_N seconds (not a flat 0 baseline) so the chart reads as an
-// established trend on first paint instead of an empty history that only starts filling in live.
-const throughput = {
-  down: Array.from({ length: THROUGHPUT_N }, (_, i) => downAt(seedNow - (THROUGHPUT_N - 1 - i))),
-  up: Array.from({ length: THROUGHPUT_N }, (_, i) => upAt(seedNow - (THROUGHPUT_N - 1 - i))),
-};
-function tickThroughput() {
+// PLEX card: figures ported 1:1 from the sketch (it hardcodes these too) plus 3 generic "now
+// playing" lines — never a real media title.
+const PLEX_STREAMS = [['Feature film A', '4K direct', 'living room'], ['Feature film B', '1080p transcode', 'phone'], ['Feature film C', '4K HDR', 'office']];
+function renderPlex() {
+  const rows = PLEX_STREAMS.map(([t, q, w]) => `<div>▶ ${esc(t)} · ${esc(q)} · ${esc(w)}</div>`).join('');
+  return `<div class="card"><div class="ct">PLEX</div><div class="p3grid"><div><b>3</b><span>streams</span></div><div><b>1</b><span>transcode</span></div><div><b>85</b><span>Mb/s out</span></div></div><div class="pstreams">${rows}</div></div>`;
+}
+
+// ARR STACK (sketch scene 125): a fixed 6-service status grid, not a scrolling feed — one row
+// (index 3) is deliberately shown degraded, matching the sketch, so the panel never reads as an
+// all-green wall that hides real trouble.
+const ARR_SERVICES = ['sonarr', 'radarr', 'prowlarr', 'bazarr', 'overseerr', 'tautulli'];
+function renderArrStack() {
+  const rows = ARR_SERVICES.map((s, i) => {
+    const bad = i === 3;
+    return `<div class="arow${bad ? ' bad' : ''}"><i></i>${esc(s)}<em>${bad ? 'degraded' : `q${(i * 2) % 5} · ok`}</em></div>`;
+  }).join('');
+  return `<div class="card"><div class="ct">ARR STACK</div><div class="agrid">${rows}</div></div>`;
+}
+
+// Recently-added poster strip (sketch scene 125's bottom band): generic gradient cards, never a
+// real media title.
+const POSTER_TITLES = ['Feature film A', 'Feature film B', 'Series C', 'Series D', 'Feature film E', 'Feature film F', 'Series G', 'Feature film H'];
+function renderPosters(now) {
+  const cards = POSTER_TITLES.map((p, i) => {
+    const age = Math.round(1 + ((now / (9 + i)) % 1) * 47);
+    return `<div class="poster" style="background:linear-gradient(${i * 45}deg,hsl(${20 + i * 40} 70% 30%),hsl(${200 + i * 20} 55% 14%))">${esc(p)}<span>${age}h ago</span></div>`;
+  }).join('');
+  $('posters').innerHTML = `<div class="ct">RECENTLY ADDED</div><div class="pgrid">${cards}</div>`;
+}
+
+function renderMediaPanels() {
   const now = Date.now() / 1000;
-  throughput.down.push(downAt(now));
-  throughput.down.shift();
-  throughput.up.push(upAt(now));
-  throughput.up.shift();
-  drawThroughput();
+  $('acqbody').innerHTML = renderQbit(now) + renderLibraryStorage() + renderPlex();
+  $('pipebody').innerHTML = renderTorrents(now) + renderArrStack();
+  renderPosters(now);
 }
-function drawThroughput() {
-  const canvas = $('throughSpark');
-  if (!canvas) return;
-  const dpr = adaptiveDpr();
-  const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
-  if (canvas.width !== w) canvas.width = w;
-  if (canvas.height !== h) canvas.height = h;
-  const c = canvas.getContext('2d');
-  c.clearRect(0, 0, w, h);
-  const max = Math.max(1, ...throughput.down, ...throughput.up);
-  const area = (series, color, fill) => {
-    c.beginPath();
-    series.forEach((v, i) => {
-      const x = (i / (series.length - 1)) * w, y = h - (v / max) * (h - 4 * dpr) - 2 * dpr;
-      i === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
-    });
-    c.lineTo(w, h); c.lineTo(0, h); c.closePath();
-    c.fillStyle = fill; c.fill();
-    c.beginPath();
-    series.forEach((v, i) => {
-      const x = (i / (series.length - 1)) * w, y = h - (v / max) * (h - 4 * dpr) - 2 * dpr;
-      i === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
-    });
-    c.strokeStyle = color; c.lineWidth = 1.5 * dpr; c.stroke();
-  };
-  area(throughput.up, '#38ff9c', 'rgba(56,255,156,.15)');
-  area(throughput.down, '#ffb347', 'rgba(255,179,71,.18)');
-}
-let throughputId = null;
-
-function renderAcqPanel() {
-  const [qbit] = SAMPLE_ACQ_CARDS;
-  $('acqbody').innerHTML = `<div class="card"><div class="ct">Throughput <span style="color:var(--amber)">down</span> / <span style="color:var(--green)">up</span></div><canvas id="throughSpark" class="through"></canvas></div>`
-    + card(qbit.title, qbit.note)
-    + `<div class="card"><div class="ct">Queue</div><div id="queuerows"></div></div>`
-    + statgrid([['tunnel', 'up'], ['peers', '3'], ['handshake', '41s ago'], ['rx / tx', '1.2 / 0.3 GB']]);
-  renderQueue();
-  tickThroughput();
-  if (!throughputId) throughputId = setInterval(tickThroughput, 1000);
-}
-onDispose(() => { if (throughputId) clearInterval(throughputId); });
-function renderPipePanel() {
-  const [plex, , storage] = SAMPLE_LIBRARY_CARDS;
-  $('pipebody').innerHTML = card(plex.title, plex.note)
-    + statgrid([['movies', '1,204'], ['shows', '86'], ['episodes', '9,417'], ['added (7d)', '23']])
-    + `<div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column"><div class="ct">Arr activity</div><div class="afeed" id="arrfeed"></div></div>`
-    + card(storage.title, storage.note);
-}
-renderAcqPanel();
-renderPipePanel();
-for (let i = 0; i < 26; i += 1) addArrRow(false); // seed so the feed fills the panel on first paint
-scheduleArrFeed();
+renderMediaPanels();
 setState($('acq'), 'ok', '');
 setState($('pipe'), 'ok', '');
 setStandIn($('acq'), true);
 setStandIn($('pipe'), true);
 $('vpn').textContent = '● WIREGUARD · CONNECTED';
+$('vpnDetail').textContent = 'tunnel exit · handshake 32s ago · killswitch ARMED · leaks 0 · port-fwd OPEN';
 setStandIn($('vpn'), true);
-const queueId = setInterval(renderQueue, 2000);
-onDispose(() => clearInterval(queueId));
+const mediaPanelsId = setInterval(renderMediaPanels, 2000);
+onDispose(() => clearInterval(mediaPanelsId));
 
 /* ---------------- centre hero: 3D acquisition flow (sketch scene 125) or 2D fallback ---------------- */
 const coreCanvas = $('corecanvas');
