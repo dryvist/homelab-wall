@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/dryvist/homelab-wall/compare/v0.3.0...v0.3.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* **mc1:** decouple the service-health summary from the canvas animation frame ([#21](https://github.com/dryvist/homelab-wall/issues/21)) ([8f2b8f5](https://github.com/dryvist/homelab-wall/commit/8f2b8f57554e95bd785ac418e1703d55ee2c0019))
+* **mc1:** stop double-counting storage across nodes ([#18](https://github.com/dryvist/homelab-wall/issues/18)) ([118dd75](https://github.com/dryvist/homelab-wall/commit/118dd75b27e2653657950559f0dce1e7fa36ba47))
+
 ## [0.3.0](https://github.com/dryvist/homelab-wall/compare/v0.2.1...v0.3.0) (2026-09-25)
 
 
