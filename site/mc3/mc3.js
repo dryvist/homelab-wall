@@ -5,7 +5,7 @@ import { Q } from '/lib/queries.js';
 import { makeBloom } from '/lib/bloom.js';
 import {
   clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct,
-  setSampleBadge, onDispose, onContextLoss, disposeThreeScene, hardwareGL,
+  setSampleBadge, onDispose, onContextLoss, disposeThreeScene, hardwareGL, adaptiveBloomOn, adaptiveDpr,
 } from '/lib/stage.js';
 import { sampleAppScore, SAMPLE_LLM } from '/lib/sampleData.js';
 
@@ -129,7 +129,7 @@ function pushHist(name, tok) {
   return h;
 }
 function drawSpark(canvas, hist, color) {
-  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const dpr = adaptiveDpr();
   const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
   if (canvas.width !== w) canvas.width = w;
   if (canvas.height !== h) canvas.height = h;
@@ -185,7 +185,7 @@ function renderCoreExtra(list) {
   $('cxGpu').textContent = `${gpuPct}%`;
   $('cxGpu').dataset.source = 'stand-in';
   const gauge = $('gpuGauge'), gc = gauge.getContext('2d');
-  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const dpr = adaptiveDpr();
   const gw = Math.max(1, Math.round(gauge.clientWidth * dpr)), gh = Math.max(1, Math.round(gauge.clientHeight * dpr));
   if (gauge.width !== gw) gauge.width = gw;
   if (gauge.height !== gh) gauge.height = gh;
@@ -230,7 +230,7 @@ function scheduleFeedTick(list) {
 /* ---------------- reactor: 3D hero (sketch scene 88) or 2D fallback ---------------- */
 const reactor = $('reactor');
 function fitCanvas(cv) {
-  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const dpr = adaptiveDpr();
   const w = Math.max(1, Math.round(cv.clientWidth * dpr)), h = Math.max(1, Math.round(cv.clientHeight * dpr));
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
   return dpr;
@@ -374,7 +374,10 @@ function build3DCore() {
       stream.pg.attributes.color.needsUpdate = true;
       stream.mat.opacity = c.up ? 0.9 : 0.06;
     });
-    bloomFx.render();
+    // Adaptive quality (site/lib/stage.js): bloom is the second thing dropped under sustained
+    // frame-time pressure, after the DPR cap — a plain renderer.render() skips the whole
+    // EffectComposer pass.
+    if (adaptiveBloomOn()) bloomFx.render(); else renderer.render(scene, cam);
   }
   return { render, sync, renderer, scene, ro, dispose: () => { bloomFx.dispose(); ro.disconnect(); } };
 }
