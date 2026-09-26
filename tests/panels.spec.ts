@@ -264,3 +264,60 @@ test('a node missing from a later poll stays rendered, marked stale, with its la
   // could not appear unless the node's earlier good reading was kept and reused.
   await expect(staleCard.locator('.nm em')).toContainText('STALE');
 });
+
+// D-mc1-3: the storage panel double-counted capacity two ways — (1) a network mount of another
+// node's own pool (an NFS re-export) reported the same bytes under a different device and
+// mountpoint, counted again on top of the origin; (2) the ZFS dedup key was the pool name alone
+// ("zfs:rpool"), so every host's own distinctly-sized "rpool" collided into a single kept row,
+// silently dropping the others' capacity. This mock stands in for Prometheus itself: it only
+// omits the NFS row once the outgoing PromQL query text actually asks it to (queries.js's FS
+// filter), so the test fails against the pre-fix query (no fstype exclusion, NFS row included)
+// and passes once queries.js excludes network filesystems natively.
+test('storage panel excludes network mounts and keys ZFS pools per host', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture NFS/ZFS-collision fixture only');
+  const inst = (n: string) => ({ instance: `${n}.example.test:9100`, job: 'pve_node_exporter' });
+  const vec = (rows: Array<[Record<string, string>, number]>) => rows.map(([metric, v]) => ({ metric, value: [Date.now() / 1000, String(v)] }));
+
+  await page.route('**/config.json', (r: Route) => r.fulfill({
+    json: {
+      title: 'HOMELAB', refreshSeconds: 15, guestCount: 2,
+      nodeRoles: { 'host-a': 'host-a', 'host-b': 'host-b' }, extraNodes: [],
+      groups: [{ name: 'apps', apps: ['alpha'] }],
+    },
+  }));
+  await page.route('**/api/prom/**', (r: Route) => {
+    const url = new URL(r.request().url());
+    const q = url.searchParams.get('query') || '';
+    if (q.includes('gatus_results_total')) return r.fulfill({ json: { status: 'success', data: { resultType: 'vector', result: [] } } });
+    if (q.includes('filesystem_size') || q.includes('filesystem_avail')) {
+      const frac = q.includes('filesystem_avail') ? 0.5 : 1; // avail = half of size, for a stable used%
+      // Simulates the real Prometheus filter: an NFS row is only withheld when the query text
+      // itself asks to exclude it, the same way a real server would honor the PromQL filter.
+      const queryExcludesNfs = /nfs/i.test(q) && q.includes('fstype');
+      const rows: Array<[Record<string, string>, number]> = [
+        [{ ...inst('host-a'), device: 'rpool/ROOT/pve-1', mountpoint: '/', fstype: 'zfs' }, 2e12 * frac],
+        [{ ...inst('host-b'), device: 'rpool/ROOT/pve-1', mountpoint: '/', fstype: 'zfs' }, 5e12 * frac],
+        [{ ...inst('host-a'), device: 'shared:/vol', mountpoint: '/mnt/shared', fstype: 'ext4' }, 3e12 * frac],
+        [{ ...inst('host-b'), device: 'shared:/vol', mountpoint: '/mnt/shared', fstype: 'ext4' }, 3e12 * frac],
+      ];
+      if (!queryExcludesNfs) {
+        rows.push([{ ...inst('host-a'), device: 'host-b.example.test:/rpool/ROOT/pve-1', mountpoint: '/mnt/pve/evac', fstype: 'nfs4' }, 5e12 * frac]);
+      }
+      return r.fulfill({ json: { status: 'success', data: { resultType: 'vector', result: vec(rows) } } });
+    }
+    return r.fulfill({ json: { status: 'success', data: { resultType: 'vector', result: [] } } });
+  });
+
+  await page.goto('/mc1/?gl=2d');
+  const rows = page.locator('#strows .st');
+  // 3 rows: host-a's rpool, host-b's rpool (kept as two — same pool name, different hosts,
+  // different sizes), and the one true shared device — never a 4th row for the NFS re-export.
+  await expect(rows).toHaveCount(3);
+
+  const labels = await rows.locator('span:first-child').allTextContents();
+  expect(labels.map((l) => l.trim().toUpperCase().replace(/\s+/g, ' ')).sort()).toEqual(['HOST-A RPOOL', 'HOST-B RPOOL', 'SHARED SHARED']);
+
+  // 2e12 (host-a rpool) + 5e12 (host-b rpool) + 3e12 (shared) = 10e12 bytes = 10.0 TB of unique
+  // local storage — the NFS re-export of host-b's own pool never adds another 5e12 on top.
+  await expect(page.locator('#sttot')).toContainText('10.0 TB');
+});
