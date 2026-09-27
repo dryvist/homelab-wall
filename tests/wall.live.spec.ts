@@ -1,8 +1,6 @@
+// live spec
 import { expect, test, type FrameLocator, type Page } from '@playwright/test';
 
-// Runs the rotator (site/rotator/rotator.js) against WALL_URL instead of the synthetic fixture
-// every other spec uses. Opt-in only: `npx playwright test --project=live` (see
-// playwright.config.ts; excluded from the default project set every other CI run exercises).
 const wallUrl = process.env.WALL_URL;
 const wallUser = process.env.WALL_USER;
 const wallPassword = process.env.WALL_PASSWORD;
@@ -24,13 +22,7 @@ const DEFAULT_SLIDES: SlideConfig[] = [
 
 const safeName = (name: string) => name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
 
-// Authelia's own login form (labeled fields, no stable custom IDs relied on). No-op when the
-// wall is already reachable without a gate, or when no credentials were supplied — the caller
-// decides what a still-gated page after this returns means for its own assertions.
 async function loginIfPresented(page: Page): Promise<'no-gate' | 'logged-in' | 'gated-no-credentials'> {
-  // Authelia's own SPA takes longer than a bare navigation to mount its login form — wait for
-  // the page to settle before deciding whether a gate is even present, or a slow first paint
-  // reads as "no gate" and the run silently skips straight to a page that was never reachable.
   await page.waitForLoadState('networkidle').catch(() => {});
   const usernameField = page.getByLabel(/username/i).first();
   const onLoginPage = await usernameField.isVisible({ timeout: 15_000 }).catch(() => false);
@@ -43,9 +35,6 @@ async function loginIfPresented(page: Page): Promise<'no-gate' | 'logged-in' | '
   return 'logged-in';
 }
 
-// Every canvas the slide currently renders (its "panel regions") must both hold real pixels now
-// and keep moving — A3 (site/lib/stage.js) holds the last real sample and jitters around it
-// forever, so no live panel is ever allowed to sit frozen.
 async function canvasSnapshots(frame: FrameLocator): Promise<string[]> {
   return frame.locator('canvas').evaluateAll((canvases) =>
     (canvases as HTMLCanvasElement[]).map((c) => c.toDataURL()));
@@ -57,9 +46,7 @@ test('the rotator shows every configured slide, non-blank, with panels that keep
   await page.goto(wallUrl!);
   const loginResult = await loginIfPresented(page);
   testInfo.attach('login', { body: loginResult });
-  // Fail fast, with the actual reason, instead of a generic "#layers never appeared" timeout
-  // once the rotator's own markup never loads behind an un-passable gate.
-  expect(loginResult, 'WALL_URL is gated by Authelia and WALL_USER/WALL_PASSWORD were not set').not.toBe('gated-no-credentials');
+  expect(loginResult, 'gate present, no credentials supplied').not.toBe('gated-no-credentials');
 
   const config = await page.evaluate(async () => {
     try {
@@ -107,13 +94,9 @@ test('the rotator shows every configured slide, non-blank, with panels that keep
         `${name} rendered a blank canvas`,
       ).toBe(true);
 
-      // Only worth checking motion if the slide is due to stay on screen long enough to see it.
       const slideSeconds = slides.find((s) => s.name === name)?.seconds ?? 10;
       if (before.length > 0 && slideSeconds * 1000 >= PIXEL_CHANGE_WINDOW_MS + 1000) {
         await page.waitForTimeout(PIXEL_CHANGE_WINDOW_MS);
-        // The slide may have rotated away while we waited; only compare if it's still active
-        // (the frameLocator re-resolves '.layer.active' live, so this guards against silently
-        // comparing against a different slide's canvases).
         const stillActive = await activeLayer.getAttribute('src').catch(() => null);
         if (stillActive === src) {
           const after = await canvasSnapshots(frame).catch(() => []);

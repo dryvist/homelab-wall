@@ -7,9 +7,6 @@ const wallUrl = process.env.WALL_URL;
 
 export default defineConfig({
   testDir: 'tests',
-  // wall.live.spec.ts only runs under the `live` project below (explicit --project=live) —
-  // every other project (including a bare `npx playwright test`) skips it outright, matching
-  // ci.yml's matrix, which never names `live`. The `live` project overrides this back to `[]`.
   testIgnore: ['**/wall.live.spec.ts'],
   timeout: 60_000,
   // ci.yml runs one Playwright project per job (its own runner) instead of the full 8-project
@@ -41,9 +38,6 @@ export default defineConfig({
     { name: 'webkit-2560x1440', use: { ...devices['Desktop Safari'], viewport: { width: 2560, height: 1440 } } },
     { name: 'chromium-1440x900', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, launchOptions: { args: ['--disable-dev-shm-usage'] } } },
     { name: 'webkit-1440x900', use: { ...devices['Desktop Safari'], viewport: { width: 1440, height: 900 } } },
-    // wall.live.spec.ts only (testIgnore above scopes every other project away from it). GPU
-    // flags so the WebGL topology/hero scenes actually render pixels headless, instead of
-    // falling back to a blank/software canvas — matches the wall's own kiosk viewport.
     {
       name: 'live',
       testIgnore: [],
