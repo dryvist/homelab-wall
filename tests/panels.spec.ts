@@ -257,7 +257,7 @@ const STAND_IN_PANELS: Record<string, string[]> = {
   mc1: ['firewall'], // mc1's topology panel is a MIX (real graph + a stand-in #wan sub-element)
   mc2: ['threat', 'blocked'],
   mc4: ['acquisition', 'pipeline'],
-  mc5: ['github', 'infra', 'activity', 'pipeline'],
+  mc5: ['infra'],
 };
 
 for (const [pageId, panelIds] of Object.entries(STAND_IN_PANELS)) {
@@ -472,4 +472,18 @@ test('storage panel excludes network mounts and keys ZFS pools per host', async 
   // 2e12 (host-a rpool) + 5e12 (host-b rpool) + 3e12 (shared) = 10e12 bytes = 10.0 TB of unique
   // local storage — the NFS re-export of host-b's own pool never adds another 5e12 on top.
   await expect(page.locator('#sttot')).toContainText('10.0 TB');
+});
+
+// mc5's GitOps hero (site/mc5/mc5.js): the full-viewport #corecanvas scene and the org-activity
+// ticker are both fed by the fixture's mocked GitHub events/repos (tests/fixture.ts mockGithub) —
+// this asserts the hero actually renders pixels and the ticker actually shows rows, on top of the
+// generic per-page contract test above (which already covers every canvas/panel more broadly).
+test('mc5 hero canvas renders non-blank and the org-activity ticker shows rows', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped GitHub response only');
+  await mockFeeds(page);
+  await page.goto('/mc5/');
+  await expect(page.locator('[data-panel="ticker"]')).toHaveAttribute('data-state', 'ok');
+  const rows = page.locator('#tickerBody .feed-row');
+  await expect.poll(() => rows.count()).toBeGreaterThan(0);
+  await expect.poll(() => page.locator('#corecanvas').evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL().length)).toBeGreaterThan(200);
 });

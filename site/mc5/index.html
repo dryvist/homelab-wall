@@ -3,44 +3,48 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mission Control · Pipeline</title>
+<title>Mission Control — GitOps</title>
 <link rel="stylesheet" href="/lib/wall.css">
 <link rel="stylesheet" href="/mc5/mc5.css">
 </head>
 <body>
-<div id="mc5" class="mc5">
+<div id="stage" class="stage mc5">
+  <!-- Full-viewport hero layer: NOT nested inside a panel (a `contain`/`transform`/`filter`/
+       `backdrop-filter` ancestor would become the containing block for this canvas's
+       position:fixed, clipping it back to that panel's box) — same pattern as mc4.css. -->
+  <canvas id="corecanvas"></canvas>
   <header>
-    <canvas id="ring" width="128" height="128"></canvas>
-    <div class="brand"><span id="title">HOMELAB</span> <span class="acc">//</span> PIPELINE <span class="acc">//</span> GITOPS<small id="subtitle">—</small></div>
-    <div class="kpis" id="kpis"></div>
+    <div class="brand"><span id="title">HOMELAB</span> <span class="acc">//</span> PIPELINE <span class="acc">//</span> GITOPS</div>
+    <div class="orgline" id="orgline">dryvist</div>
     <div class="clock num" id="clock">--:--:--<small>--</small></div>
   </header>
 
-  <section class="panel" id="apps" data-panel="apps" data-state="pending">
-    <h2>Service health <span id="appsum">—</span><span data-panel-message></span></h2>
+  <!-- Floating glass cards, direct grid children of #stage (mc1/mc4's own convention — one
+       [data-panel] per grid cell, not nested inside a wrapping column) so the hero canvas's
+       core/ring/comets show through the gaps between and behind them, and so each panel's
+       offsetLeft/Top (the overlap contract test's own metric) is measured from one shared
+       frame instead of a per-column offsetParent. -->
+  <section class="panel tiltL" id="ticker" data-panel="ticker" data-state="pending">
+    <h2>Org activity<span data-panel-message></span></h2>
+    <div class="body" id="tickerBody"></div>
+  </section>
+
+  <section class="panel tiltL" id="apps" data-panel="apps" data-state="pending">
+    <h2>Service health <span id="appsum"></span><span data-panel-message></span></h2>
     <canvas id="appgrid"></canvas>
   </section>
 
-  <section class="panel" id="github" data-panel="github" data-state="pending">
-    <h2>GitHub · Actions &amp; PRs<span data-panel-message></span></h2>
-    <div class="body"></div>
+  <section class="panel tiltR" id="releases" data-panel="releases" data-state="pending">
+    <h2>Latest releases<span data-panel-message></span></h2>
+    <div class="body" id="releasesBody"></div>
   </section>
 
-  <section class="panel" id="pipeline" data-panel="pipeline" data-state="pending">
-    <h2>Pipeline stages<span data-panel-message></span></h2>
-    <canvas id="pipecanvas"></canvas>
-  </section>
-
-  <section class="panel" id="infra" data-panel="infra" data-state="pending">
+  <section class="panel tiltR" id="infra" data-panel="infra" data-state="pending">
     <h2>Terrakube &amp; Semaphore<span data-panel-message></span></h2>
-    <div class="body"></div>
-  </section>
-
-  <section class="panel" id="activity" data-panel="activity" data-state="pending">
-    <h2>Pipeline activity<span data-panel-message></span></h2>
-    <div class="body"></div>
+    <div class="body" id="infraBody"></div>
   </section>
 </div>
+<script type="importmap">{"imports": {"three": "/vendor/three/three.module.js", "three/addons/": "/vendor/three/addons/"}}</script>
 <script type="module" src="/mc5/mc5.js"></script>
 </body>
 </html>

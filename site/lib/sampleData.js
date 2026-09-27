@@ -70,17 +70,3 @@ export const SAMPLE_LIBRARY_CARDS = [
   { title: 'LIBRARY STORAGE', note: '38.2 / 60 TB' },
 ];
 
-export const SAMPLE_GITHUB_ROWS = [
-  { repo: 'homelab-wall', status: 'CI passing', ago: '4m' },
-  { repo: 'ansible-proxmox-apps', status: 'PR open', ago: '22m' },
-];
-
-export const SAMPLE_INFRA_ROWS = [
-  { name: 'Terrakube plan', status: 'queued', ago: '1m' },
-  { name: 'Semaphore run', status: 'running', ago: '3m' },
-];
-
-export const SAMPLE_ACTIVITY_ROWS = [
-  { text: 'develop merged to main', ago: '6m' },
-  { text: 'release published', ago: '18m' },
-];
