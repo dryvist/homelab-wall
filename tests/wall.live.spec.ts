@@ -28,13 +28,17 @@ const safeName = (name: string) => name.replace(/[^a-z0-9]+/gi, '-').toLowerCase
 // wall is already reachable without a gate, or when no credentials were supplied — the caller
 // decides what a still-gated page after this returns means for its own assertions.
 async function loginIfPresented(page: Page): Promise<'no-gate' | 'logged-in' | 'gated-no-credentials'> {
+  // Authelia's own SPA takes longer than a bare navigation to mount its login form — wait for
+  // the page to settle before deciding whether a gate is even present, or a slow first paint
+  // reads as "no gate" and the run silently skips straight to a page that was never reachable.
+  await page.waitForLoadState('networkidle').catch(() => {});
   const usernameField = page.getByLabel(/username/i).first();
-  const onLoginPage = await usernameField.isVisible({ timeout: 8_000 }).catch(() => false);
+  const onLoginPage = await usernameField.isVisible({ timeout: 15_000 }).catch(() => false);
   if (!onLoginPage) return 'no-gate';
   if (!wallUser || !wallPassword) return 'gated-no-credentials';
   await usernameField.fill(wallUser);
   await page.getByLabel(/password/i).first().fill(wallPassword);
-  await page.getByRole('button', { name: /sign in/i }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.waitForLoadState('networkidle').catch(() => {});
   return 'logged-in';
 }
@@ -53,6 +57,9 @@ test('the rotator shows every configured slide, non-blank, with panels that keep
   await page.goto(wallUrl!);
   const loginResult = await loginIfPresented(page);
   testInfo.attach('login', { body: loginResult });
+  // Fail fast, with the actual reason, instead of a generic "#layers never appeared" timeout
+  // once the rotator's own markup never loads behind an un-passable gate.
+  expect(loginResult, 'WALL_URL is gated by Authelia and WALL_USER/WALL_PASSWORD were not set').not.toBe('gated-no-credentials');
 
   const config = await page.evaluate(async () => {
     try {
