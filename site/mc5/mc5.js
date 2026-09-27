@@ -9,6 +9,7 @@ import {
   setSampleBadge, setStandIn, onDispose, signalReady,
 } from '/lib/stage.js';
 import { sampleAppScore, SAMPLE_GITHUB_ROWS, SAMPLE_INFRA_ROWS, SAMPLE_ACTIVITY_ROWS } from '/lib/sampleData.js';
+import { groupedHexLayout } from '/lib/hexlayout.js';
 
 const $ = (id) => document.getElementById(id);
 const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e', '#ff3b5c'];
@@ -31,8 +32,15 @@ function fitCanvas(cell, canvas, draw) {
 const cfg = await loadConfig();
 $('title').textContent = cfg.title || 'HOMELAB';
 const groups = (cfg.groups || []).map((g, i) => ({ ...g, c: PALETTE[i % PALETTE.length] }));
-const apps = [...new Set(groups.flatMap((g) => g.apps))].sort().map((n) => ({ n, s: null }));
+// Grouped by config.groups order (first group wins for a duplicate), never alphabetical —
+// hexLayout keeps the null gap markers the app grid draws as empty cells between groups.
+const hexLayout = groupedHexLayout(groups);
+const apps = hexLayout.filter((n) => n !== null).map((n) => ({ n, s: null }));
 const appIndex = Object.fromEntries(apps.map((a) => [a.n, a]));
+// Grid-drawing order only (drawAppGrid): same order as `apps`, with `null` gap cells
+// re-inserted — scoring/summary code below always uses `apps`/`appIndex`, never this.
+const hexCells = hexLayout.map((n) => (n === null ? null : appIndex[n]));
+const appPos = new Map(apps.map((a, i) => [a, i])); // apps' own index, for sampleAppScore(i)
 const model = { updated: 0 };
 
 async function refresh() {
@@ -92,31 +100,36 @@ function renderApps() {
   // A query that succeeded with zero rows has genuinely nothing to show yet — render the shared
   // sample scores instead (badged), never layered on top of real (even partial) data.
   appsSample = !scored.length;
-  const display = apps.map((a, i) => (appsSample ? { n: a.n, s: sampleAppScore(i) } : a));
-  const scores = display.map((a) => a.s).filter((s) => s != null);
+  const scores = apps.map((a, i) => (appsSample ? sampleAppScore(i) : a.s)).filter((s) => s != null);
   const ok = scores.filter((s) => s >= SCORE_OK_MIN).length, warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
   const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
   $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`;
   setSampleBadge($('apps'), appsSample);
   setState($('apps'), scored.length ? 'ok' : 'empty');
-  drawAppGrid(display);
+  // Test hook only (no visible marker): count of apps with no real score, regardless of the
+  // sample-fallback badge above — the app grid draws every one of these as a red 0.
+  $('appgrid').dataset.unknownCount = String(apps.filter((a) => a.s == null).length);
+  drawAppGrid();
 }
-function drawAppGrid(display = apps) {
+function drawAppGrid() {
   const canvas = $('appgrid'), c = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   c.clearRect(0, 0, W, H);
-  if (!display.length) return;
-  const cols = Math.max(1, Math.ceil(Math.sqrt(display.length * W / H)));
-  const rows = Math.ceil(display.length / cols);
+  if (!hexCells.length) return;
+  const cols = Math.max(1, Math.ceil(Math.sqrt(hexCells.length * W / H)));
+  const rows = Math.ceil(hexCells.length / cols);
   const cw = W / cols, ch = H / rows, pad = Math.min(cw, ch) * 0.08;
-  display.forEach((a, i) => {
+  hexCells.forEach((a, i) => {
     const col = i % cols, row = (i / cols) | 0;
+    if (!a) return; // gap cell between groups — reserved grid space, nothing drawn
     const x = col * cw + pad, y = row * ch + pad, w = cw - pad * 2, h = ch - pad * 2;
-    const known = a.s != null, colr = known ? hue(scorePct(a.s)) : '#2a2f77';
-    c.fillStyle = known ? colr.replace('55%', '18%') : '#12143a'; c.fillRect(x, y, w, h);
+    // No "?" glyph: an app with no real score draws as "0" in the same red the score scale
+    // gives any other 0 — never a distinct unknown state.
+    const val = (appsSample ? sampleAppScore(appPos.get(a)) : a.s) ?? 0, colr = hue(scorePct(val));
+    c.fillStyle = colr.replace('55%', '18%'); c.fillRect(x, y, w, h);
     c.strokeStyle = colr; c.lineWidth = Math.max(1, ch * 0.02); c.strokeRect(x, y, w, h);
     c.fillStyle = '#fff'; c.textAlign = 'center'; c.font = `600 ${Math.max(9, h * 0.32)}px "Chakra Petch",sans-serif`;
-    c.fillText(known ? Math.round(a.s) : '?', x + w / 2, y + h * 0.48);
+    c.fillText(Math.round(val), x + w / 2, y + h * 0.48);
     c.fillStyle = '#9aa3d9'; c.font = `${Math.max(7, h * 0.16)}px "JetBrains Mono",monospace`;
     const label = a.n.length > 10 ? a.n.slice(0, 9) + '…' : a.n;
     c.fillText(label, x + w / 2, y + h * 0.78);
