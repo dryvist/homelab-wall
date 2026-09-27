@@ -22,9 +22,9 @@ The page is static. It reads two things from its own origin:
   - live (default): `/api/prom/query` and `/api/prom/query_range`, a read-only
     Prometheus gateway (see `homelab-wall-feed`).
   - snapshot: when `config.json` sets `"snapshot": "<path>"`, results come from
-    that one JSON path instead, polled every 2s and keyed by
-    `site/lib/queries.js`'s `Q` — the same allow-list `scripts/gen-queries.mjs`
-    emits as `site/queries.json` for a publisher to read.
+    that one static snapshot file instead, refreshed every 2s and keyed by
+    `site/lib/queries.js`'s `Q`. `scripts/gen-queries.mjs` regenerates the
+    committed `site/queries.json` allow-list from `Q` whenever it changes.
 
 Sources that are not wired yet show a "pending" state rather than disappearing.
 A node that drops out of a single poll shows a "stale" state instead of
