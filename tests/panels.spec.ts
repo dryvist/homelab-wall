@@ -309,6 +309,10 @@ test('mc3 model tiles show real queue/avg values and render a quiet idle state w
   await expect(tiles.filter({ hasText: 'model-large' }).locator('.mcstats')).toContainText('842ms');
   await expect(tiles.filter({ hasText: 'model-large' }).locator('.mcstats')).not.toHaveAttribute('data-source', 'stand-in');
   await expect(tiles.filter({ hasText: 'model-coder' }).locator('.mcstats')).toContainText('idle');
+  // model-mini's 203.361s average is the reported bug ("avg 203361ms") — must render as "3.4m",
+  // never raw milliseconds. Covers all three human-duration ranges together with the two above:
+  // sub-second ("842ms"), sub-minute ("4.5s"), and minutes-and-up ("3.4m").
+  await expect(tiles.filter({ hasText: 'model-mini' }).locator('.mcstats')).toContainText('3.4m');
 });
 
 test('the SAMPLE DATA badge never appears on a panel that has real data', async ({ page }) => {

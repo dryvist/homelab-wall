@@ -128,11 +128,19 @@ let reactorList = SAMPLE_LLM.map((m) => ({ n: m.n, up: m.state < 2, tok: m.tok }
 // so this is an average, not a true p50. A model with no requests in the 5m window (queue/latencyMs
 // both undefined on the model object) is genuinely idle, not a failed query: it renders a quiet
 // "idle" state, never a stand-in badge.
+// Human-readable duration from milliseconds: sub-second as whole ms, sub-minute as one-decimal
+// seconds, else minutes — the same three ranges shown across queue time and API latency, so
+// both go through this one formatter instead of separate ad-hoc toFixed calls.
+function fmtDur(ms) {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${(ms / 60000).toFixed(1)}m`;
+}
 function modelStats(m) {
   if (!m.up) return { queue: 'offline', avg: 'offline' };
   return {
-    queue: m.queue == null ? 'idle' : `${m.queue.toFixed(1)}s`,
-    avg: m.latencyMs == null ? 'idle' : `${Math.round(m.latencyMs)}ms`,
+    queue: m.queue == null ? 'idle' : fmtDur(m.queue * 1000),
+    avg: m.latencyMs == null ? 'idle' : fmtDur(m.latencyMs),
   };
 }
 // Rolling per-model tok/s history for the sparklines (model cards + fleet-health column). Real

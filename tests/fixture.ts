@@ -55,7 +55,7 @@ function answer(q: string): unknown[] {
     ] as Array<[Record<string, string>, number]>);
   }
   if (q.includes('unifi_vlan_fw_events_total')) return vec([[{ vlan: '10' }, 4.2], [{ vlan: '20' }, 1.1], [{ vlan: '30' }, 0.4]]);
-  if (q.includes('litellm_deployment_state')) return vec([[{ litellm_model_name: 'model-large' }, 0], [{ litellm_model_name: 'model-coder' }, 0], [{ litellm_model_name: 'model-small' }, 2]]);
+  if (q.includes('litellm_deployment_state')) return vec([[{ litellm_model_name: 'model-large' }, 0], [{ litellm_model_name: 'model-coder' }, 0], [{ litellm_model_name: 'model-small' }, 2], [{ litellm_model_name: 'model-mini' }, 0]]);
   if (q.includes('litellm_output_tokens')) return vec([[{ model: 'model-large' }, 38], [{ model: 'model-coder' }, 91]]);
   // mc3
   if (q.includes('litellm_total_tokens_metric_total')) return vec([[{}, 4_810_000]]);
@@ -63,7 +63,8 @@ function answer(q: string): unknown[] {
   // model-coder deliberately has no row here: no requests in the window is a real, idle model,
   // not a failed query — proves mc3 renders that as a quiet "idle" state, never a placeholder.
   if (q.includes('litellm_request_queue_time_seconds_sum')) return vec([[{ model: 'model-large' }, 4.5]]);
-  if (q.includes('litellm_llm_api_latency_metric_sum')) return vec([[{ model: 'model-large' }, 0.842]]);
+  // model-mini: a >60s average (the reported bug's own "avg 203361ms") — proves the minutes range.
+  if (q.includes('litellm_llm_api_latency_metric_sum')) return vec([[{ model: 'model-large' }, 0.842], [{ model: 'model-mini' }, 203.361]]);
   return [];
 }
 
