@@ -88,11 +88,10 @@ function fitCanvas(cell, canvas, draw) {
 }
 
 /* =============================================================================================
- * GitHub data layer — browser fetches the PUBLIC API directly, no token. ETag conditional
- * requests (a 304 doesn't count against the rate limit); every response cached in localStorage
- * (every access wrapped — private/blocked storage must never throw). Offline/rate-limited/first
- * load: fall back to the cache, then to a plausible synthetic loop — the hero scene is never
- * empty and never shows an error.
+ * GitHub data layer — browser fetches the public API directly, no token. ETag conditional
+ * requests, every response cached in localStorage (every access wrapped in try/catch since
+ * storage can be blocked or full). When the network is unavailable or nothing is cached yet, a
+ * generated stand-in feed keeps the scene moving instead of sitting blank or showing an error.
  * ========================================================================================== */
 const GH_ORG = 'dryvist';
 const GH_API = 'https://api.github.com';
