@@ -1,8 +1,8 @@
 import { expect, test, type FrameLocator, type Page } from '@playwright/test';
 
-// Runs the rotator (site/rotator/rotator.js) against a real deployed wall — WALL_URL — instead of
-// the synthetic fixture every other spec uses. Opt-in only: `npx playwright test --project=live`
-// (see playwright.config.ts; excluded from the default project set every other CI run exercises).
+// Runs the rotator (site/rotator/rotator.js) against WALL_URL instead of the synthetic fixture
+// every other spec uses. Opt-in only: `npx playwright test --project=live` (see
+// playwright.config.ts; excluded from the default project set every other CI run exercises).
 const wallUrl = process.env.WALL_URL;
 const wallUser = process.env.WALL_USER;
 const wallPassword = process.env.WALL_PASSWORD;
