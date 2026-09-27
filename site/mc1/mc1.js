@@ -10,6 +10,7 @@ import {
 import { lastGoodGet, lastGoodSet } from '/lib/lastGood.js';
 import { poissonLoop, jitterRate } from '/lib/liveJitter.js';
 import { sampleAppScore, sampleGpuBase, SAMPLE_STORAGE, SAMPLE_LLM, SAMPLE_WAN, SAMPLE_VLANS, SAMPLE_BLOCKED, SAMPLE_ALLOWED } from '/lib/sampleData.js';
+import { groupedHexLayout } from '/lib/hexlayout.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -19,8 +20,14 @@ const STALE_MS = 5 * 60 * 1000;
 const cfg = await loadConfig();
 $('title').textContent = cfg.title || 'HOMELAB';
 const groups = (cfg.groups || []).map((g, i) => ({ ...g, c: PALETTE[i % PALETTE.length] }));
-const apps = [...new Set(groups.flatMap((g) => g.apps))].sort().map((n) => ({ n, s: null, d: 0 }));
+// Grouped by config.groups order (first group wins for a duplicate), never alphabetical —
+// hexLayout keeps the null gap markers the hex grid draws as empty cells between groups.
+const hexLayout = groupedHexLayout(groups);
+const apps = hexLayout.filter((n) => n !== null).map((n) => ({ n, s: null, d: 0 }));
 const appIndex = Object.fromEntries(apps.map((a) => [a.n, a]));
+// Grid-drawing order only (drawHex): same order as `apps`, with `null` gap cells re-inserted —
+// scoring/summary code below always uses `apps`/`appIndex`, never this.
+const hexCells = hexLayout.map((n) => (n === null ? null : appIndex[n]));
 const model = { nodes: [], storage: [], llm: [], llmAll: [], vlans: [], uptime: null, updated: 0 };
 // D-mc1-2: the node card list must be driven by which nodes are CONFIGURED, never by which
 // series a single poll happened to return — a node that drops out of Prometheus for one poll
@@ -324,14 +331,18 @@ function drawHex(t) {
   const W = hx.width, H = hx.height;
   const c = hx.getContext('2d'); c.clearRect(0, 0, W, H);
   apps.forEach((a, i) => { a.d = lerp(a.d, appsSample ? sampleAppScore(i) : (a.s ?? 0), 0.1); });
-  const n = Math.max(apps.length, 1), cols = n > 56 ? 9 : n > 42 ? 8 : 7;
+  const n = Math.max(hexCells.length, 1), cols = n > 56 ? 9 : n > 42 ? 8 : 7;
   const r = W / (cols * Math.sqrt(3) + Math.sqrt(3) / 2), w = Math.sqrt(3) * r, rowsN = Math.ceil(n / cols), vh = r * 1.5 * 0.92;
   const oy = Math.max(r, (H - (rowsN - 1) * vh - 2 * r) / 2 + r);
-  apps.forEach((a, i) => {
-    const row = i / cols | 0, col = i % cols, unknown = !appsSample && a.s == null, colr = unknown ? 'hsl(200,15%,35%)' : hue(scorePct(a.d));
+  hexCells.forEach((a, i) => {
+    const row = i / cols | 0, col = i % cols;
+    if (!a) return; // gap cell between groups — reserved grid space, nothing drawn
+    // No "?" glyph: an app with no real score has a.d lerp toward 0 (line above), so it draws
+    // as "0" in the same red the score scale gives any other 0 — never a distinct unknown state.
+    const colr = hue(scorePct(a.d));
     const x = w / 2 + col * w + (row % 2 ? w / 2 : 0), wave = RM ? 0 : Math.sin(t / 700 - col * 0.6 - row * 0.45) * r * 0.12;
-    const depth = r * 0.28 + (unknown ? 0 : a.d / 10) * r * 0.22, y = oy + row * vh + wave;
-    const pulse = !unknown && a.d < SCORE_DEGRADED_MIN ? Math.sin(t / 220 + i) * 0.5 + 0.5 : 0, pts = [];
+    const depth = r * 0.28 + a.d / 10 * r * 0.22, y = oy + row * vh + wave;
+    const pulse = a.d < SCORE_DEGRADED_MIN ? Math.sin(t / 220 + i) * 0.5 + 0.5 : 0, pts = [];
     for (let k = 0; k < 6; k++) { const an = Math.PI / 3 * k + Math.PI / 6; pts.push([x + Math.cos(an) * (r - 5), y + Math.sin(an) * (r - 5) * 0.82]); }
     for (const [p, q] of [[0, 1], [1, 2], [5, 0]]) {
       c.beginPath(); c.moveTo(...pts[p]); c.lineTo(...pts[q]); c.lineTo(pts[q][0], pts[q][1] + depth); c.lineTo(pts[p][0], pts[p][1] + depth); c.closePath();
@@ -341,8 +352,8 @@ function drawHex(t) {
     c.beginPath(); pts.forEach((p, k) => (k ? c.lineTo(...p) : c.moveTo(...p))); c.closePath();
     const g = c.createRadialGradient(x - r * 0.3, y - r * 0.3, 2, x, y, r); g.addColorStop(0, colr.replace('55%', '42%')); g.addColorStop(1, 'rgba(6,12,20,.95)');
     c.fillStyle = g; c.fill(); c.lineWidth = 3 + pulse * 4; c.strokeStyle = colr; c.shadowColor = colr; c.shadowBlur = 10 + pulse * 30; c.stroke(); c.shadowBlur = 0;
-    if (!unknown) { const ang = t / 900 + i; c.beginPath(); c.ellipse(x, y, r * 0.62, r * 0.5, 0, ang, ang + Math.PI * 2 * a.d / 10); c.strokeStyle = colr; c.lineWidth = 2; c.globalAlpha = 0.55; c.stroke(); c.globalAlpha = 1; }
-    c.textAlign = 'center'; c.fillStyle = '#fff'; c.font = `600 ${r * 0.4}px "Chakra Petch",sans-serif`; c.fillText(unknown ? '?' : Math.round(a.d), x, y + r * 0.06);
+    const ang = t / 900 + i; c.beginPath(); c.ellipse(x, y, r * 0.62, r * 0.5, 0, ang, ang + Math.PI * 2 * a.d / 10); c.strokeStyle = colr; c.lineWidth = 2; c.globalAlpha = 0.55; c.stroke(); c.globalAlpha = 1;
+    c.textAlign = 'center'; c.fillStyle = '#fff'; c.font = `600 ${r * 0.4}px "Chakra Petch",sans-serif`; c.fillText(Math.round(a.d), x, y + r * 0.06);
     c.fillStyle = '#cfe9f5'; c.font = `${Math.min(r * 0.22, 22)}px "JetBrains Mono",monospace`; c.fillText(a.n.length > 11 ? a.n.slice(0, 10) + '…' : a.n, x, y + r * 0.38);
   });
 }
@@ -363,6 +374,9 @@ function renderAppSum() {
   const warn = scores.filter((s) => s != null && s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
   const bad = scores.filter((s) => s != null && s < SCORE_DEGRADED_MIN).length;
   $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`;
+  // Test hook only (no visible marker): count of apps with no real score, regardless of the
+  // sample-fallback badge above — the hex grid draws every one of these as a red 0.
+  hx.dataset.unknownCount = String(apps.filter((a) => a.s == null).length);
 }
 
 /* ---------------- topology (3D, or 2D on software GL) ---------------- */

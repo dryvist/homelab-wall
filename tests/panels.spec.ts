@@ -517,3 +517,39 @@ test('storage panel excludes network mounts and keys ZFS pools per host', async 
   // local storage — the NFS re-export of host-b's own pool never adds another 5e12 on top.
   await expect(page.locator('#sttot')).toContainText('10.0 TB');
 });
+
+// A1: an app with no real score (D5's 'juliet', already unscored in the default fixture —
+// see fixture.ts's gatus_results_total filter) must never draw "?" on the service-health hex
+// grid (mc1 #hex) or app grid (mc5 #appgrid) — it renders as a red 0, same as any other 0 score.
+// The glyph itself is canvas pixels, unreadable from the DOM, so this checks the machine-only
+// data-unknown-count hook (set alongside the glyph, from the same apps[].s the glyph reads) is
+// actually exercised by the fixture, and scans the whole page for a literal "?" regardless.
+for (const pageId of ['mc1', 'mc5'] as const) {
+  test(`${pageId}: an app with no real score draws as a red 0, never "?"`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture partial-score scenario only');
+    await mockFeeds(page);
+    await page.goto(`/${pageId}/`);
+    const canvasId = pageId === 'mc1' ? '#hex' : '#appgrid';
+    await expect.poll(() => page.locator(canvasId).getAttribute('data-unknown-count')).not.toBeNull();
+    const unknownCount = Number(await page.locator(canvasId).getAttribute('data-unknown-count'));
+    expect(unknownCount, 'fixture must include at least one app with no real score (D5)').toBeGreaterThan(0);
+    await expect.poll(() => page.locator('body').innerText()).not.toContain('?');
+  });
+}
+
+// A2: site/lib/hexlayout.js is the ONE grouping helper shared by mc1 and mc5 — plain data in,
+// plain data out, so this imports it directly rather than driving a browser page.
+test('hexlayout: leaves exactly one gap cell between every pair of non-empty groups, ordered by config.groups', async () => {
+  const { groupedHexLayout } = await import('../site/lib/hexlayout.js');
+  const groups = [
+    { name: 'a', apps: ['one', 'two'] },
+    { name: 'b', apps: ['two', 'three'] }, // 'two' is already in group a — stays with the first group
+    { name: 'c', apps: [] }, // an empty group contributes no cells and no extra gap
+    { name: 'd', apps: ['four'] },
+  ];
+  const layout = groupedHexLayout(groups);
+  expect(layout).toEqual(['one', 'two', null, 'three', null, 'four']);
+  // Exactly one null between every pair of consecutive non-null runs — never zero, never two.
+  const gapIndexes = layout.flatMap((cell, i) => (cell === null ? [i] : []));
+  expect(gapIndexes).toEqual([2, 4]);
+});
