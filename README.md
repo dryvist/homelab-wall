@@ -18,8 +18,13 @@ other dashboards.
 The page is static. It reads two things from its own origin:
 
 - `/config.json`: title, app groups, node roles, rendered by the deploying role.
-- `/api/prom/query` and `/api/prom/query_range`: a read-only Prometheus gateway
-  (see `homelab-wall-feed`).
+- Query results come from one of two sources, selected by `config.json`:
+  - live (default): `/api/prom/query` and `/api/prom/query_range`, a read-only
+    Prometheus gateway (see `homelab-wall-feed`).
+  - snapshot: when `config.json` sets `"snapshot": "<path>"`, results come from
+    that one JSON path instead, polled every 2s and keyed by
+    `site/lib/queries.js`'s `Q` — the same allow-list `scripts/gen-queries.mjs`
+    emits as `site/queries.json` for a publisher to read.
 
 Sources that are not wired yet show a "pending" state rather than disappearing.
 A node that drops out of a single poll shows a "stale" state instead of

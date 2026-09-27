@@ -38,6 +38,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/vendor-three.mjs
+      - run: node scripts/gen-queries.mjs
       - id: tag
         run: echo "tag=v$(cat VERSION)" >> "$GITHUB_OUTPUT"
       - run: tar -czf homelab-wall-site.tar.gz -C site .
