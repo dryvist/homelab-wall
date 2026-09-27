@@ -7,6 +7,7 @@ const wallUrl = process.env.WALL_URL;
 
 export default defineConfig({
   testDir: 'tests',
+  testIgnore: ['**/wall.live.spec.ts'],
   timeout: 60_000,
   // ci.yml runs one Playwright project per job (its own runner) instead of the full 8-project
   // matrix on one runner — that's what fixed the resource contention (see ci.yml). Each shard's
@@ -37,6 +38,18 @@ export default defineConfig({
     { name: 'webkit-2560x1440', use: { ...devices['Desktop Safari'], viewport: { width: 2560, height: 1440 } } },
     { name: 'chromium-1440x900', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, launchOptions: { args: ['--disable-dev-shm-usage'] } } },
     { name: 'webkit-1440x900', use: { ...devices['Desktop Safari'], viewport: { width: 1440, height: 900 } } },
+    {
+      name: 'live',
+      testIgnore: [],
+      testMatch: '**/wall.live.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1920, height: 1080 },
+        launchOptions: {
+          args: ['--use-gl=angle', '--use-angle=default', '--enable-webgl', '--ignore-gpu-blocklist', '--enable-gpu-rasterization'],
+        },
+      },
+    },
   ],
   webServer: wallUrl ? undefined : {
     command: 'python3 -m http.server 4173 --bind 127.0.0.1 --directory site',
