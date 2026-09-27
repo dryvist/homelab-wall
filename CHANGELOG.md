@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/dryvist/homelab-wall/compare/v0.8.0...v0.8.1) (2026-09-27)
+
+
+### Bug Fixes
+
+* **mc3:** human-readable latency units ([#64](https://github.com/dryvist/homelab-wall/issues/64)) ([67c12a0](https://github.com/dryvist/homelab-wall/commit/67c12a096104a885ecdb8b319984a16cf119c078))
+
 ## [0.8.0](https://github.com/dryvist/homelab-wall/compare/v0.7.4...v0.8.0) (2026-09-26)
 
 
