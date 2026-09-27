@@ -296,6 +296,50 @@ test('mc1 VLAN readout shows real per-VLAN rates and drops the SAMPLE DATA badge
   await expect(vlans.locator('[data-sample-badge]')).toHaveCount(0);
 });
 
+// A3: every panel meant to look live must visibly change within 10s even when the data source
+// returns the exact same value on every poll (mockFeeds answers every refresh identically — a
+// frozen-data fixture) or has no real source at all. site/lib/liveJitter.js's poissonLoop is what
+// drives each of these instead of the panel sitting on the exact pixels/rows it painted at boot.
+test('mc1 VLAN pulse and flow rows keep changing within 10s on a frozen-data fixture', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
+  await mockFeeds(page);
+  await page.goto('/mc1/');
+
+  const pulseFrame = () => page.locator('#vlanpulse').evaluate((c) => (c as HTMLCanvasElement).toDataURL());
+  const before = await pulseFrame();
+  await expect.poll(pulseFrame, { timeout: 10_000, message: '#vlanpulse canvas never redrew' }).not.toBe(before);
+
+  const blkBefore = await page.locator('#blkrows').innerHTML();
+  await expect.poll(() => page.locator('#blkrows').innerHTML(), { timeout: 10_000, message: '#blkrows never gained a new row' }).not.toBe(blkBefore);
+
+  const fwBefore = await page.locator('#fwrows').innerHTML();
+  await expect.poll(() => page.locator('#fwrows').innerHTML(), { timeout: 10_000, message: '#fwrows never gained a new row' }).not.toBe(fwBefore);
+});
+
+test('mc2 threat feed keeps firing rows within 10s on a frozen-data fixture', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
+  await mockFeeds(page);
+  await page.goto('/mc2/');
+  const before = await page.locator('#feed').innerHTML();
+  await expect.poll(() => page.locator('#feed').innerHTML(), { timeout: 10_000, message: '#feed never gained a new row' }).not.toBe(before);
+});
+
+test('mc3 request feed keeps firing rows within 10s on a frozen-data fixture', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
+  await mockFeeds(page);
+  await page.goto('/mc3/');
+  const before = await page.locator('#reqfeed').innerHTML();
+  await expect.poll(() => page.locator('#reqfeed').innerHTML(), { timeout: 10_000, message: '#reqfeed never gained a new row' }).not.toBe(before);
+});
+
+test('mc4 throughput numerals keep changing within 10s on a frozen-data fixture', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
+  await mockFeeds(page);
+  await page.goto('/mc4/');
+  const before = await page.locator('#acqbody').innerText();
+  await expect.poll(() => page.locator('#acqbody').innerText(), { timeout: 10_000, message: '#acqbody never repainted' }).not.toBe(before);
+});
+
 // Q.llmQueueSeconds/Q.llmLatencySeconds (site/lib/queries.js) replaced a name-hash stand-in with
 // real per-model averages. model-large's tile must show the fixture's real numbers with no
 // stand-in marker; model-coder has no row in either query (no requests in the window — a real

@@ -8,6 +8,7 @@ import {
   onDispose, onContextLoss, disposeThreeScene,
 } from '/lib/stage.js';
 import { lastGoodGet, lastGoodSet } from '/lib/lastGood.js';
+import { poissonLoop, jitterRate } from '/lib/liveJitter.js';
 import { sampleAppScore, sampleGpuBase, SAMPLE_STORAGE, SAMPLE_LLM, SAMPLE_WAN, SAMPLE_VLANS, SAMPLE_BLOCKED, SAMPLE_ALLOWED } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
@@ -20,7 +21,7 @@ $('title').textContent = cfg.title || 'HOMELAB';
 const groups = (cfg.groups || []).map((g, i) => ({ ...g, c: PALETTE[i % PALETTE.length] }));
 const apps = [...new Set(groups.flatMap((g) => g.apps))].sort().map((n) => ({ n, s: null, d: 0 }));
 const appIndex = Object.fromEntries(apps.map((a) => [a.n, a]));
-const model = { nodes: [], storage: [], llm: [], llmAll: [], uptime: null, updated: 0 };
+const model = { nodes: [], storage: [], llm: [], llmAll: [], vlans: [], uptime: null, updated: 0 };
 // D-mc1-2: the node card list must be driven by which nodes are CONFIGURED, never by which
 // series a single poll happened to return — a node that drops out of Prometheus for one poll
 // (a scrape gap, a restart) must keep its card, not vanish from it.
@@ -489,11 +490,46 @@ if (forced === '3d' || (forced !== '2d' && hardwareGL())) {
 /* ---------------- firewall + WAN (feed arrives with the Splunk app) ---------------- */
 // No Splunk edge-block/flow feed exists yet — stand-in rows (setStandIn in renderStatic below;
 // never visibly badged, per the stand-in-visuals policy in site/lib/stage.js). Never written
-// into `model`.
-$('blkrows').innerHTML = SAMPLE_BLOCKED.map((b) => `<div class="br"><span>${esc(b.time)}</span><span class="f">${b.flag}</span><span class="cc">${esc(b.country)}</span><span>${esc(b.source)}</span><span class="why">${esc(b.reason)}</span><span class="d">${esc(b.ago)} ago</span></div>`).join('');
-$('fwrows').innerHTML = SAMPLE_ALLOWED.map((f) => `<div class="fr ${f.action}"><span>${esc(f.time)}</span><span class="a">${esc(f.action.toUpperCase())}</span><span>${esc(f.proto)}</span><span>${esc(f.desc)}</span><span>${esc(f.dest)}</span><span class="d">${esc(f.ago)} ago</span></div>`).join('');
+// into `model`. Rows keep firing on a Poisson schedule (site/lib/liveJitter.js) — cycling through
+// the same fixed sample pool, restamped with the current time — instead of rendering once at boot
+// and sitting frozen for the rest of the session.
+const MAX_FLOW_ROWS = SAMPLE_BLOCKED.length;
+let blkCursor = 0, fwCursor = 0;
+function fmtNow() { return new Date().toTimeString().slice(0, 8); }
+function pushBlockRow() {
+  const b = SAMPLE_BLOCKED[blkCursor % SAMPLE_BLOCKED.length]; blkCursor += 1;
+  const html = `<div class="br"><span>${esc(fmtNow())}</span><span class="f">${b.flag}</span><span class="cc">${esc(b.country)}</span><span>${esc(b.source)}</span><span class="why">${esc(b.reason)}</span><span class="d">0s ago</span></div>`;
+  $('blkrows').insertAdjacentHTML('afterbegin', html);
+  while ($('blkrows').children.length > MAX_FLOW_ROWS) $('blkrows').lastElementChild.remove();
+}
+function pushFlowRow() {
+  const f = SAMPLE_ALLOWED[fwCursor % SAMPLE_ALLOWED.length]; fwCursor += 1;
+  const html = `<div class="fr ${f.action}"><span>${esc(fmtNow())}</span><span class="a">${esc(f.action.toUpperCase())}</span><span>${esc(f.proto)}</span><span>${esc(f.desc)}</span><span>${esc(f.dest)}</span><span class="d">0s ago</span></div>`;
+  $('fwrows').insertAdjacentHTML('afterbegin', html);
+  while ($('fwrows').children.length > MAX_FLOW_ROWS) $('fwrows').lastElementChild.remove();
+}
+pushBlockRow(); pushFlowRow(); // first paint isn't blank while waiting on the first Poisson tick
+const stopBlockFeed = RM ? null : poissonLoop(() => 0.5, pushBlockRow); // ~1 row every ~2s
+const stopFlowFeed = RM ? null : poissonLoop(() => 0.6, pushFlowRow); // ~1 row every ~1.7s
+onDispose(() => { stopBlockFeed?.(); stopFlowFeed?.(); });
 $('blkrate').textContent = `${SAMPLE_BLOCKED.length}/min`;
 $('fwrate').textContent = `${SAMPLE_ALLOWED.length}/min`;
+
+/* ---------------- VLAN activity strip (never frozen, even on a held last-good rate) ---------- */
+const vlanPulse = $('vlanpulse'), vpCtx = vlanPulse.getContext('2d');
+function drawVlanPulse() {
+  const rows = model.vlans.length > 0 ? model.vlans : SAMPLE_VLANS;
+  const w = vlanPulse.width, h = vlanPulse.height, bw = w / Math.max(rows.length, 1);
+  vpCtx.clearRect(0, 0, w, h);
+  rows.forEach((v, i) => {
+    const barH = clamp(jitterRate(v.rate || 0.1) * (h / 5), 1, h);
+    vpCtx.fillStyle = '#3ee6ff';
+    vpCtx.fillRect(i * bw + 2, h - barH, bw - 4, barH);
+  });
+}
+drawVlanPulse();
+const stopVlanPulse = RM ? null : poissonLoop(() => 2, drawVlanPulse); // ~1 redraw every 0.5s
+onDispose(() => stopVlanPulse?.());
 
 /* ---------------- boot ---------------- */
 function renderVlans() {

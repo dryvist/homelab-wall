@@ -171,6 +171,30 @@ test('a slide whose ready arrives after the probe timeout rejoins rotation on th
   await expect.poll(() => activeSlideUrl(page)).toContain('/slide-b');
 });
 
+// A4: a page posts 'ready' on first paint (site/lib/stage.js signalReady/loop), never gated on
+// its own data query resolving — so a slide whose underlying data fetch would take longer than
+// its own rotation hold must still show in the very first cycle, never skipped as "slow".
+test('a slide whose data takes longer than its own hold interval is still shown in cycle 1', async ({ page }) => {
+  await page.clock.install();
+  await mockSlides(page); // holdSeconds: 30, each SLIDES entry holds for its own 10s
+  await page.route('**/slide-b', (r) => r.fulfill({
+    contentType: 'text/html',
+    // 'ready' fires immediately (first paint) exactly like every real MC page's loop()/
+    // signalReady() — a setTimeout stands in for a data query that only resolves after 10s,
+    // longer than this slide's own hold, and must never be awaited before 'ready' posts.
+    body: '<!doctype html><title>Slide B</title><script>' +
+      "parent.postMessage({wall:'ready'},'*');" +
+      'setTimeout(() => {}, 10000);' +
+      '</script>',
+  }));
+  await page.goto('/');
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-a');
+
+  await page.clock.fastForward(10_000); // slide-a -> slide-b
+  await expect.poll(() => activeSlideUrl(page)).toContain('/slide-b');
+  await expect(page.locator('#dots')).not.toHaveAttribute('data-skipped', 'Slide B');
+});
+
 // Track: a layer whose readyPromise settled false must not be skipped forever — every
 // REPROBE_MS (rotator.js) it reloads and re-arms. `?reprobe=<ms>` is a test-only override
 // (mirrors the existing `?fast=` pattern), never read by real config.
