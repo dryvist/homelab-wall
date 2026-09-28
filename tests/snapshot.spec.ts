@@ -4,7 +4,7 @@
 import { expect, test } from '@playwright/test';
 import type { Route } from '@playwright/test';
 import { Q } from '../site/lib/queries.js';
-import { config, answer } from './fixture';
+import { config, answer, mockGithub } from './fixture';
 
 const wallUrl = process.env.WALL_URL;
 
@@ -29,6 +29,10 @@ function buildSnapshot() {
 }
 
 async function mockSnapshotFeeds(page: import('@playwright/test').Page) {
+  // mc5 fetches the public GitHub API directly (no token, no Prometheus query) — route it the
+  // same way fixture.ts's mockGithub does for panels.spec.ts, or CI hits the real network and
+  // mc5's ticker/releases/repos panels stay 'pending' past the test's 5s budget.
+  await mockGithub(page);
   await page.route('**/config.json', (r: Route) => r.fulfill({ json: { ...config, snapshot: '/data/snapshot.json' } }));
   await page.route('**/data/snapshot.json', (r: Route) => r.fulfill({ json: buildSnapshot() }));
 }
