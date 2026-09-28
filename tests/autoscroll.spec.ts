@@ -10,7 +10,8 @@ test('mc1 auto-scrolls only when its content overflows the viewport', async ({ p
 
   // Force overflow so the assertion doesn't depend on the current mc1 layout height.
   await page.evaluate(() => { document.body.style.minHeight = '300vh'; });
-  await page.waitForTimeout(400);
+  // Poll rather than sleep: the rAF-driven loop advances slower on a loaded CI runner.
+  await page.waitForFunction(() => document.scrollingElement!.scrollTop > 0, undefined, { timeout: 5000 });
   const scrolled = await page.evaluate(() => document.scrollingElement!.scrollTop);
   expect(scrolled).toBeGreaterThan(0);
 
