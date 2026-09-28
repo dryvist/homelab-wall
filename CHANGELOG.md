@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/dryvist/homelab-wall/compare/v0.8.1...v0.9.0) (2026-09-28)
+
+
+### Features
+
+* auto-scroll slides whose content overflows ([#72](https://github.com/dryvist/homelab-wall/issues/72)) ([df19bb5](https://github.com/dryvist/homelab-wall/commit/df19bb562202ed1c49929e6b3fa661355cdd7800))
+
 ## [0.8.1](https://github.com/dryvist/homelab-wall/compare/v0.8.0...v0.8.1) (2026-09-27)
 
 
