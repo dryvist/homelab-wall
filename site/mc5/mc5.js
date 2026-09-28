@@ -17,6 +17,7 @@ import { groupedHexLayout } from '/lib/hexlayout.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e', '#ff3b5c'];
 
 /* =============================================================================================
  * Service health — UNCHANGED shape/logic from the pre-revamp panel (real Prometheus score,
