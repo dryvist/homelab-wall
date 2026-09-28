@@ -209,6 +209,29 @@ export function loop(fps, fn) {
   onDispose(() => { if (handle != null) cancelAnimationFrame(handle); wakers.delete(wake); });
 }
 
+// ---------------------------------------------------------------------------
+// Overflow auto-scroll: a slide taller than the viewport (wall.css gives html/body
+// overflow-y:auto, not hidden) scrolls itself down and back up instead of just clipping content
+// no one on the wall ever sees. Runs through loop() above, so it's already paused whenever this
+// slide isn't the one currently on screen, and it self-disables for prefers-reduced-motion — a
+// slide that fits the viewport has nothing to scroll and this is a no-op.
+const AUTOSCROLL_PX_PER_SEC = 40;
+function autoScroll(el) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let dir = 1;
+  loop(30, (_now, dt) => {
+    const max = el.scrollHeight - el.clientHeight;
+    if (max <= 0) return; // fits the viewport: nothing to scroll
+    let next = el.scrollTop + dir * AUTOSCROLL_PX_PER_SEC * dt;
+    if (next >= max) { next = max; dir = -1; }
+    else if (next <= 0) { next = 0; dir = 1; }
+    el.scrollTop = next;
+  });
+}
+// Every mc*.js imports this module, so this one call covers every slide without touching each
+// page individually. `document.scrollingElement` is <html>, the element wall.css made scrollable.
+autoScroll(document.scrollingElement);
+
 export async function loadConfig() {
   const res = await fetch('/config.json', { cache: 'no-store' });
   if (!res.ok) throw new Error(`config ${res.status}`);
