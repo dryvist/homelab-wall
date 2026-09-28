@@ -1,0 +1,20 @@
+{
+  "appScore": "homelab:app_health_score or (\n ((sum by (name) (increase(gatus_results_total{group=~\"catalog-.+\",group!=\"catalog-authed\",success=\"true\"}[30d])) / sum by (name) (increase(gatus_results_total{group=~\"catalog-.+\",group!=\"catalog-authed\"}[30d]))) == bool 1) * 10\n + ((sum by (name) (increase(gatus_results_total{group=~\"catalog-.+\",group!=\"catalog-authed\",success=\"true\"}[30d])) / sum by (name) (increase(gatus_results_total{group=~\"catalog-.+\",group!=\"catalog-authed\"}[30d]))) != bool 1) * clamp_max(round(9 * (sum by (name) (increase(gatus_results_total{group=~\"catalog-.+\",group!=\"catalog-authed\",success=\"true\"}[24h])) / sum by (name) (increase(gatus_results_total{group=~\"catalog-.+\",group!=\"catalog-authed\"}[24h])))), 9))",
+  "uptime24h": "100 * sum(increase(gatus_results_total{group=~\"catalog-.+\",group!=\"catalog-authed\",success=\"true\"}[24h])) / sum(increase(gatus_results_total{group=~\"catalog-.+\",group!=\"catalog-authed\"}[24h]))",
+  "nodeCpu": "100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job=\"pve_node_exporter\",mode=\"idle\"}[2m])))",
+  "nodeCores": "count by (instance) (node_cpu_seconds_total{job=\"pve_node_exporter\",mode=\"idle\"})",
+  "nodeMem": "100 * (1 - node_memory_MemAvailable_bytes{job=\"pve_node_exporter\"} / node_memory_MemTotal_bytes{job=\"pve_node_exporter\"})",
+  "nodeMemTotal": "node_memory_MemTotal_bytes{job=\"pve_node_exporter\"}",
+  "nodeLoad": "node_load1{job=\"pve_node_exporter\"}",
+  "nodeTemp": "max by (instance) (node_hwmon_temp_celsius{job=\"pve_node_exporter\"})",
+  "nodeUptime": "time() - node_boot_time_seconds{job=\"pve_node_exporter\"}",
+  "fsSize": "node_filesystem_size_bytes{job=\"pve_node_exporter\",fstype!~\"tmpfs|devtmpfs|overlay|squashfs|ramfs|fuse.*|nsfs|efivarfs|vfat|nfs.?|cifs|smb3|ceph.*|glusterfs\"}",
+  "fsAvail": "node_filesystem_avail_bytes{job=\"pve_node_exporter\",fstype!~\"tmpfs|devtmpfs|overlay|squashfs|ramfs|fuse.*|nsfs|efivarfs|vfat|nfs.?|cifs|smb3|ceph.*|glusterfs\"}",
+  "vlanFwRate": "sum by (vlan) (rate(unifi_vlan_fw_events_total[5m]))",
+  "llmState": "max by (litellm_model_name) (litellm_deployment_state)",
+  "llmTokRate": "sum by (model) (rate(litellm_output_tokens_metric_total[5m]))",
+  "llmTokensToday": "sum(increase(litellm_total_tokens_metric_total[24h]))",
+  "llmReqPerMin": "sum(rate(litellm_proxy_total_requests_metric_total[5m])) * 60",
+  "llmQueueSeconds": "sum by (model) (increase(litellm_request_queue_time_seconds_sum[5m])) / sum by (model) (increase(litellm_request_queue_time_seconds_count[5m]))",
+  "llmLatencySeconds": "sum by (model) (increase(litellm_llm_api_latency_metric_sum[5m])) / sum by (model) (increase(litellm_llm_api_latency_metric_count[5m]))"
+}

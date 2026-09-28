@@ -23,7 +23,9 @@ const inst = (n: string) => ({ instance: `${n}.example.test:9100`, job: 'pve_nod
 const vec = (rows: Array<[Record<string, string>, number]>) =>
   rows.map(([metric, v]) => ({ metric, value: [Date.now() / 1000, String(v)] }));
 
-function answer(q: string): unknown[] {
+// Exported so tests/snapshot.spec.ts can build a snapshot.json fixture from the same answers
+// instead of a second hand-maintained copy of every query's expected shape.
+export function answer(q: string): unknown[] {
   if (q.includes('gatus_results_total') && q.includes('by (name)')) {
     const rows = config.groups.flatMap((g) => g.apps).map((n, i): [Record<string, string>, number] => [{ name: n }, sampleAppScore(i)]);
     // D5 (ansible-side defect): 'juliet' has no Gatus series at all — must count as "no data", not a score.

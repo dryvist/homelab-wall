@@ -11,15 +11,20 @@ other dashboards.
 | `site/mc1/` | Mission Control 1: nodes, storage, 3D topology, app health honeycomb, LLM status, firewall feeds |
 | `site/lib/` | Shared Prometheus client, PromQL (including the app health score), stage/GL helpers |
 | `site/vendor/`, `site/fonts/` | three.js and fonts, vendored so the page loads nothing from the internet |
-| `tests/` | Playwright at 1920×1080 against synthetic data |
+| `tests/` | Playwright at 1920×1080 against fixture data |
 
 ## Runtime contract
 
 The page is static. It reads two things from its own origin:
 
 - `/config.json`: title, app groups, node roles, rendered by the deploying role.
-- `/api/prom/query` and `/api/prom/query_range`: a read-only Prometheus gateway
-  (see `homelab-wall-feed`).
+- Query results come from one of two sources, selected by `config.json`:
+  - live (default): `/api/prom/query` and `/api/prom/query_range`, a read-only
+    Prometheus gateway (see `homelab-wall-feed`).
+  - snapshot: when `config.json` sets `"snapshot": "<path>"`, results come from
+    that one static snapshot file instead, refreshed every 2s and keyed by
+    `site/lib/queries.js`'s `Q`. `scripts/gen-queries.mjs` regenerates the
+    committed `site/queries.json` allow-list from `Q` whenever it changes.
 
 Sources that are not wired yet show a "pending" state rather than disappearing.
 A node that drops out of a single poll shows a "stale" state instead of

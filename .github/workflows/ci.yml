@@ -30,6 +30,10 @@ jobs:
       # Fails if a Renovate bump to `three` (package.json) landed without regenerating the
       # committed site/vendor/three copy the static site actually serves.
       - run: git diff --exit-code -- site/vendor/three
+      - run: node scripts/gen-queries.mjs
+      # Fails if site/lib/queries.js changed without regenerating the committed site/queries.json
+      # allow-list — the one source snapshot lookups (site/lib/prom.js) and the publisher read.
+      - run: git diff --exit-code -- site/queries.json
       - run: npx tsc --noEmit
 
   # One job per Playwright project instead of one job running all 8: the full matrix on a single
