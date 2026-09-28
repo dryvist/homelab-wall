@@ -18,6 +18,29 @@ export const config = {
   ],
 };
 
+// mc5: fixture shape for the public GitHub API (site/mc5/mc5.js fetches api.github.com directly,
+// no token) — routed below so CI never hits the real network. Event/repo/release fields are only
+// the subset mc5.js reads.
+export const GH_ORG = 'dryvist';
+export const ghEvents = [
+  { id: 'e1', type: 'PushEvent', actor: { login: 'octocat' }, repo: { name: `${GH_ORG}/wall-repo` }, payload: { commits: [{}, {}] }, created_at: new Date(Date.now() - 30_000).toISOString() },
+  { id: 'e2', type: 'PullRequestEvent', actor: { login: 'hubot' }, repo: { name: `${GH_ORG}/proxmox-repo` }, payload: { action: 'opened', pull_request: { merged: false } }, created_at: new Date(Date.now() - 90_000).toISOString() },
+  { id: 'e3', type: 'PullRequestEvent', actor: { login: 'octocat' }, repo: { name: `${GH_ORG}/ansible-repo` }, payload: { action: 'closed', pull_request: { merged: true } }, created_at: new Date(Date.now() - 200_000).toISOString() },
+  { id: 'e4', type: 'ReleaseEvent', actor: { login: 'hubot' }, repo: { name: `${GH_ORG}/wall-repo` }, payload: {}, created_at: new Date(Date.now() - 400_000).toISOString() },
+  { id: 'e5', type: 'DeploymentStatusEvent', actor: { login: 'octocat' }, repo: { name: `${GH_ORG}/nix-repo` }, payload: {}, created_at: new Date(Date.now() - 500_000).toISOString() },
+];
+export const ghRepos = ['wall-repo', 'proxmox-repo', 'ansible-repo', 'nix-repo', 'cribl-repo', 'docs-repo'].map((name, i) => ({
+  name, private: false, pushed_at: new Date(Date.now() - i * 86400_000).toISOString(),
+}));
+
+export async function mockGithub(page: Page) {
+  await page.route('https://api.github.com/orgs/*/events', (r: Route) => r.fulfill({ json: ghEvents, headers: { etag: '"fixture-events"' } }));
+  await page.route('https://api.github.com/orgs/*/repos**', (r: Route) => r.fulfill({ json: ghRepos, headers: { etag: '"fixture-repos"' } }));
+  await page.route('https://api.github.com/repos/*/*/releases**', (r: Route) => r.fulfill({
+    json: [{ tag_name: 'v1.0.0', published_at: new Date(Date.now() - 3600_000).toISOString() }],
+  }));
+}
+
 const NODES = ['node-a', 'node-b', 'node-c'];
 const inst = (n: string) => ({ instance: `${n}.example.test:9100`, job: 'pve_node_exporter' });
 const vec = (rows: Array<[Record<string, string>, number]>) =>
@@ -76,6 +99,7 @@ export function answer(q: string): unknown[] {
 // distinct from a failure, for proving the panel falls back to sample data (site/lib/sampleData.js).
 export async function mockFeeds(page: Page, opts: { failQuery?: (q: string) => boolean; emptyQuery?: (q: string) => boolean } = {}) {
   await page.route('**/config.json', (r: Route) => r.fulfill({ json: config }));
+  await mockGithub(page);
   await page.route('**/api/prom/**', (r: Route) => {
     const url = new URL(r.request().url());
     const q = url.searchParams.get('query') || '';
