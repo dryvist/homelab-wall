@@ -11,6 +11,7 @@ import {
   observeCanvas, onDispose, onContextLoss, disposeThreeScene, adaptiveBloomOn,
 } from '/lib/stage.js';
 import { sampleAppScore } from '/lib/sampleData.js';
+import { poissonLoop } from '/lib/liveJitter.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -114,15 +115,11 @@ function renderStats() {
 }
 renderStats();
 
-let feedId;
-function scheduleFeed() {
-  feedId = setTimeout(() => {
-    addFeedRow(THREAT_SOURCES[(Math.random() * THREAT_SOURCES.length) | 0]);
-    scheduleFeed();
-  }, RM ? 4000 : 500 + Math.random() * 500);
-}
-scheduleFeed();
-onDispose(() => clearTimeout(feedId));
+// Poisson-process feed (site/lib/liveJitter.js), not a fixed interval: ~1.33 rows/sec, same
+// average cadence the ad-hoc 500-1000ms random timer this replaced used, but with proper
+// exponential inter-arrival gaps and never scheduled twice.
+const stopFeed = poissonLoop(() => (RM ? 0.25 : 1.33), () => addFeedRow(THREAT_SOURCES[(Math.random() * THREAT_SOURCES.length) | 0]));
+onDispose(stopFeed);
 
 /* ---------------- globe: real land mask, animated great-circle arcs ---------------- */
 const globeCanvas = $('globe');
@@ -273,8 +270,10 @@ function buildGlobe() {
     group.add(head);
     arcs.push({ tube, tubeGeo, curve, head, t: 0 });
   }
-  const spawnId = RM ? null : setInterval(spawnArc, 140);
-  onDispose(() => { if (spawnId) clearInterval(spawnId); });
+  // Poisson-process spawns (site/lib/liveJitter.js): ~7.14 arcs/sec, same average cadence the
+  // fixed 140ms interval this replaced used.
+  const stopArcs = RM ? null : poissonLoop(() => 7.14, spawnArc);
+  onDispose(() => stopArcs?.());
 
   const pulseMat = () => { const m = new THREE.MeshBasicMaterial({ color: 0x9beeff, transparent: true, opacity: 0.85, side: THREE.DoubleSide }); m.color.multiplyScalar(1.6); return m; };
   function spawnPulse() {

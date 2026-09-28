@@ -8,6 +8,7 @@ import {
   setSampleBadge, onDispose, onContextLoss, disposeThreeScene, hardwareGL, adaptiveBloomOn, adaptiveDpr,
 } from '/lib/stage.js';
 import { sampleAppScore, SAMPLE_LLM } from '/lib/sampleData.js';
+import { poissonLoop } from '/lib/liveJitter.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -208,8 +209,6 @@ function renderCore() {
 // widgets are always stand-in, deterministically driven off the real model list so they still
 // track UP/DOWN and load instead of sitting frozen. cxReqMin mirrors the real header KPI and
 // carries no [data-source] marker of its own.
-let feedTimer = null;
-onDispose(() => { if (feedTimer) clearTimeout(feedTimer); });
 function renderCoreExtra(list) {
   $('cxReqMin').textContent = model.reqPerMin != null ? model.reqPerMin.toFixed(0) : '0';
 
@@ -233,31 +232,34 @@ function renderCoreExtra(list) {
     drawSpark(canvas, tokHistory.get(m.n) || [0], m.up ? '#3ee6ff' : '#ff3b5c');
   }
 
-  // Stand-in recent-request feed: one row per tick from a randomly-picked UP model, cadence
-  // scaled by how many models are actually serving traffic. Never scheduled twice (feedTimer
-  // guards against overlapping timers across refresh ticks, the same pattern MC2's blocked-feed
-  // scheduler uses).
-  if (!feedTimer) scheduleFeedTick(list);
+  // Stand-in recent-request feed: one row per Poisson-process tick (site/lib/liveJitter.js) from
+  // a randomly-picked UP model, cadence scaled by how many models are actually serving traffic.
+  // `feedList`/`feedRatePerSec` are read fresh by the shared loop below, so a later refresh's new
+  // model list takes effect on the very next tick without restarting the loop.
+  feedList = list;
+  if (!stopFeed) stopFeed = poissonLoop(feedRatePerSec, fireFeedTick);
 }
-function scheduleFeedTick(list) {
-  const upList = list.filter((m) => m.up);
-  const delay = RM ? 4000 : upList.length ? 900 / upList.length : 2500;
-  feedTimer = setTimeout(() => {
-    feedTimer = null;
-    if (upList.length) {
-      const m = upList[Math.floor(Math.random() * upList.length)];
-      const tokens = Math.max(1, Math.round(40 + Math.random() * 400));
-      const ms = Math.max(20, Math.round(60 + Math.random() * 900));
-      const row = document.createElement('div');
-      row.className = 'cfrow cfrow-in';
-      row.dataset.source = 'stand-in';
-      row.innerHTML = `<span>${esc(m.n.split('/').pop())}</span><b>${tokens} tok</b><b>${ms}ms</b>`;
-      const feed = $('reqfeed');
-      feed.prepend(row);
-      while (feed.children.length > 24) feed.lastElementChild.remove();
-    }
-    scheduleFeedTick(model.models.length ? model.models : SAMPLE_LLM.map((s) => ({ n: s.n, up: s.state < 2, tok: s.tok })));
-  }, delay);
+let feedList = SAMPLE_LLM.map((s) => ({ n: s.n, up: s.state < 2, tok: s.tok }));
+let stopFeed = null;
+onDispose(() => stopFeed?.());
+function feedRatePerSec() {
+  if (RM) return 0.25;
+  const upCount = feedList.filter((m) => m.up).length;
+  return upCount ? upCount / 0.9 : 0.4;
+}
+function fireFeedTick() {
+  const upList = feedList.filter((m) => m.up);
+  if (!upList.length) return;
+  const m = upList[Math.floor(Math.random() * upList.length)];
+  const tokens = Math.max(1, Math.round(40 + Math.random() * 400));
+  const ms = Math.max(20, Math.round(60 + Math.random() * 900));
+  const row = document.createElement('div');
+  row.className = 'cfrow cfrow-in';
+  row.dataset.source = 'stand-in';
+  row.innerHTML = `<span>${esc(m.n.split('/').pop())}</span><b>${tokens} tok</b><b>${ms}ms</b>`;
+  const feed = $('reqfeed');
+  feed.prepend(row);
+  while (feed.children.length > 24) feed.lastElementChild.remove();
 }
 
 /* ---------------- reactor: 3D hero (sketch scene 88) or 2D fallback ---------------- */
