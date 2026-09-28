@@ -11,7 +11,7 @@ other dashboards.
 | `site/mc1/` | Mission Control 1: nodes, storage, 3D topology, app health honeycomb, LLM status, firewall feeds |
 | `site/lib/` | Shared Prometheus client, PromQL (including the app health score), stage/GL helpers |
 | `site/vendor/`, `site/fonts/` | three.js and fonts, vendored so the page loads nothing from the internet |
-| `tests/` | Playwright at 1920×1080 against synthetic data |
+| `tests/` | Playwright at 1920×1080 against fixture data |
 
 ## Runtime contract
 
