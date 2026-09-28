@@ -12,7 +12,7 @@ import {
   setSampleBadge, setStandIn, onDispose, onContextLoss, disposeThreeScene, hardwareGL,
   adaptiveBloomOn, adaptiveDpr,
 } from '/lib/stage.js';
-import { sampleAppScore, SAMPLE_GITHUB_ROWS, SAMPLE_INFRA_ROWS, SAMPLE_ACTIVITY_ROWS } from '/lib/sampleData.js';
+import { sampleAppScore } from '/lib/sampleData.js';
 import { groupedHexLayout } from '/lib/hexlayout.js';
 
 const $ = (id) => document.getElementById(id);
@@ -37,6 +37,7 @@ const appIndex = Object.fromEntries(apps.map((a) => [a.n, a]));
 const hexCells = hexLayout.map((n) => (n === null ? null : appIndex[n]));
 const appPos = new Map(apps.map((a, i) => [a, i])); // apps' own index, for sampleAppScore(i)
 const model = { updated: 0 };
+let appsSample = false;
 
 async function refreshApps() {
   let rows = null;
