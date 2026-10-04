@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.0](https://github.com/dryvist/homelab-wall/compare/v0.9.0...v0.10.0) (2026-10-04)
+
+
+### Features
+
+* **mc5:** full-viewport GitOps hero with live dryvist org data ([#70](https://github.com/dryvist/homelab-wall/issues/70)) ([40143df](https://github.com/dryvist/homelab-wall/commit/40143df760bac4cd7a8bb2c54958c27b83b4aa96))
+* **prom:** add a snapshot source for public deployment ([#69](https://github.com/dryvist/homelab-wall/issues/69)) ([5c784f6](https://github.com/dryvist/homelab-wall/commit/5c784f60813fefd88a8595c88ea2f2a9674aaa3f))
+
+
+### Bug Fixes
+
+* **wall:** keep live panels animating between real samples ([#71](https://github.com/dryvist/homelab-wall/issues/71)) ([030f65a](https://github.com/dryvist/homelab-wall/commit/030f65a8834b3bbf3a721eeb72c579cfa3261cfc))
+
 ## [0.9.0](https://github.com/dryvist/homelab-wall/compare/v0.8.1...v0.9.0) (2026-09-28)
 
 
