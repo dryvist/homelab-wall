@@ -1,62 +1,66 @@
-/* mc5: fluid full-viewport grid, no fixed design surface — every track is fr/auto and type
-   scales with vmin, so the page fills whatever screen it's on without JS reading/writing size. */
-.mc5{
-  width:100vw;height:100dvh;box-sizing:border-box;overflow:hidden;position:relative;
-  display:grid;grid-template-columns:1fr 1.3fr 1fr;grid-template-rows:auto auto 1fr auto;
-  grid-template-areas:"hd hd hd" "ap ap ap" "gh pl in" "ac ac ac";
+/* Mission Control 5: GitOps hero. Fluid grid — wall.css's shared .stage rule already supplies
+   the 100vw/100dvh fluid surface; this only lays out the page's own tracks. Reef palette
+   (#4FB3A9 teal / #0B1D2A deep navy), one accent colour per pipeline stage. */
+#stage.mc5{
+  --reef:#4fb3a9;--reef-deep:#0b1d2a;
+  --stage-push:#3ee6ff;--stage-pr:#7b8cff;--stage-merge:#38ff9c;--stage-release:#ffb347;--stage-deploy:#ff4fd8;
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr);
+  grid-template-rows:auto minmax(0,1fr) minmax(0,1fr);
+  grid-template-areas:"hd hd hd" "tk hero rl" "ap hero in";
   gap:clamp(6px,1vmin,14px);padding:clamp(8px,1.3vmin,16px) clamp(9px,1.5vmin,18px);
-  background:radial-gradient(1200px 700px at 50% 45%,#0e1030 0%,var(--void) 70%);
-}
-.mc5::after{content:"";position:absolute;inset:0;pointer-events:none;
-  background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}
-.mc5 .num{font-variant-numeric:tabular-nums}
-.acc{color:var(--cyan)}
+  box-sizing:border-box;background:#000}
 
-header{grid-area:hd;display:flex;align-items:center;gap:clamp(12px,2vmin,26px)}
-.brand{font:700 clamp(15px,2.6vmin,30px)/1 var(--disp);letter-spacing:.14em;color:#fff;text-shadow:0 0 18px rgba(123,140,255,.55)}
-.brand small{display:block;font:400 clamp(7px,.85vmin,11px)/1.6 var(--mono);letter-spacing:.3em;color:var(--dim)}
-.kpis{display:flex;gap:clamp(10px,2vmin,26px);flex:1;justify-content:center}
-.kpi{display:flex;flex-direction:column;gap:3px;min-width:0}
-.kpi b{font:600 clamp(13px,2vmin,24px)/1 var(--disp);color:#fff}
-.kpi b i{font-style:normal;font-size:clamp(9px,1.1vmin,13px);color:var(--dim);margin-left:3px}
-.kpi span{font-size:clamp(7px,.9vmin,10px);letter-spacing:.2em;color:var(--dim);text-transform:uppercase}
-.clock{text-align:right;font:600 clamp(15px,2.8vmin,34px)/1 var(--disp);color:#fff}
-.clock small{display:block;font:400 clamp(7px,.9vmin,11px)/1.6 var(--mono);color:var(--dim);letter-spacing:.2em}
-#ring{width:clamp(38px,5vmin,64px);height:clamp(38px,5vmin,64px)}
+/* Shock-and-awe hero layer: the org/repo/comet scene is a full-viewport fixed layer behind every
+   panel, not confined to any one panel's box — see index.html's placement as a direct child of
+   #stage, before every panel. */
+#corecanvas{position:fixed;inset:0;width:100vw;height:100vh;z-index:0;display:block;
+  background:radial-gradient(1400px 900px at 50% 45%,var(--reef-deep) 0%,#000 72%)}
 
-.panel{position:relative;min-height:0;min-width:0;overflow:hidden;background:linear-gradient(180deg,rgba(14,16,48,.78),rgba(6,7,20,.78));
-  border:1px solid #2a2f77;clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
+header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:center;gap:clamp(12px,2vmin,26px);padding:0 clamp(4px,1vmin,10px)}
+.brand{font:700 clamp(16px,2.4vmin,30px)/1 var(--disp);letter-spacing:.14em;color:#fff;text-shadow:0 0 18px rgba(79,179,169,.6)}
+.brand .acc{color:var(--reef)}
+.orgline{flex:1;font:600 clamp(9px,1vmin,13px)/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--reef)}
+.clock{text-align:right;font:600 clamp(18px,2.6vmin,34px)/1 var(--disp);color:#fff}
+.clock small{display:block;font:400 clamp(8px,.9vmin,11px)/1.6 var(--mono);color:var(--dim);letter-spacing:.2em}
+
+/* Floating glass cards: NOT one opaque full-height panel box — each `.panel` below carries its
+   own thin border/translucent fill, with real gaps between them, so the hero canvas's core/ring/
+   comets show through behind and between them. Direct grid children (mc1's own convention: one
+   [data-panel] per grid cell) — the slight perspective tilt (mc4's floating-card look) is
+   `perspective`+`rotateY` on the panel itself, so offsetLeft/Top (the pre-transform box the
+   overlap contract test reads) still reflects its real, non-overlapping grid cell. */
+.panel{position:relative;z-index:1;min-height:0;min-width:0;overflow:hidden;
+  background:linear-gradient(180deg,rgba(11,29,42,.86),rgba(3,9,13,.92));border:1px solid rgba(79,179,169,.35);
+  clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px);
+  transform-style:preserve-3d}
+.tiltL{transform:perspective(1400px) rotateY(6deg);transform-origin:left center}
+.tiltR{transform:perspective(1400px) rotateY(-6deg);transform-origin:right center}
+#ticker{grid-area:tk}
+#apps{grid-area:ap}
+#releases{grid-area:rl}
+#infra{grid-area:in}
 .panel>h2{margin:0;padding:clamp(5px,.8vmin,8px) clamp(10px,1.4vmin,14px) clamp(4px,.6vmin,6px);
-  font:600 clamp(9px,1.2vmin,12px)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:#9aa3ff;
-  display:flex;justify-content:space-between;border-bottom:1px solid #171a45}
+  font:600 clamp(9px,1.2vmin,12px)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--reef);
+  display:flex;justify-content:space-between;border-bottom:1px solid rgba(79,179,169,.2)}
 .panel>h2 span{color:var(--dim);letter-spacing:.1em}
 .panel [data-panel-message]{color:var(--amber);font:600 9px/1 var(--mono);letter-spacing:.1em;white-space:nowrap}
 .panel[data-state="ok"]>h2{position:relative;padding-right:24px}
 .panel[data-state="ok"]>h2::after{content:"";position:absolute;right:14px;top:calc(50% - 3px);width:6px;height:6px;border-radius:50%;
-  background:var(--green);box-shadow:0 0 8px var(--green);animation:mc5blink 1.4s steps(2) infinite}
+  background:var(--reef);box-shadow:0 0 8px var(--reef);animation:mc5blink 1.4s steps(2) infinite}
 @keyframes mc5blink{50%{opacity:.15}}
 
-#apps{grid-area:ap;height:clamp(76px,13vmin,132px);display:flex;flex-direction:column}
+#ticker,#releases,#apps,#infra{display:flex;flex-direction:column}
 #apps canvas{flex:1;width:100%;display:block}
+#ticker .body,#releases .body,#infra .body{flex:1;overflow:hidden;padding:clamp(6px,1vmin,10px) clamp(8px,1.2vmin,12px)}
 
-#github{grid-area:gh}
-#pipeline{grid-area:pl}
-#infra{grid-area:in}
-#github,#infra{display:flex;flex-direction:column;overflow:hidden}
-#github .body,#infra .body{flex:1;overflow:hidden;padding:clamp(6px,1vmin,10px) clamp(8px,1.2vmin,12px)}
-#pipeline canvas{position:absolute;inset:34px 0 0;width:100%;height:calc(100% - 34px);display:block}
-
-#activity{grid-area:ac;height:clamp(70px,12vmin,140px);display:flex;flex-direction:column}
-#activity .body{flex:1;overflow:hidden;padding:clamp(6px,1vmin,10px) clamp(8px,1.2vmin,12px)}
-
-/* Stand-in rows for a feed with no live source at all yet (github/infra/activity — see
-   site/lib/stage.js setStandIn): styled the same as a real data row, not a faint placeholder
-   line, so the panel reads as a finished part of the wall. */
+/* Ticker/releases/infra rows: styled the same whether the data is live (ticker/releases, from
+   the public GitHub API) or stand-in (infra — no Terrakube/Semaphore exporter exists yet) so no
+   row ever reads as "less real" than another. */
 .feed-row{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;
-  padding:5px 0;font-size:clamp(10px,1.05vmin,13px);border-bottom:1px solid #171a45}
+  padding:5px 0;font-size:clamp(10px,1.05vmin,13px);border-bottom:1px solid rgba(79,179,169,.15)}
 .feed-row:last-child{border-bottom:none}
 .feed-row .name{color:var(--ink);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.feed-row .status{font-weight:600}
-.feed-row .ago{color:var(--dim);font:11px var(--mono)}
+.feed-row .status{font-weight:600;white-space:nowrap}
+.feed-row .ago{color:var(--dim);font:11px var(--mono);white-space:nowrap}
 
-@media (prefers-reduced-motion:reduce){.mc5 *{animation:none!important}}
+@media (prefers-reduced-motion:reduce){#stage.mc5 *{animation:none!important}}

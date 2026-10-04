@@ -257,7 +257,7 @@ const STAND_IN_PANELS: Record<string, string[]> = {
   mc1: ['firewall'], // mc1's topology panel is a MIX (real graph + a stand-in #wan sub-element)
   mc2: ['threat', 'blocked'],
   mc4: ['acquisition', 'pipeline'],
-  mc5: ['github', 'infra', 'activity', 'pipeline'],
+  mc5: ['infra'],
 };
 
 for (const [pageId, panelIds] of Object.entries(STAND_IN_PANELS)) {
@@ -294,6 +294,50 @@ test('mc1 VLAN readout shows real per-VLAN rates and drops the SAMPLE DATA badge
   await expect(vlans).toContainText('VLAN 10');
   await expect(vlans).toContainText('4.2');
   await expect(vlans.locator('[data-sample-badge]')).toHaveCount(0);
+});
+
+// A3: every panel meant to look live must visibly change within 10s even when the data source
+// returns the exact same value on every poll (mockFeeds answers every refresh identically — a
+// frozen-data fixture) or has no real source at all. site/lib/liveJitter.js's poissonLoop is what
+// drives each of these instead of the panel sitting on the exact pixels/rows it painted at boot.
+test('mc1 VLAN pulse and flow rows keep changing within 10s on a frozen-data fixture', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
+  await mockFeeds(page);
+  await page.goto('/mc1/');
+
+  const pulseFrame = () => page.locator('#vlanpulse').evaluate((c) => (c as HTMLCanvasElement).toDataURL());
+  const before = await pulseFrame();
+  await expect.poll(pulseFrame, { timeout: 10_000, message: '#vlanpulse canvas never redrew' }).not.toBe(before);
+
+  const blkBefore = await page.locator('#blkrows').innerHTML();
+  await expect.poll(() => page.locator('#blkrows').innerHTML(), { timeout: 10_000, message: '#blkrows never gained a new row' }).not.toBe(blkBefore);
+
+  const fwBefore = await page.locator('#fwrows').innerHTML();
+  await expect.poll(() => page.locator('#fwrows').innerHTML(), { timeout: 10_000, message: '#fwrows never gained a new row' }).not.toBe(fwBefore);
+});
+
+test('mc2 threat feed keeps firing rows within 10s on a frozen-data fixture', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
+  await mockFeeds(page);
+  await page.goto('/mc2/');
+  const before = await page.locator('#feed').innerHTML();
+  await expect.poll(() => page.locator('#feed').innerHTML(), { timeout: 10_000, message: '#feed never gained a new row' }).not.toBe(before);
+});
+
+test('mc3 request feed keeps firing rows within 10s on a frozen-data fixture', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
+  await mockFeeds(page);
+  await page.goto('/mc3/');
+  const before = await page.locator('#reqfeed').innerHTML();
+  await expect.poll(() => page.locator('#reqfeed').innerHTML(), { timeout: 10_000, message: '#reqfeed never gained a new row' }).not.toBe(before);
+});
+
+test('mc4 throughput numerals keep changing within 10s on a frozen-data fixture', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
+  await mockFeeds(page);
+  await page.goto('/mc4/');
+  const before = await page.locator('#acqbody').innerText();
+  await expect.poll(() => page.locator('#acqbody').innerText(), { timeout: 10_000, message: '#acqbody never repainted' }).not.toBe(before);
 });
 
 // Q.llmQueueSeconds/Q.llmLatencySeconds (site/lib/queries.js) replaced a name-hash stand-in with
@@ -472,4 +516,54 @@ test('storage panel excludes network mounts and keys ZFS pools per host', async 
   // 2e12 (host-a rpool) + 5e12 (host-b rpool) + 3e12 (shared) = 10e12 bytes = 10.0 TB of unique
   // local storage — the NFS re-export of host-b's own pool never adds another 5e12 on top.
   await expect(page.locator('#sttot')).toContainText('10.0 TB');
+});
+
+// A1: an app with no real score (D5's 'juliet', already unscored in the default fixture —
+// see fixture.ts's gatus_results_total filter) must never draw "?" on the service-health hex
+// grid (mc1 #hex) or app grid (mc5 #appgrid) — it renders as a red 0, same as any other 0 score.
+// The glyph itself is canvas pixels, unreadable from the DOM, so this checks the machine-only
+// data-unknown-count hook (set alongside the glyph, from the same apps[].s the glyph reads) is
+// actually exercised by the fixture, and scans the whole page for a literal "?" regardless.
+for (const pageId of ['mc1', 'mc5'] as const) {
+  test(`${pageId}: an app with no real score draws as a red 0, never "?"`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture partial-score scenario only');
+    await mockFeeds(page);
+    await page.goto(`/${pageId}/`);
+    const canvasId = pageId === 'mc1' ? '#hex' : '#appgrid';
+    await expect.poll(() => page.locator(canvasId).getAttribute('data-unknown-count')).not.toBeNull();
+    const unknownCount = Number(await page.locator(canvasId).getAttribute('data-unknown-count'));
+    expect(unknownCount, 'fixture must include at least one app with no real score (D5)').toBeGreaterThan(0);
+    await expect.poll(() => page.locator('body').innerText()).not.toContain('?');
+  });
+}
+
+// A2: site/lib/hexlayout.js is the ONE grouping helper shared by mc1 and mc5 — plain data in,
+// plain data out, so this imports it directly rather than driving a browser page.
+test('hexlayout: leaves exactly one gap cell between every pair of non-empty groups, ordered by config.groups', async () => {
+  const { groupedHexLayout } = await import('../site/lib/hexlayout.js');
+  const groups = [
+    { name: 'a', apps: ['one', 'two'] },
+    { name: 'b', apps: ['two', 'three'] }, // 'two' is already in group a — stays with the first group
+    { name: 'c', apps: [] }, // an empty group contributes no cells and no extra gap
+    { name: 'd', apps: ['four'] },
+  ];
+  const layout = groupedHexLayout(groups);
+  expect(layout).toEqual(['one', 'two', null, 'three', null, 'four']);
+  // Exactly one null between every pair of consecutive non-null runs — never zero, never two.
+  const gapIndexes = layout.flatMap((cell, i) => (cell === null ? [i] : []));
+  expect(gapIndexes).toEqual([2, 4]);
+});
+
+// mc5's GitOps hero (site/mc5/mc5.js): the full-viewport #corecanvas scene and the org-activity
+// ticker are both fed by the fixture's mocked GitHub events/repos (tests/fixture.ts mockGithub) —
+// this asserts the hero actually renders pixels and the ticker actually shows rows, on top of the
+// generic per-page contract test above (which already covers every canvas/panel more broadly).
+test('mc5 hero canvas renders non-blank and the org-activity ticker shows rows', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped GitHub response only');
+  await mockFeeds(page);
+  await page.goto('/mc5/');
+  await expect(page.locator('[data-panel="ticker"]')).toHaveAttribute('data-state', 'ok');
+  const rows = page.locator('#tickerBody .feed-row');
+  await expect.poll(() => rows.count()).toBeGreaterThan(0);
+  await expect.poll(() => page.locator('#corecanvas').evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL().length)).toBeGreaterThan(200);
 });

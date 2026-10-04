@@ -7,6 +7,3 @@ export declare const SAMPLE_ALLOWED: ReadonlyArray<{ time: string; action: strin
 export declare const SAMPLE_THREAT_STATS: { blockedToday: number; uniqueSources: number };
 export declare const SAMPLE_ACQ_CARDS: ReadonlyArray<{ title: string; note: string }>;
 export declare const SAMPLE_LIBRARY_CARDS: ReadonlyArray<{ title: string; note: string }>;
-export declare const SAMPLE_GITHUB_ROWS: ReadonlyArray<{ repo: string; status: string; ago: string }>;
-export declare const SAMPLE_INFRA_ROWS: ReadonlyArray<{ name: string; status: string; ago: string }>;
-export declare const SAMPLE_ACTIVITY_ROWS: ReadonlyArray<{ text: string; ago: string }>;
