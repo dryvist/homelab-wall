@@ -23,7 +23,11 @@
   --pad-y:clamp(8px,1.3vmin,16px);
   --pad-x:clamp(9px,1.5vmin,18px);
 }
-html,body{height:100%;margin:0;background:var(--void);overflow:hidden}
+/* overflow-y:auto (not hidden) lets stage.js's autoScroll() actually move the page when a
+   slide's content is taller than the viewport; a slide that fits has nothing to scroll and shows
+   no scrollbar either way. overflow-x stays clipped — nothing should ever need it. */
+html,body{height:100%;margin:0;background:var(--void);overflow-x:hidden;overflow-y:auto;scrollbar-width:none}
+::-webkit-scrollbar{display:none}
 body{font-family:var(--mono);color:var(--ink)}
 .stage{width:100vw;height:100vh;height:100dvh;box-sizing:border-box}
 .num{font-variant-numeric:tabular-nums}
