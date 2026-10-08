@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.10.1](https://github.com/dryvist/homelab-wall/compare/v0.10.0...v0.10.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **ci:** cap the jitter RNG in the mc1 liveness test ([2db23ed](https://github.com/dryvist/homelab-wall/commit/2db23edf295aa54181f211ea9d0ffd84bdb8d367))
+* **ci:** pin the jitter RNG in the mc1 liveness test ([fa5e607](https://github.com/dryvist/homelab-wall/commit/fa5e607d96626f3d256c00a7492c447e0cab564f))
+* **ci:** pin the jitter RNG in the mc1 liveness test ([235e194](https://github.com/dryvist/homelab-wall/commit/235e194505b4650b3b5f5133547b75a0611d6b01))
+
 ## [0.10.0](https://github.com/dryvist/homelab-wall/compare/v0.9.0...v0.10.0) (2026-10-04)
 
 
