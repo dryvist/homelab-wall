@@ -300,8 +300,12 @@ test('mc1 VLAN readout shows real per-VLAN rates and drops the SAMPLE DATA badge
 // returns the exact same value on every poll (mockFeeds answers every refresh identically — a
 // frozen-data fixture) or has no real source at all. site/lib/liveJitter.js's poissonLoop is what
 // drives each of these instead of the panel sitting on the exact pixels/rows it painted at boot.
+// Math.random is pinned to 0.5 so each Poisson gap is exactly ln(2)/rate (~1.2-1.4 s here). With
+// real random draws, a gap over 10 s is routine (P ~ e^-5 for the 0.5/s block feed), which made
+// this assertion flaky. The bound stays 10 s; only the RNG tail is removed.
 test('mc1 VLAN pulse and flow rows keep changing within 10s on a frozen-data fixture', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
+  await page.addInitScript(() => { Math.random = () => 0.5; });
   await mockFeeds(page);
   await page.goto('/mc1/');
 
