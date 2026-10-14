@@ -26,7 +26,7 @@ export function setState(panel, state, message = '') {
 // constants, never a second hardcoded copy of the cutoffs.
 export const SCORE_OK_MIN = 8;
 export const SCORE_DEGRADED_MIN = 5;
-// hue() expects a 0-100 input; a score maps onto it by this fixed x10 scale, which also matches
+// hue() expects a 0-100 input; a score maps onto it by this fixed 10x scale, which also matches
 // the /10 arc-fraction pattern every score ring/glyph already uses.
 export const scorePct = (s) => (s ?? 0) * 10;
 
