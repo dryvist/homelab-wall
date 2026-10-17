@@ -1,27 +1,31 @@
----
-name: Release Please
+name: Release
 
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled, closed]
 
 permissions: {}
 
 jobs:
-  release-please:
+  release:
+    uses: JacobPEvans/.github/.github/workflows/_release.yml@v1
+    secrets:
+      GH_ACTION_RELEASE_PLEASE_PRIVATE_KEY: ${{ secrets.GH_ACTION_RELEASE_PLEASE_PRIVATE_KEY }}
     permissions:
       contents: write
       pull-requests: write
-    uses: dryvist/.github/.github/workflows/_release-please.yml@41ca3a7c0f8853acbfa38ef905a6231cdddf968d # v1.19.0
-    secrets:
-      GH_ACTION_RELEASE_PLEASE_PRIVATE_KEY: ${{ secrets.GH_ACTION_RELEASE_PLEASE_PRIVATE_KEY }}
+      statuses: write
+      checks: read
+
 
   # Releases are immutable once published, so release-please creates a draft
   # (release-please-config.json) and the site tarball plus its sha256 are
   # attached here before publishing. The wall role downloads both.
   assets:
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    needs: release
+    if: needs.release.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -48,9 +52,10 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: gh release upload "$TAG" homelab-wall-site.tar.gz homelab-wall-site.tar.gz.sha256 --clobber
 
+
   publish:
     needs: assets
-    uses: dryvist/.github/.github/workflows/_publish-draft-release.yml@41ca3a7c0f8853acbfa38ef905a6231cdddf968d # v1.19.0
+    uses: JacobPEvans/.github/.github/workflows/_publish-draft-release.yml@v1
     with:
       tag: ${{ needs.assets.outputs.tag }}
       latest: true
