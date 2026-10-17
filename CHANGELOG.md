@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/dryvist/homelab-wall/compare/v0.10.1...v0.10.2) (2026-10-17)
+
+
+### Bug Fixes
+
+* **ci:** run the release caller on label and close events ([#100](https://github.com/dryvist/homelab-wall/issues/100)) ([3e6e2c2](https://github.com/dryvist/homelab-wall/commit/3e6e2c2438b1f7a2097ea5c273b393906e34ec7a))
+
 ## [0.10.1](https://github.com/dryvist/homelab-wall/compare/v0.10.0...v0.10.1) (2026-10-08)
 
 
