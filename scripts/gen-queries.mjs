@@ -2,7 +2,7 @@
 // Emits site/queries.json: {key: PromQL expression} for every site/lib/queries.js Q entry — the
 // one allow-list both the wall (snapshot lookups, site/lib/prom.js) and the publisher
 // (homelab-wall-feed, which polls exactly these queries) read. Regenerated on every
-// install/release (ci.yml, release-please.yml); never hand-edited. Run: node scripts/gen-queries.mjs
+// install/release (ci.yml, release.yml); never hand-edited. Run: node scripts/gen-queries.mjs
 import { existsSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

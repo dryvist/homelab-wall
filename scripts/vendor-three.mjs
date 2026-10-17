@@ -2,7 +2,7 @@
 // Copies the `three` npm package's ES module build, plus the postprocessing/shaders addons the
 // site's bloom pipeline needs, into site/vendor/three/ — this is a static site with no bundler,
 // so the browser imports these files directly (via each page's <script type="importmap">).
-// Regenerated from node_modules on every install/release (ci.yml, release-please.yml); never
+// Regenerated from node_modules on every install/release (ci.yml, release.yml); never
 // hand-edited. Run: node scripts/vendor-three.mjs
 import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
