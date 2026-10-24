@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.3](https://github.com/dryvist/homelab-wall/compare/v0.10.2...v0.10.3) (2026-10-24)
+
+
+### Bug Fixes
+
+* enforce seven-day npm release age ([#103](https://github.com/dryvist/homelab-wall/issues/103)) ([4b47cbf](https://github.com/dryvist/homelab-wall/commit/4b47cbf7121409ac418b1aedf54f68c8b949d2d3))
+
 ## [0.10.2](https://github.com/dryvist/homelab-wall/compare/v0.10.1...v0.10.2) (2026-10-17)
 
 
