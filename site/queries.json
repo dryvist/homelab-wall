@@ -8,6 +8,7 @@
   "nodeLoad": "node_load1{job=\"pve_node_exporter\"}",
   "nodeTemp": "max by (instance) (node_hwmon_temp_celsius{job=\"pve_node_exporter\"})",
   "nodeUptime": "time() - node_boot_time_seconds{job=\"pve_node_exporter\"}",
+  "acceleratorBusy": "accelerator:busy_percent:avg5m",
   "fsSize": "node_filesystem_size_bytes{job=\"pve_node_exporter\",fstype!~\"tmpfs|devtmpfs|overlay|squashfs|ramfs|fuse.*|nsfs|efivarfs|vfat|nfs.?|cifs|smb3|ceph.*|glusterfs\"}",
   "fsAvail": "node_filesystem_avail_bytes{job=\"pve_node_exporter\",fstype!~\"tmpfs|devtmpfs|overlay|squashfs|ramfs|fuse.*|nsfs|efivarfs|vfat|nfs.?|cifs|smb3|ceph.*|glusterfs\"}",
   "vlanFwRate": "sum by (vlan) (rate(unifi_vlan_fw_events_total[5m]))",

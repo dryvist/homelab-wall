@@ -24,11 +24,11 @@ export const SAMPLE_LLM = [
   { n: 'model-small', state: 2, tok: 0, hist: Array(30).fill(0) },
 ];
 
-// The panels below have no live source wired up at all yet (mc1 topology/firewall, mc2 threat,
-// mc4 acquisition/pipeline, mc5 github/infra/activity) — a handful of plausible static rows,
-// shaped like the feed each one will eventually get, replace their single "pending" line so the
-// panel is never blank. Always shown behind setSampleBadge (site/lib/stage.js); never merged
-// into any page's own live model.
+// Stand-ins for mc1's topology overlays and firewall feeds: the VLAN rates while Q.vlanFwRate has
+// no series, and the WAN and firewall rows, which have no live source wired up yet — a handful of
+// plausible static rows shaped like the feed each one will eventually get, so the panel is never
+// blank. Always marked with setSampleBadge/setStandIn (site/lib/stage.js); never merged into any
+// page's own live model.
 
 export const SAMPLE_VLANS = [
   { vlan: '10', rate: 4.2 },
@@ -53,20 +53,8 @@ export const SAMPLE_ALLOWED = [
   { time: '14:02:50', action: 'drop', proto: 'UDP', desc: 'unsolicited', dest: 'edge', ago: '20s' },
 ];
 
-export const SAMPLE_THREAT_STATS = { blockedToday: 482, uniqueSources: 137, topSource: 'edge-scanner' };
-
-// No GPU exporter exists yet — a deterministic per-node base the node's own gauge (mc1.js
-// drawNodes) animates around, standing in for the single flat "NO GPU" gauge it used to show.
+// A deterministic per-node base that a node card's CPU/MEM/LOAD stand-in (mc1.js drawNodes)
+// animates around while that node has no reading for the gauge. The GPU gauge has a real source
+// (Q.acceleratorBusy) and never uses it.
 export const sampleGpuBase = (i) => 18 + (i % 3) * 14;
-
-export const SAMPLE_ACQ_CARDS = [
-  { title: 'QBITTORRENT', note: '3 active · 42 MB/s down' },
-  { title: 'VPN TUNNEL', note: 'connected · 8ms' },
-];
-
-export const SAMPLE_LIBRARY_CARDS = [
-  { title: 'PLEX', note: '2 streams · 1 transcoding' },
-  { title: 'ARR STACK', note: '5 queued imports' },
-  { title: 'LIBRARY STORAGE', note: '38.2 / 60 TB' },
-];
 

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import type { Route } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 import pendingJson from './expected-pending.json' with { type: 'json' };
 import { mockFeeds } from './fixture';
 
@@ -54,8 +54,8 @@ for (const pageSpec of PAGES) {
           await expect(panel).toHaveAttribute('data-state', 'pending');
           // A permanently-pending panel is marked data-source stand-in (invisible) and still has
           // real-looking content, never a blank panel — no visible marker distinguishes it. mc1's
-          // "nodes" panel is the one exception: it's pending for an unrelated reason (no GPU
-          // exporter) while showing real per-node data, so it stays data-source 'live'.
+          // "nodes" panel is the one exception: it's pending only while its GPU feed has no series,
+          // and its node cards still show real data, so it stays data-source 'live'.
           if (!(pageSpec.id === 'mc1' && id === 'nodes')) {
             await expect(panel).toHaveAttribute('data-source', 'stand-in');
           }
@@ -255,8 +255,8 @@ test('a no-data apps panel renders sample scores marked only by data-source, nev
 // rows this poll) shows stand-in content: no visible badge, no "pending" text — a machine-only
 // data-source="stand-in" marker (site/lib/stage.js setStandIn) is the only trace, so the panel
 // contract test above already covers its visible state (it must be 'ok', like a live panel).
-// mc1's "nodes" panel is deliberately excluded: it is forced 'pending' for an unrelated reason
-// (no GPU exporter) while still showing real per-node data.
+// mc1's "nodes" panel is deliberately excluded: its node cards and GPU gauges are real data,
+// never a stand-in.
 const STAND_IN_PANELS: Record<string, string[]> = {
   mc1: ['firewall'], // mc1's topology panel is a MIX (real graph + a stand-in #wan sub-element)
   mc2: ['threat', 'blocked'],
@@ -276,7 +276,7 @@ for (const [pageId, panelIds] of Object.entries(STAND_IN_PANELS)) {
       await expect(panel.locator('[data-sample-badge]'), `${pageId} [data-panel="${panelId}"] must have no visible badge`).toHaveCount(0);
       await expect(panel, `${pageId} [data-panel="${panelId}"] must have no pending text`).not.toContainText(/pending/i);
     }
-    // mc1's "nodes" panel: pending for an unrelated reason, has real data, never a stand-in.
+    // mc1's "nodes" panel: real node and GPU data, never a stand-in.
     if (pageId === 'mc1') {
       await expect(page.locator('[data-panel="nodes"]')).not.toHaveAttribute('data-source', 'stand-in');
       // The topology panel itself stays 'ok'/un-flagged (it's a real graph); only its WAN
@@ -299,6 +299,54 @@ test('mc1 VLAN readout shows real per-VLAN rates and drops the SAMPLE DATA badge
   await expect(vlans).toContainText('4.2');
   await expect(vlans.locator('[data-sample-badge]')).toHaveCount(0);
 });
+
+// mc1's GPU gauges (#g<i>3) are canvas pixels, so this records the value glyph each one last drew
+// ('—' is the gauge's own no-data state); the returned reader lists them in node-card order.
+async function recordGpuGlyphs(page: Page) {
+  await page.addInitScript(() => {
+    const glyphs: Record<string, string> = {};
+    (window as unknown as { gpuGlyphs: Record<string, string> }).gpuGlyphs = glyphs;
+    const fillText = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (this: CanvasRenderingContext2D, ...args: Parameters<CanvasRenderingContext2D['fillText']>) {
+      const id = this.canvas.id, text = String(args[0]);
+      if (/^g\d+3$/.test(id) && !text.startsWith('GPU')) glyphs[id] = text;
+      fillText.apply(this, args);
+    };
+  });
+  return () => page.evaluate(() => Object.values((window as unknown as { gpuGlyphs: Record<string, string> }).gpuGlyphs));
+}
+
+// Q.acceleratorBusy (site/lib/queries.js) carries no per-node label: every card's GPU gauge shows
+// the busiest accelerator (the fixture's 64 over its 37) as a real reading, and the nodes panel is
+// 'ok'. The old stand-in was a per-card sine wave, so four identical settled values rule it out.
+test('mc1 GPU gauges show the busiest accelerator reading, never a stand-in', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped accelerator response only');
+  const gpuGlyphs = await recordGpuGlyphs(page);
+  await mockFeeds(page);
+  await page.goto('/mc1/?gl=2d');
+  await expect(page.locator('[data-panel="nodes"]')).toHaveAttribute('data-state', 'ok');
+  await expect(page.locator('#nodelist .node')).toHaveCount(4);
+  // Eased toward the reading like the cpu/mem/load gauges, so this waits for every card to settle.
+  await expect.poll(gpuGlyphs, { timeout: 15_000 }).toEqual(['64', '64', '64', '64']);
+  for (let i = 0; i < 4; i += 1) await expect(page.locator(`#g${i}3`)).not.toHaveAttribute('data-source', 'stand-in');
+});
+
+// No reading — an empty answer or a failed query — draws the gauge's no-data state with the nodes
+// panel 'pending' (or 'error' for a failure), never a fabricated value.
+for (const [outcome, state] of [['empty', 'pending'], ['failed', 'error']] as const) {
+  test(`mc1 GPU gauges draw the no-data state when the accelerator query is ${outcome}`, async ({ page }) => {
+    test.skip(!!wallUrl, 'forces the accelerator response against the fixture server only');
+    const gpuGlyphs = await recordGpuGlyphs(page);
+    const isGpu = (q: string) => q.includes('accelerator:busy_percent');
+    await mockFeeds(page, outcome === 'empty' ? { emptyQuery: isGpu } : { failQuery: isGpu });
+    await page.goto('/mc1/?gl=2d');
+    // 'apps' leaves its initial 'pending' in the same render as 'nodes' — proof the first refresh landed.
+    await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
+    await expect(page.locator('[data-panel="nodes"]')).toHaveAttribute('data-state', state);
+    await expect.poll(gpuGlyphs).toEqual(['—', '—', '—', '—']);
+    for (let i = 0; i < 4; i += 1) await expect(page.locator(`#g${i}3`)).not.toHaveAttribute('data-source', 'stand-in');
+  });
+}
 
 // A3: every panel meant to look live must visibly change within 10s even when the data source
 // returns the exact same value on every poll (mockFeeds answers every refresh identically — a
@@ -386,9 +434,9 @@ test('the SAMPLE DATA badge never appears on a panel that has real data', async 
   await mockFeeds(page);
   await page.goto('/mc1/?gl=2d');
   await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
-  // Scoped to the panels that CAN have live data (nodes/topology/firewall are permanently
-  // pending on this page regardless of the fixture and are covered by the dedicated test above).
-  const liveCapable = page.locator('[data-panel="apps"], [data-panel="storage"], [data-panel="llm"]');
+  // Scoped to the panels that CAN have live data (topology/firewall carry stand-in content on this
+  // page regardless of the fixture and are covered by the dedicated test above).
+  const liveCapable = page.locator('[data-panel="nodes"], [data-panel="apps"], [data-panel="storage"], [data-panel="llm"]');
   const count = await liveCapable.count();
   for (let i = 0; i < count; i += 1) {
     await expect(liveCapable.nth(i)).not.toHaveAttribute('data-source', 'stand-in');
