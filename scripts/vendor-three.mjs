@@ -29,7 +29,12 @@ cpSync(join(src, 'build/three.webgpu.js'), join(dest, 'three.webgpu.js'));
 cpSync(join(src, 'build/three.tsl.js'), join(dest, 'three.tsl.js'));
 cpSync(join(src, 'examples/jsm/postprocessing'), join(dest, 'addons/postprocessing'), { recursive: true });
 cpSync(join(src, 'examples/jsm/shaders'), join(dest, 'addons/shaders'), { recursive: true });
-cpSync(join(src, 'examples/jsm/tsl'), join(dest, 'addons/tsl'), { recursive: true });
+// Only the TSL display nodes mc3's WebGPU scene imports; each imports nothing but three/webgpu
+// and three/tsl.
+mkdirSync(join(dest, 'addons/tsl/display'), { recursive: true });
+for (const node of ['BloomNode.js', 'AfterImageNode.js', 'ChromaticAberrationNode.js']) {
+  cpSync(join(src, 'examples/jsm/tsl/display', node), join(dest, 'addons/tsl/display', node));
+}
 
 // Self-check: the files every scene imports must actually be there, or every page that
 // imports 'three'/'three/addons/...' would fail silently at runtime instead of at build time.
