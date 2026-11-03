@@ -15,7 +15,7 @@ other dashboards.
 
 ## Runtime contract
 
-The page is static. It reads two things from its own origin:
+The site is static. Each page reads two things from its own origin:
 
 - `/config.json`: title, app groups, node roles, rendered by the deploying role.
 - Query results come from one of two sources, selected by `config.json`:
@@ -26,7 +26,13 @@ The page is static. It reads two things from its own origin:
     `site/lib/queries.js`'s `Q`. `scripts/gen-queries.mjs` regenerates the
     committed `site/queries.json` allow-list from `Q` whenever it changes.
 
-Sources that are not wired yet show a "pending" state rather than disappearing.
+MC5 additionally fetches the public GitHub API (`api.github.com`, no token)
+directly for the org's activity, repositories and releases.
+
+A source that is not wired up yet shows stand-in content from
+`site/lib/sampleData.js` rather than disappearing; the only trace is a
+machine-readable `data-source="stand-in"` attribute, never a visible badge or
+"pending" text.
 A node that drops out of a single poll shows a "stale" state instead of
 disappearing: it keeps its last known values, dims, and is labeled "STALE
 &lt;age&gt;", then "NO DATA since &lt;time&gt;" after about 5 minutes. The node set
@@ -48,8 +54,11 @@ serves it as static files behind the gateway from `homelab-wall-feed`.
 
 ## Usage
 
-Open `/mc1/` full screen on a 1920×1080 display. The page refreshes its data
-every `refreshSeconds` (config, default 15) and reloads itself nightly.
+Open `/` (the rotator, which cycles the Mission Control pages with other
+dashboards) or a single page such as `/mc1/` full screen on a 1920×1080
+display. A page refreshes its data every `refreshSeconds` (config, default 15).
+The rotator reloads the whole kiosk every `reloadMinutes` (config, default 60);
+a page opened on its own reloads itself nightly.
 
 ## Develop
 
