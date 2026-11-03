@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.11.0](https://github.com/dryvist/homelab-wall/compare/v0.10.3...v0.11.0) (2026-11-03)
+
+
+### Features
+
+* **agent:** zcode run j-9fe2834f7aa033df ([2e1fc21](https://github.com/dryvist/homelab-wall/commit/2e1fc21207c0edfad3248583df59dc81b50daaf4))
+* **mc1:** real GPU gauge and sample data cleanup ([#106](https://github.com/dryvist/homelab-wall/issues/106)) ([7b77557](https://github.com/dryvist/homelab-wall/commit/7b775574010c0d2f466dc9d92863753f1a3b40f5))
+
+
+### Bug Fixes
+
+* **mc1:** show the first GPU reading as-is and fill quorum with the panel state ([1295f4b](https://github.com/dryvist/homelab-wall/commit/1295f4bc8483595e90d260272d8d20e8a8c59b55))
+
 ## [0.10.3](https://github.com/dryvist/homelab-wall/compare/v0.10.2...v0.10.3) (2026-10-24)
 
 
