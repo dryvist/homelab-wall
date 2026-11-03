@@ -48,7 +48,7 @@ export const Q = {
   // true percentile isn't derivable from this feed.
   llmQueueSeconds: 'sum by (model) (increase(litellm_request_queue_time_seconds_sum[5m])) / sum by (model) (increase(litellm_request_queue_time_seconds_count[5m]))',
   llmLatencySeconds: 'sum by (model) (increase(litellm_llm_api_latency_metric_sum[5m])) / sum by (model) (increase(litellm_llm_api_latency_metric_count[5m]))',
-  // Recorded accelerator busy percentage (0-100), one series per accelerator; mc3's GPU tile
+  // Accelerator busy percentage (0-100), one series per accelerator; mc3's GPU tile
   // shows their mean.
   acceleratorBusy: 'accelerator:busy_percent:avg5m',
 };

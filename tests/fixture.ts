@@ -98,7 +98,7 @@ export function answer(q: string): unknown[] {
 // proving a failed query renders an explicit error, never a silent zero/empty result.
 // opts.emptyQuery forces a query to succeed with zero rows instead — genuinely "no data yet",
 // distinct from a failure, for proving the panel falls back to sample data (site/lib/sampleData.js).
-export async function mockFeeds(page: Page, opts: { failQuery?: (q: string) => boolean; emptyQuery?: (q: string) => boolean } = {}) {
+export async function mockFeeds(page: Page, opts: { failQuery?: (q: string) => boolean; emptyQuery?: (q: string) => boolean; recent?: unknown[] | ((n: number) => unknown[]) } = {}) {
   await page.route('**/config.json', (r: Route) => r.fulfill({ json: config }));
   await mockGithub(page);
   await page.route('**/api/prom/**', (r: Route) => {

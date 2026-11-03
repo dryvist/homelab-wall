@@ -1,5 +1,5 @@
 // Mission Control 3: AI inference core, driven by live litellm_router + Gatus data, the
-// accelerator busy recording rule and the same-origin /api/llm/recent request feed.
+// accelerator busy query (Q.acceleratorBusy) and the same-origin /api/llm/recent request feed.
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import {
@@ -206,7 +206,7 @@ function renderCore() {
 }
 
 /* ---------------- fleet-health column fill: req/min, GPU/VRAM, sparklines, request feed ------- */
-// GPU/VRAM is the mean of the accelerator busy recording rule (Q.acceleratorBusy); with no series
+// GPU/VRAM is the mean of the accelerator busy series (Q.acceleratorBusy); with no series
 // (or a failed query) the tile says so instead of showing a number. cxReqMin mirrors the real
 // header KPI.
 function renderCoreExtra(list) {
