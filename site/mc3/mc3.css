@@ -73,6 +73,9 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
 .cfrow:nth-child(n+11){opacity:.5}
 .cfrow-in{animation:cfrow-in .35s ease-out}
 @keyframes cfrow-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+/* The feed/GPU tile's explicit no-data line: a dim amber note where real rows would sit,
+   replacing the rows the feed used to fabricate (mc3.js pollFeed/renderCoreExtra). */
+.cfnote{grid-template-columns:1fr;letter-spacing:.14em;color:var(--amber);opacity:.85}
 
 /* AI core reactor + model table — 3 explicit row tracks (h2 / reactor / modeltab) so h2 gets
    only its content height instead of a share of the flexible track (grid auto-placement with

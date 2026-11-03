@@ -22,6 +22,10 @@ const wallUrl = process.env.WALL_URL;
 for (const pageSpec of PAGES) {
   for (const mode of MODES) {
     test(`${pageSpec.id} ${mode} panels honor the data contract`, async ({ page }) => {
+      // mc3's forced 3D core runs WebGPURenderer's WebGL2 backend on CI's software rasterizer,
+      // where the first painted frame takes far longer than on the wall's GPU.
+      const slowFirstFrame = pageSpec.id === 'mc3' && mode === '3d';
+      if (slowFirstFrame) test.slow();
       const faults: string[] = [];
       page.on('pageerror', (error) => faults.push(error.message));
       page.on('console', (message) => {
@@ -92,7 +96,7 @@ for (const pageSpec of PAGES) {
 
       await expect.poll(() => page.locator('canvas').evaluateAll((canvases) => Array.from(canvases).every((canvas) =>
         canvas instanceof HTMLCanvasElement && canvas.toDataURL().length > 200,
-      ))).toBe(true);
+      )), { timeout: slowFirstFrame ? 45_000 : 5_000 }).toBe(true);
 
       const overlaps = await panels.evaluateAll((elements) => (elements as HTMLElement[]).flatMap((element, index) => {
         const a = { left: element.offsetLeft, top: element.offsetTop, right: element.offsetLeft + element.offsetWidth, bottom: element.offsetTop + element.offsetHeight };
@@ -313,7 +317,7 @@ async function recordGpuGlyphs(page: Page) {
 }
 
 // Q.acceleratorBusy (site/lib/queries.js) carries no per-node label: every card's GPU gauge shows
-// the busiest accelerator (the fixture's 64 over its 37) as a real reading, and the nodes panel is
+// the busiest accelerator (the fixture's 64 over its 36) as a real reading, and the nodes panel is
 // 'ok'. The old stand-in was a per-card sine wave, so four identical settled values rule it out.
 test('mc1 GPU gauges show the busiest accelerator reading, never a stand-in', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises the fixture-shaped accelerator response only');
@@ -384,12 +388,18 @@ test('mc2 threat feed keeps firing rows within 10s on a frozen-data fixture', as
   await expect.poll(() => page.locator('#feed').innerHTML(), { timeout: 10_000, message: '#feed never gained a new row' }).not.toBe(before);
 });
 
-test('mc3 request feed keeps firing rows within 10s on a frozen-data fixture', async ({ page }) => {
+// The request feed is real metadata rows (GET /api/llm/recent), so on a frozen feed it must
+// stay stable: still data-feed="live", no new rows invented between polls — the fabricated
+// Poisson rows the old stand-in feed produced are exactly what this now forbids.
+test('mc3 request feed invents nothing on a frozen-data fixture and stays live', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
   await mockFeeds(page);
   await page.goto('/mc3/');
+  await expect(page.locator('#reqfeed')).toHaveAttribute('data-feed', 'live');
   const before = await page.locator('#reqfeed').innerHTML();
-  await expect.poll(() => page.locator('#reqfeed').innerHTML(), { timeout: 10_000, message: '#reqfeed never gained a new row' }).not.toBe(before);
+  await page.waitForTimeout(6000);
+  await expect(page.locator('#reqfeed')).toHaveAttribute('data-feed', 'live');
+  expect(await page.locator('#reqfeed').innerHTML()).toBe(before);
 });
 
 test('mc4 throughput numerals keep changing within 10s on a frozen-data fixture', async ({ page }) => {

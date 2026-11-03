@@ -62,8 +62,9 @@ export function answer(q: string): unknown[] {
   if (q.includes('node_load1')) return vec(NODES.map((n, i) => [inst(n), [9.4, 3.1, 14.2][i]]));
   if (q.includes('hwmon')) return vec(NODES.map((n, i) => [inst(n), [44, 57, 60][i]]));
   if (q.includes('boot_time')) return vec(NODES.map((n, i) => [inst(n), (i + 1) * 20 * 86400]));
-  // Two accelerators: mc1's GPU gauges must show the busier one (64), never the other or a blend.
-  if (q.includes('accelerator:busy_percent')) return vec([[{ accelerator: 'accel-0' }, 37], [{ accelerator: 'accel-1' }, 64]]);
+  // Two accelerators: mc1's GPU gauges must show the busier one (64), never the other or a blend;
+  // mc3's GPU tile shows their mean (36/64 -> 50%).
+  if (q.includes('accelerator:busy_percent')) return vec([[{ accelerator: 'accel-0' }, 36], [{ accelerator: 'accel-1' }, 64]]);
   // D3: a shared NFS mount — same device + mountpoint reported by two nodes — must be shown
   // once, not once per node, and must not double-count in the RAW total.
   const SHARED_DEVICE = { device: 'nas:/export/shared', mountpoint: '/mnt/pve/shared-nfs', fstype: 'nfs4' };
@@ -99,7 +100,7 @@ export function answer(q: string): unknown[] {
 // proving a failed query renders an explicit error, never a silent zero/empty result.
 // opts.emptyQuery forces a query to succeed with zero rows instead — genuinely "no data yet",
 // distinct from a failure, for proving the panel falls back to sample data (site/lib/sampleData.js).
-export async function mockFeeds(page: Page, opts: { failQuery?: (q: string) => boolean; emptyQuery?: (q: string) => boolean } = {}) {
+export async function mockFeeds(page: Page, opts: { failQuery?: (q: string) => boolean; emptyQuery?: (q: string) => boolean; recent?: unknown[] | ((n: number) => unknown[]) } = {}) {
   await page.route('**/config.json', (r: Route) => r.fulfill({ json: config }));
   await mockGithub(page);
   await page.route('**/api/prom/**', (r: Route) => {
@@ -111,5 +112,30 @@ export async function mockFeeds(page: Page, opts: { failQuery?: (q: string) => b
       ? rows.map((x: any) => ({ metric: x.metric, values: Array.from({ length: 60 }, (_, k) => [k, String(20 + ((k * 7) % 50))]) }))
       : rows;
     return r.fulfill({ json: { status: 'success', data: { resultType: 'vector', result } } });
+  });
+  await mockRecent(page, opts);
+}
+
+// mc3's request feed (GET /api/llm/recent — metadata rows only, never message content) and the
+// ClickHouse word-cloud feed's absence on the static fixture server: /api/* has no live source
+// here, so mc3 shows its explicit NO FEED state unless a test routes its own answers via
+// opts.recent. fake data only.
+export const recentRows = [
+  { ts: '2026-01-01 00:00:09', source: 'user', model: 'model-large', role: 'user', chars: 120 },
+  { ts: '2026-01-01 00:00:08', source: 'claude', model: 'model-coder', role: 'assistant', chars: 2480 },
+  { ts: '2026-01-01 00:00:07', source: 'zcode', model: 'model-large', role: 'assistant', chars: 311 },
+];
+
+export async function mockRecent(page: Page, opts: { failQuery?: (q: string) => boolean; recent?: unknown[] | ((n: number) => unknown[]) } = {}) {
+  await page.route('**/api/llm/recent*', (r: Route) => {
+    if (opts.failQuery?.('/api/llm/recent')) return r.fulfill({ status: 404, body: 'no feed' });
+    const rows = typeof opts.recent === 'function' ? opts.recent(recentRows.length) : opts.recent ?? recentRows;
+    return r.fulfill({ json: rows });
+  });
+  // The other /api/ feed routes (e.g. /api/words) stay unwired on the fixture: pages must treat
+  // a 404 as an explicit no-feed state, never fabricated values.
+  await page.route('**/api/**', (r: Route) => {
+    if (r.request().url().includes('/api/prom/') || r.request().url().includes('/api/llm/recent') || r.request().url().includes('config.json')) return r.fallback();
+    return r.fulfill({ status: 404, body: 'no feed' });
   });
 }

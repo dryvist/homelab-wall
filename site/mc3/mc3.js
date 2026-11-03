@@ -1,14 +1,12 @@
-// Mission Control 3: AI inference core, driven by live litellm_router + Gatus data.
-import * as THREE from 'three';
+// Mission Control 3: AI inference core, driven by live litellm_router + Gatus data, the
+// accelerator busy query (Q.acceleratorBusy) and the same-origin /api/llm/recent request feed.
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { makeBloom } from '/lib/bloom.js';
 import {
   clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct,
-  setSampleBadge, onDispose, onContextLoss, disposeThreeScene, hardwareGL, adaptiveBloomOn, adaptiveDpr,
+  setSampleBadge, onDispose, hardwareGL, adaptiveDpr,
 } from '/lib/stage.js';
 import { sampleAppScore, SAMPLE_LLM } from '/lib/sampleData.js';
-import { poissonLoop } from '/lib/liveJitter.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -18,7 +16,7 @@ const cfg = await loadConfig();
 const groups = (cfg.groups || []).map((g, i) => ({ ...g, c: PALETTE[i % PALETTE.length] }));
 const apps = [...new Set(groups.flatMap((g) => g.apps))].sort().map((n) => ({ n, s: null }));
 const appIndex = Object.fromEntries(apps.map((a) => [a.n, a]));
-const model = { models: [], tokensToday: null, reqPerMin: null };
+const model = { models: [], tokensToday: null, reqPerMin: null, gpuBusy: null };
 
 async function refresh() {
   const r = await settle({
@@ -29,6 +27,7 @@ async function refresh() {
     reqPerMin: () => query(Q.llmReqPerMin),
     queue: () => query(Q.llmQueueSeconds),
     latency: () => query(Q.llmLatencySeconds),
+    gpu: () => query(Q.acceleratorBusy),
   });
 
   if (r.score) {
@@ -57,6 +56,8 @@ async function refresh() {
 
   model.tokensToday = Number.isFinite(r.tokensToday?.[0]?.value) ? r.tokensToday[0].value : null;
   model.reqPerMin = Number.isFinite(r.reqPerMin?.[0]?.value) ? r.reqPerMin[0].value : null;
+  const busy = (r.gpu || []).map((x) => x.value).filter(Number.isFinite);
+  model.gpuBusy = busy.length ? clamp(busy.reduce((x, y) => x + y, 0) / busy.length, 0, 100) : null;
   render();
 }
 
@@ -64,7 +65,7 @@ function render() {
   renderApps();
   renderCore();
   renderKpis();
-  core3d?.sync(model.models);
+  core3d?.sync(model.models, model.tokensToday);
 }
 
 /* ---------------- header ---------------- */
@@ -205,17 +206,15 @@ function renderCore() {
 }
 
 /* ---------------- fleet-health column fill: req/min, GPU/VRAM, sparklines, request feed ------- */
-// No GPU/VRAM exporter and no per-request feed exist yet (see Q, site/lib/queries.js) — these two
-// widgets are always stand-in, deterministically driven off the real model list so they still
-// track UP/DOWN and load instead of sitting frozen. cxReqMin mirrors the real header KPI and
-// carries no [data-source] marker of its own.
+// GPU/VRAM is the mean of the accelerator busy series (Q.acceleratorBusy); with no series
+// (or a failed query) the tile says so instead of showing a number. cxReqMin mirrors the real
+// header KPI.
 function renderCoreExtra(list) {
   $('cxReqMin').textContent = model.reqPerMin != null ? model.reqPerMin.toFixed(0) : '0';
 
-  const upList = list.filter((m) => m.up);
-  const gpuPct = clamp(Math.round((upList.reduce((s, m) => s + m.tok, 0) / Math.max(1, list.length)) * 2 + upList.length * 8), 4, 97);
-  $('cxGpu').textContent = `${gpuPct}%`;
-  $('cxGpu').dataset.source = 'stand-in';
+  const gpuPct = model.gpuBusy;
+  $('cxGpu').textContent = gpuPct == null ? 'NO FEED' : `${Math.round(gpuPct)}%`;
+  $('cxGpu').dataset.feed = gpuPct == null ? 'none' : 'live';
   const gauge = $('gpuGauge'), gc = gauge.getContext('2d');
   const dpr = adaptiveDpr();
   const gw = Math.max(1, Math.round(gauge.clientWidth * dpr)), gh = Math.max(1, Math.round(gauge.clientHeight * dpr));
@@ -223,47 +222,63 @@ function renderCoreExtra(list) {
   if (gauge.height !== gh) gauge.height = gh;
   gc.clearRect(0, 0, gw, gh);
   gc.fillStyle = '#200a28'; gc.fillRect(0, 0, gw, gh);
-  gc.fillStyle = hue(gpuPct); gc.fillRect(0, 0, gw * gpuPct / 100, gh);
-  gauge.dataset.source = 'stand-in';
+  if (gpuPct != null) { gc.fillStyle = hue(gpuPct); gc.fillRect(0, 0, gw * gpuPct / 100, gh); }
 
   $('modelSparks').innerHTML = list.map((m) => `<div class="spk"><canvas class="spkc" data-model="${esc(m.n)}"></canvas><b>${esc(m.n.split('/').pop())}</b></div>`).join('');
   for (const canvas of $('modelSparks').querySelectorAll('.spkc')) {
     const m = list.find((x) => x.n === canvas.dataset.model);
     drawSpark(canvas, tokHistory.get(m.n) || [0], m.up ? '#3ee6ff' : '#ff3b5c');
   }
+}
 
-  // Stand-in recent-request feed: one row per Poisson-process tick (site/lib/liveJitter.js) from
-  // a randomly-picked UP model, cadence scaled by how many models are actually serving traffic.
-  // `feedList`/`feedRatePerSec` are read fresh by the shared loop below, so a later refresh's new
-  // model list takes effect on the very next tick without restarting the loop.
-  feedList = list;
-  if (!stopFeed) stopFeed = poissonLoop(feedRatePerSec, fireFeedTick);
-}
-let feedList = SAMPLE_LLM.map((s) => ({ n: s.n, up: s.state < 2, tok: s.tok }));
-let stopFeed = null;
-onDispose(() => stopFeed?.());
-function feedRatePerSec() {
-  if (RM) return 0.25;
-  const upCount = feedList.filter((m) => m.up).length;
-  return upCount ? upCount / 0.9 : 0.4;
-}
-function fireFeedTick() {
-  const upList = feedList.filter((m) => m.up);
-  if (!upList.length) return;
-  const m = upList[Math.floor(Math.random() * upList.length)];
-  const tokens = Math.max(1, Math.round(40 + Math.random() * 400));
-  const ms = Math.max(20, Math.round(60 + Math.random() * 900));
-  const row = document.createElement('div');
-  row.className = 'cfrow cfrow-in';
-  row.dataset.source = 'stand-in';
-  row.innerHTML = `<span>${esc(m.n.split('/').pop())}</span><b>${tokens} tok</b><b>${ms}ms</b>`;
+/* ---------------- request feed: GET /api/llm/recent ---------------- */
+// Metadata rows only ({ts, source, model, role, chars}; never message content), newest first.
+// Each row not seen on the previous poll launches a comet from its core to the hub. A failed or
+// malformed response clears the feed to an explicit NO FEED state — never invented rows.
+const FEED_POLL_MS = 5000;
+const FEED_ROWS = 24;
+let feedSeen = null;
+const rowKey = (r) => `${r.ts}|${r.source}|${r.model}|${r.role}|${r.chars}`;
+const fmtChars = (n) => (n < 1000 ? `${n} ch` : `${(n / 1000).toFixed(1)}k ch`);
+function feedNotice(state, text) {
   const feed = $('reqfeed');
-  feed.prepend(row);
-  while (feed.children.length > 24) feed.lastElementChild.remove();
+  feed.dataset.feed = state;
+  feed.innerHTML = `<div class="cfrow cfnote">${text}</div>`;
+  feedSeen = state === 'none' ? null : new Set();
+}
+async function pollFeed() {
+  let rows;
+  try {
+    const res = await fetch('/api/llm/recent', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`recent ${res.status}`);
+    const body = await res.json();
+    rows = Array.isArray(body) ? body : body?.data;
+    if (!Array.isArray(rows)) throw new Error('recent: unexpected body');
+  } catch (e) {
+    console.warn('llm recent', e);
+    feedNotice('none', 'NO FEED');
+    return;
+  }
+  rows = rows.filter((r) => r && typeof r === 'object').sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+  if (!rows.length) { feedNotice('empty', 'NO RECENT REQUESTS'); return; }
+  const primed = feedSeen != null;
+  const fresh = rows.filter((r) => !feedSeen?.has(rowKey(r)));
+  // First load: only the newest few launch comets, staggered, rather than the whole backlog.
+  const launch = primed ? fresh : fresh.slice(0, 6);
+  launch.slice().reverse().forEach((r, i) => core3d?.comet(r, i * Math.min(600, FEED_POLL_MS / launch.length)));
+  const freshKeys = new Set(fresh.map(rowKey));
+  const feed = $('reqfeed');
+  feed.dataset.feed = 'live';
+  feed.innerHTML = rows.slice(0, FEED_ROWS).map((r) => {
+    const chars = Math.max(0, Math.round(Number(r.chars) || 0));
+    const who = [r.source, String(r.model ?? '').split('/').pop()].filter(Boolean).map(esc).join(' · ');
+    return `<div class="cfrow${primed && freshKeys.has(rowKey(r)) ? ' cfrow-in' : ''}"><span>${who}</span><b>${esc(r.role)}</b><b>${fmtChars(chars)}</b></div>`;
+  }).join('');
+  feedSeen = new Set(rows.map(rowKey));
 }
 
-/* ---------------- reactor: 3D hero (sketch scene 88) or 2D fallback ---------------- */
-const reactor = $('reactor');
+/* ---------------- reactor: WebGPU/TSL hero (core3d.js) or 2D fallback ---------------- */
+let reactor = $('reactor');
 function fitCanvas(cv) {
   const dpr = adaptiveDpr();
   const w = Math.max(1, Math.round(cv.clientWidth * dpr)), h = Math.max(1, Math.round(cv.clientHeight * dpr));
@@ -271,187 +286,6 @@ function fitCanvas(cv) {
   return dpr;
 }
 
-// Three spinning "model core" groups (nested tori + a per-model hero geometry + orbiting
-// particles + a glow column whose height tracks load) — one per served model, ported from
-// scratchpad/wall-sketches.html scene 88. Capped at 3 (the sketch's layout is 3 columns); with
-// fewer real models the remaining columns just show as idle/dim, never fabricated ones. Each
-// core gets a distinct primary geometry (not just colour) so the three read as separate hero
-// objects; a central hub ties them together with a particle stream flowing hub-ward from each.
-const CORE_COLS = 3;
-const CORE_GEOMETRIES = [
-  () => new THREE.IcosahedronGeometry(7, 1),
-  () => new THREE.TorusKnotGeometry(5, 1.6, 128, 12),
-  () => new THREE.OctahedronGeometry(8, 2),
-];
-function build3DCore() {
-  // alpha:false + an opaque black clear colour, not a transparent canvas over the panel's CSS
-  // background: UnrealBloomPass blurs bright pixels outward, and over a transparent backdrop
-  // that blur composited with the panel's own background as a visible teal/grey fog wash edge
-  // to edge. An opaque black backbuffer keeps the glow confined to the objects themselves.
-  const renderer = new THREE.WebGLRenderer({ canvas: reactor, antialias: true, alpha: false });
-  renderer.setClearColor(0x000000, 1);
-  const scene = new THREE.Scene();
-  // Shock-and-awe: the canvas is now a full-viewport layer (mc3.css #reactor), not confined to
-  // the old "cores" panel box, so distance/spacing are tuned to sweep the cores/hub/particle
-  // streams across the WHOLE screen (behind the header and side panel) rather than one panel.
-  const cam = new THREE.PerspectiveCamera(46, 1, 1, 2000);
-  cam.position.set(0, 30, 260);
-  // threshold 0.1 + radius 0.55 bloomed nearly every lit pixel in the scene, not just the bright
-  // cores/hub — that wide, low-threshold blur is what read as a teal/grey fog wash across the
-  // whole canvas instead of solid black. A much higher threshold (only genuinely HDR pixels
-  // bloom) and a tighter radius confine the glow to the objects themselves.
-  const bloomFx = makeBloom(renderer, scene, cam, { strength: 1.1, radius: 0.32, threshold: 0.65 });
-
-  const spacing = 98;
-  const cores = Array.from({ length: CORE_COLS }, (_, i) => {
-    const g = new THREE.Group();
-    g.position.x = (i - (CORE_COLS - 1) / 2) * spacing;
-    scene.add(g);
-    const col = new THREE.Color(PALETTE[i % PALETTE.length]);
-    const rings = Array.from({ length: 7 }, (_, r) => {
-      const t = new THREE.Mesh(new THREE.TorusGeometry(12 + r * 4, 0.35, 8, 64), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85 - r * 0.1 }));
-      t.rotation.x = Math.PI / 2 + r * 0.25; t.rotation.y = r * 0.4;
-      g.add(t);
-      return t;
-    });
-    const core = new THREE.Mesh(CORE_GEOMETRIES[i % CORE_GEOMETRIES.length](), new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true }));
-    g.add(core);
-    const N = 320, pos = new Float32Array(N * 3), pg = new THREE.BufferGeometry();
-    pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.add(new THREE.Points(pg, new THREE.PointsMaterial({ color: col, size: 1.4, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
-    const ph = Array.from({ length: N }, () => ({ a: Math.random() * Math.PI * 2, r: 14 + Math.random() * 26, y: (Math.random() - 0.5) * 18, s: 0.4 + Math.random() }));
-    const glow = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 1, 8, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending }));
-    glow.position.y = -26; g.add(glow);
-    return { g, rings, core, pos, pg, ph, glow, col, util: 0, name: '', up: false };
-  });
-
-  // Central hub: a small bright icosahedron every core streams tokens toward, HDR-multiplied so
-  // it bloom-blooms as the scene's focal point without a fourth, redundant hero shape. Pulled
-  // toward the camera (+z) and down (-y), off the middle core's own (0,0,0) position — sitting
-  // on top of it would hide both the hub and the middle core's own particle stream entirely.
-  const hubPos = new THREE.Vector3(0, -34, 46);
-  const hub = new THREE.Mesh(new THREE.IcosahedronGeometry(4, 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.3, 1.3, 1.6), wireframe: true }));
-  hub.position.copy(hubPos);
-  scene.add(hub);
-  const hubGlow = new THREE.Mesh(new THREE.SphereGeometry(1.8, 16, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.1, 1.1, 1.4), transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false }));
-  hubGlow.position.copy(hubPos);
-  scene.add(hubGlow);
-
-  // One particle stream per core: STREAM_N points recycle along the straight line from that
-  // core's centre to the hub, spawning at a random phase so the flow reads continuous rather
-  // than as a single pulse. Speed scales with the core's utilisation (busier model = faster flow).
-  // Per-vertex colour (not a flat material colour) tapers brighter toward the hub end — a static
-  // screenshot still reads flow direction (dim at the core, bright arriving at the hub), not just
-  // motion over time.
-  const STREAM_N = 200;
-  const streams = cores.map((c) => {
-    const pos = new Float32Array(STREAM_N * 3), pgcol = new Float32Array(STREAM_N * 3), pg = new THREE.BufferGeometry();
-    pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    pg.setAttribute('color', new THREE.BufferAttribute(pgcol, 3));
-    const mat = new THREE.PointsMaterial({ size: 2.4, transparent: true, opacity: 0.9, vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false });
-    const pts = new THREE.Points(pg, mat);
-    scene.add(pts);
-    const phase = Array.from({ length: STREAM_N }, () => Math.random());
-    const dim = new THREE.Color(c.col).multiplyScalar(0.5), bright = new THREE.Color(c.col).multiplyScalar(2.2);
-    return { pos, pgcol, pg, phase, mat, dim, bright };
-  });
-
-  // Beyond the 3 hero cores, up to 5 more served models (8 total — the model-tab cap in
-  // refresh()) render as smaller satellite objects instead of being silently dropped from the
-  // hero scene. A simpler treatment (one wireframe core, one ring, one glow point; no full
-  // ring stack, no particle orbit, no hub stream) keeps 8 concurrent objects affordable, and
-  // reads as clearly secondary to the 3 heroes rather than competing with them.
-  const SAT_COLS = 5;
-  const satellites = Array.from({ length: SAT_COLS }, (_, i) => {
-    const g = new THREE.Group();
-    g.position.set((i - (SAT_COLS - 1) / 2) * 46, -12, -66);
-    g.visible = false;
-    scene.add(g);
-    const col = new THREE.Color(PALETTE[(i + CORE_COLS) % PALETTE.length]);
-    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(3.4, 0), new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true }));
-    g.add(core);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(5.2, 0.18, 6, 32), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.75 }));
-    ring.rotation.x = Math.PI / 2.3;
-    g.add(ring);
-    const glow = new THREE.Mesh(new THREE.SphereGeometry(1.6, 12, 12), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
-    g.add(glow);
-    return { g, core, ring, glow, col, util: 0, up: false };
-  });
-
-  const resizeAt = (w, h) => { renderer.setSize(w, h, false); bloomFx.setSize(w, h); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); };
-  const ro = new ResizeObserver(() => { fitCanvas(reactor); resizeAt(reactor.width, reactor.height); });
-  ro.observe(reactor.parentElement);
-  fitCanvas(reactor); resizeAt(reactor.width, reactor.height);
-
-  function sync(list) {
-    cores.forEach((c, i) => {
-      const m = list[i];
-      c.name = m?.n?.split('/').pop() ?? '';
-      c.up = !!m?.up;
-      c.util = m ? clamp((m.tok || 0) * 3 + (m.up ? 25 : 0), 5, 99) : 0;
-    });
-    satellites.forEach((s, i) => {
-      const m = list[CORE_COLS + i];
-      s.g.visible = !!m;
-      s.up = !!m?.up;
-      s.util = m ? clamp((m.tok || 0) * 3 + (m.up ? 25 : 0), 5, 99) : 0;
-    });
-  }
-  function render(now) {
-    const t = RM ? 0 : now / 1000;
-    cam.position.x = Math.sin(t * 0.12) * 40;
-    cam.position.y = 30 + Math.sin(t * 0.08) * 14;
-    cam.lookAt(0, 4, 0);
-    hub.rotation.y += 0.006; hub.rotation.x += 0.003;
-    hubGlow.scale.setScalar(1 + Math.sin(t * 1.8) * 0.12);
-    cores.forEach((c, i) => {
-      const sp = 0.004 + c.util / 4000;
-      c.rings.forEach((rg, i2) => { rg.rotation.z += sp * (i2 % 2 ? -1 : 1) * (1 + i2 * 0.2); });
-      c.core.rotation.y += sp * 3; c.core.rotation.x += sp;
-      c.ph.forEach((p, k) => {
-        p.a += sp * p.s * 3;
-        c.pos[k * 3] = Math.cos(p.a) * p.r;
-        c.pos[k * 3 + 1] = p.y + Math.sin(t * 2 + k) * 1.5;
-        c.pos[k * 3 + 2] = Math.sin(p.a) * p.r;
-      });
-      c.pg.attributes.position.needsUpdate = true;
-      const targetH = c.up ? c.util * 0.5 : 2;
-      c.glow.scale.y += (targetH - c.glow.scale.y) * 0.05;
-      c.glow.position.y = -26 + c.glow.scale.y / 2;
-      c.glow.material.opacity = c.up ? 0.35 : 0.08;
-
-      // Idle/down cores stream nothing (no fabricated traffic toward the hub).
-      const stream = streams[i];
-      const speed = c.up ? 0.15 + c.util / 220 : 0;
-      const from = c.g.position, to = hub.position;
-      stream.phase.forEach((ph0, k) => {
-        const ph = c.up ? (ph0 + t * speed) % 1 : ph0;
-        stream.pos[k * 3] = from.x + (to.x - from.x) * ph;
-        stream.pos[k * 3 + 1] = from.y + (to.y - from.y) * ph + Math.sin(ph * Math.PI) * 6;
-        stream.pos[k * 3 + 2] = from.z + (to.z - from.z) * ph;
-        // Colour ramps dim->bright with ph (0 at the core, 1 at the hub) so the flow direction
-        // reads from a single still frame, not just from motion between frames.
-        stream.dim.clone().lerp(stream.bright, ph).toArray(stream.pgcol, k * 3);
-      });
-      stream.pg.attributes.position.needsUpdate = true;
-      stream.pg.attributes.color.needsUpdate = true;
-      stream.mat.opacity = c.up ? 0.9 : 0.06;
-    });
-    satellites.forEach((s) => {
-      if (!s.g.visible) return;
-      const sp = 0.006 + s.util / 3000;
-      s.core.rotation.y += sp * 3; s.core.rotation.x += sp;
-      s.ring.rotation.z += sp * 2;
-      s.ring.material.color.set(s.up ? s.col : 0x3a2440);
-      s.glow.material.opacity = s.up ? 0.5 : 0.12;
-    });
-    // Adaptive quality (site/lib/stage.js): bloom is the second thing dropped under sustained
-    // frame-time pressure, after the DPR cap — a plain renderer.render() skips the whole
-    // EffectComposer pass.
-    if (adaptiveBloomOn()) bloomFx.render(); else renderer.render(scene, cam);
-  }
-  return { render, sync, renderer, scene, ro, dispose: () => { bloomFx.dispose(); ro.disconnect(); } };
-}
 function drawReactor(now) {
   const dpr = fitCanvas(reactor);
   const c = reactor.getContext('2d'), W = reactor.width, H = reactor.height, cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.3;
@@ -493,16 +327,47 @@ function drawReactor(now) {
 const forced = new URLSearchParams(location.search).get('gl');
 let core3d = null;
 let drawScene = drawReactor;
+let gpuAttempts = 0;
+// A canvas that ever held a WebGPU/WebGL context can't hand out a 2D one, so every rebuild or
+// fallback starts from a fresh copy of the element.
+function freshReactor() {
+  const next = reactor.cloneNode(false);
+  reactor.replaceWith(next);
+  reactor = next;
+}
+function use2D(reason) {
+  if (reason) console.warn('mc3: 2D reactor', reason);
+  core3d?.dispose();
+  core3d = null;
+  freshReactor();
+  drawScene = drawReactor;
+}
+async function startGpuCore() {
+  gpuAttempts += 1;
+  drawScene = () => {};
+  try {
+    const { buildGpuCore } = await import('/mc3/core3d.js');
+    const core = await buildGpuCore(reactor, {
+      palette: PALETTE,
+      reducedMotion: RM,
+      onLost: () => {
+        core.dispose();
+        if (core3d === core) core3d = null;
+        freshReactor();
+        if (gpuAttempts < 3) startGpuCore(); else use2D('GPU device lost repeatedly');
+      },
+    });
+    if (core3d && core3d !== core) core3d.dispose();
+    core3d = core;
+    core.sync(model.models.length ? model.models : reactorList, model.tokensToday);
+    drawScene = (now) => core.render(now);
+  } catch (e) {
+    use2D(e);
+  }
+}
 if (forced === '3d' || (forced !== '2d' && hardwareGL())) {
-  core3d = build3DCore();
-  drawScene = (now) => core3d.render(now);
-  onContextLoss(reactor, () => {
-    core3d.dispose();
-    disposeThreeScene(core3d.renderer, core3d.scene);
-    core3d = build3DCore();
-    core3d.sync(model.models);
-  });
-  onDispose(() => { core3d.dispose(); disposeThreeScene(core3d.renderer, core3d.scene); });
+  startGpuCore();
+  onDispose(() => core3d?.dispose());
 }
 
 const tickClock = () => { const d = new Date(); $('clock').innerHTML = `${d.toTimeString().slice(0, 8)}<small>${d.toDateString().toUpperCase()}</small>`; };
@@ -515,6 +380,9 @@ onDispose(() => clearInterval(clockId));
 // skipped as broken on the live wall.
 loop(0, (now) => drawScene(now)); // uncapped: native refresh rate, the display has headroom to spare
 await refresh().catch((e) => console.warn('refresh', e));
+await pollFeed();
+const feedId = setInterval(pollFeed, FEED_POLL_MS);
+onDispose(() => clearInterval(feedId));
 const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
 onDispose(() => clearInterval(refreshId));
 // Nightly reload keeps a 24/7 kiosk's memory flat.
