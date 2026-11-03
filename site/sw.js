@@ -6,8 +6,11 @@ const CACHE_NAME = 'wall-shell';
 const MANIFEST_KEY = '/__sw_shell_manifest__'; // cache-internal keys, never fetched over the network
 const VERSION_KEY = '/__sw_shell_version__';
 // config.json isn't referenced in index.html's markup (rotator.js fetches it at runtime) so it
-// can't be discovered by scanning the page; everything else is derived below.
-const STATIC_SHELL_URLS = ['/', '/config.json'];
+// can't be discovered by scanning the page; everything else is derived below. The LEXICON
+// slide's document (/mc6/) joins the list the same way: precached at install, refreshed
+// network-first — a slide iframe's own navigation still passes through untouched (see the
+// fetch handler), so this only ever serves the page to non-navigate requests for that path.
+const STATIC_SHELL_URLS = ['/', '/config.json', '/mc6/'];
 
 // The rotator's actual shell asset list, straight from the served index.html — every same-origin
 // script/link it references — rather than a hand-maintained duplicate that silently drifts out of

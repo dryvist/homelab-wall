@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mission Control · Lexicon</title>
+<link rel="stylesheet" href="/lib/wall.css">
+<link rel="stylesheet" href="/mc6/mc6.css">
+</head>
+<body>
+<div id="stage" class="stage">
+  <header>
+    <div class="brand">LEXICON <span class="sl">//</span> SOURCES<small id="subtitle">—</small></div>
+    <div class="clock num" id="clock">--:--:--<small>--</small></div>
+  </header>
+
+  <section class="panel panel-lexicon" id="lexicon" data-panel="lexicon" data-state="pending">
+    <h2>Word clouds <span id="lexsum">—</span><span data-panel-message></span></h2>
+    <div id="hero">
+      <canvas id="cloudhero"></canvas>
+      <div id="herolabel"></div>
+    </div>
+    <div id="strip"></div>
+  </section>
+</div>
+<script type="module" src="/mc6/mc6.js"></script>
+</body>
+</html>
