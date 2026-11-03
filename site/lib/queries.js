@@ -33,7 +33,7 @@ export const Q = {
   nodeLoad: `node_load1{${NODE}}`,
   nodeTemp: `max by (instance) (node_hwmon_temp_celsius{${NODE}})`,
   nodeUptime: `time() - node_boot_time_seconds{${NODE}}`,
-  // Busy % per accelerator, a 5m-average recording rule. Its only label is `accelerator` (no
+  // Busy % per accelerator, averaged over 5m. Its only label is `accelerator` (no
   // instance), so no reading maps to one node — mc1.js's GPU gauge shows the busiest one.
   acceleratorBusy: 'accelerator:busy_percent:avg5m',
   fsSize: `node_filesystem_size_bytes{${FS}}`,
