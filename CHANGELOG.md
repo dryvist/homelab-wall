@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/dryvist/homelab-wall/compare/v0.11.0...v0.12.0) (2026-11-03)
+
+
+### Features
+
+* **mc3:** WebGPU + TSL particle core with live request feed ([#108](https://github.com/dryvist/homelab-wall/issues/108)) ([a0b729a](https://github.com/dryvist/homelab-wall/commit/a0b729a80f89b8ac3c46855121e387eea9b73c4b))
+
 ## [0.11.0](https://github.com/dryvist/homelab-wall/compare/v0.10.3...v0.11.0) (2026-11-03)
 
 
