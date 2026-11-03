@@ -41,8 +41,9 @@ for (const mode of ['2d', '3d'] as const) {
     // stage.js signalReady is once-guarded, so exactly one ready per load — the rotator contract.
     // Forced 3D on CI runs WebGPURenderer's WebGL2 backend on a software rasterizer, where the
     // first frame (shader builds plus the particle init dispatch) takes far longer than on the
-    // wall's GPU.
-    await expect.poll(() => page.evaluate(() => (window as { wallReady?: number }).wallReady), { timeout: mode === '3d' ? 45_000 : 5_000 }).toBe(1);
+    // wall's GPU. The 2D wait allows a cold first page load on a shared CI runner; the rotator
+    // itself still accepts a late 'ready' (site/rotator/rotator.js).
+    await expect.poll(() => page.evaluate(() => (window as { wallReady?: number }).wallReady), { timeout: mode === '3d' ? 45_000 : 15_000 }).toBe(1);
 
     await expect(page.locator('#reqfeed')).toHaveAttribute('data-feed', 'live');
     await expect(page.locator('#reqfeed .cfrow')).toHaveCount(recentRows.length);

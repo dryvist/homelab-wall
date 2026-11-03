@@ -22,6 +22,10 @@ const wallUrl = process.env.WALL_URL;
 for (const pageSpec of PAGES) {
   for (const mode of MODES) {
     test(`${pageSpec.id} ${mode} panels honor the data contract`, async ({ page }) => {
+      // mc3's forced 3D core runs WebGPURenderer's WebGL2 backend on CI's software rasterizer,
+      // where the first painted frame takes far longer than on the wall's GPU.
+      const slowFirstFrame = pageSpec.id === 'mc3' && mode === '3d';
+      if (slowFirstFrame) test.slow();
       const faults: string[] = [];
       page.on('pageerror', (error) => faults.push(error.message));
       page.on('console', (message) => {
@@ -92,7 +96,7 @@ for (const pageSpec of PAGES) {
 
       await expect.poll(() => page.locator('canvas').evaluateAll((canvases) => Array.from(canvases).every((canvas) =>
         canvas instanceof HTMLCanvasElement && canvas.toDataURL().length > 200,
-      ))).toBe(true);
+      )), { timeout: slowFirstFrame ? 45_000 : 5_000 }).toBe(true);
 
       const overlaps = await panels.evaluateAll((elements) => (elements as HTMLElement[]).flatMap((element, index) => {
         const a = { left: element.offsetLeft, top: element.offsetTop, right: element.offsetLeft + element.offsetWidth, bottom: element.offsetTop + element.offsetHeight };
