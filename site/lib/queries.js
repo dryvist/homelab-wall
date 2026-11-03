@@ -33,8 +33,9 @@ export const Q = {
   nodeLoad: `node_load1{${NODE}}`,
   nodeTemp: `max by (instance) (node_hwmon_temp_celsius{${NODE}})`,
   nodeUptime: `time() - node_boot_time_seconds{${NODE}}`,
-  // Busy % per accelerator, averaged over 5m. Its only label is `accelerator` (no
-  // instance), so no reading maps to one node — mc1.js's GPU gauge shows the busiest one.
+  // Busy % per accelerator (0-100), averaged over 5m. Its only label is `accelerator` (no
+  // instance), so no reading maps to one node: mc1.js's GPU gauge shows the busiest one and
+  // mc3's GPU tile shows their mean.
   acceleratorBusy: 'accelerator:busy_percent:avg5m',
   fsSize: `node_filesystem_size_bytes{${FS}}`,
   fsAvail: `node_filesystem_avail_bytes{${FS}}`,
@@ -51,7 +52,4 @@ export const Q = {
   // true percentile isn't derivable from this feed.
   llmQueueSeconds: 'sum by (model) (increase(litellm_request_queue_time_seconds_sum[5m])) / sum by (model) (increase(litellm_request_queue_time_seconds_count[5m]))',
   llmLatencySeconds: 'sum by (model) (increase(litellm_llm_api_latency_metric_sum[5m])) / sum by (model) (increase(litellm_llm_api_latency_metric_count[5m]))',
-  // Accelerator busy percentage (0-100), one series per accelerator; mc3's GPU tile
-  // shows their mean.
-  acceleratorBusy: 'accelerator:busy_percent:avg5m',
 };
