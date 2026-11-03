@@ -38,7 +38,7 @@ async function loginIfPresented(page: Page): Promise<LoginResult> {
   await usernameField.fill(wallUser);
   await page.getByLabel(/password/i).first().fill(wallPassword);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  const leftLoginPage = await usernameField.waitFor({ state: 'detached', timeout: SETTLE_MS }).then(() => true, () => false);
+  const leftLoginPage = await usernameField.waitFor({ state: 'hidden', timeout: SETTLE_MS }).then(() => true, () => false);
   if (!leftLoginPage) return 'login-rejected';
   await page.waitForLoadState('networkidle', { timeout: SETTLE_MS }).catch(() => {});
   return 'logged-in';
