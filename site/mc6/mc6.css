@@ -1,0 +1,57 @@
+/* MC6 · Lexicon — fluid full-viewport grid, single column: header, then one panel holding
+   the hero cloud (~70% of the stage) and the per-source strip below it. */
+/* Solid black stage (operator's standing dark-mode rule); cyan is this slide's accent —
+   borders, text and glow — never a background wash. */
+#stage{position:static;inset:auto;transform:none;width:100vw;height:100dvh;box-sizing:border-box;
+  display:grid;grid-template-rows:auto minmax(0,1fr);
+  gap:clamp(10px,1.2vmin,18px);padding:clamp(10px,1.6vmin,20px);
+  background:#000}
+
+.panel{position:relative;min-width:0;min-height:0;overflow:hidden;
+  clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
+.panel-lexicon{background:rgba(0,0,0,.55);border:1px solid rgba(62,230,255,.35);
+  box-shadow:0 0 24px rgba(62,230,255,.12);
+  display:grid;grid-template-rows:auto minmax(0,1fr) auto;
+  gap:clamp(8px,1.1vmin,16px);padding-bottom:clamp(8px,1.1vmin,14px)}
+.panel>h2{margin:0;padding:clamp(6px,.9vmin,10px) clamp(10px,1.4vmin,16px) 6px;
+  font:600 clamp(11px,1.1vmin,13px)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);
+  display:flex;justify-content:space-between;border-bottom:1px solid var(--grid)}
+.panel>h2 span{color:var(--dim);letter-spacing:.1em}
+.panel [data-panel-message]{color:var(--amber);font:600 9px/1 var(--mono);letter-spacing:.1em;white-space:nowrap}
+
+header{grid-row:1;display:flex;align-items:center;gap:clamp(16px,2.4vmin,30px)}
+.brand{font:700 clamp(18px,2.6vmin,30px)/1 var(--disp);letter-spacing:.14em;color:#fff;
+  text-shadow:0 0 18px rgba(62,230,255,.55)}
+.brand .sl{color:var(--cyan)}
+.brand small{display:block;font:400 clamp(9px,1vmin,11px)/1.6 var(--mono);letter-spacing:.3em;color:var(--dim)}
+.clock{margin-left:auto;text-align:right;font:600 clamp(18px,2.8vmin,34px)/1 var(--disp);color:#fff}
+.clock small{display:block;font:400 clamp(9px,1vmin,11px)/1.6 var(--mono);color:var(--dim);letter-spacing:.2em}
+
+/* Hero cloud fills the panel's middle track; the canvas is sized from the #hero box
+   (site/lib/stage.js rule: never read the canvas's own rendered size back into its
+   backing store — that self-reference grew panels without bound on WebKit). */
+#hero{position:relative;min-height:0;min-width:0}
+#cloudhero{position:absolute;inset:0;width:100%;height:100%;display:block}
+#herolabel{position:absolute;top:clamp(4px,.6vmin,10px);left:clamp(10px,1.4vmin,18px);
+  font:700 clamp(14px,1.8vmin,24px)/1 var(--disp);letter-spacing:.3em;
+  text-shadow:0 0 16px currentColor;pointer-events:none}
+
+/* Strip: one tile per source, always all visible; column count is set inline per render
+   (mc6.js) to an explicit repeat(N,minmax(0,1fr)) so N sources never orphan a tile onto a
+   second row. */
+#strip{display:grid;gap:clamp(6px,.8vmin,10px);
+  padding:0 clamp(10px,1.4vmin,16px);height:clamp(96px,15vh,160px)}
+.tile{position:relative;min-width:0;min-height:0;overflow:hidden;
+  background:rgba(4,10,16,.6);border:1px solid var(--grid);opacity:.72;
+  clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
+.tile canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.tile[data-active]{opacity:1;border-color:var(--c);box-shadow:0 0 14px -3px var(--c)}
+.tlabel{position:absolute;top:4px;left:8px;z-index:1;
+  font:600 clamp(9px,.95vmin,12px)/1 var(--disp);letter-spacing:.24em;color:var(--c)}
+.tile.nofeed{display:flex;align-items:center;justify-content:center}
+.tfeed{font:600 clamp(9px,.95vmin,12px)/1 var(--mono);letter-spacing:.3em;color:var(--dim)}
+
+/* Held-over last-good data after a failed poll: the existing stale indicator style
+   (mc1's .node.stale) — dim the content and mark the panel's edge amber. */
+#lexicon.stale{border-left:3px solid var(--amber)}
+#lexicon.stale #hero,#lexicon.stale #strip{opacity:.45}

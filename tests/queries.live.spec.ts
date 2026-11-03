@@ -14,3 +14,13 @@ test('live Prometheus queries return series unless explicitly pending', async ({
     if (!expected.has(name)) expect(body.data?.result?.length, name).toBeGreaterThan(0);
   }
 });
+
+// mc6's own feed: ClickHouse FORMAT JSON on the same origin, independent of /api/prom.
+test('live /api/words returns rows for the lexicon', async ({ request }) => {
+  test.skip(!wallUrl, 'WALL_URL enables the live suite');
+  const response = await request.get(`${wallUrl}/api/words`);
+  expect(response.ok(), 'words').toBe(true);
+  const body = await response.json() as { readonly data?: readonly unknown[] };
+  expect(Array.isArray(body.data), 'words').toBe(true);
+  expect(body.data?.length, 'words').toBeGreaterThan(0);
+});
