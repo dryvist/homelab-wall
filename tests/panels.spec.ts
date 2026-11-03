@@ -317,7 +317,7 @@ async function recordGpuGlyphs(page: Page) {
 }
 
 // Q.acceleratorBusy (site/lib/queries.js) carries no per-node label: every card's GPU gauge shows
-// the busiest accelerator (the fixture's 64 over its 37) as a real reading, and the nodes panel is
+// the busiest accelerator (the fixture's 64 over its 36) as a real reading, and the nodes panel is
 // 'ok'. The old stand-in was a per-card sine wave, so four identical settled values rule it out.
 test('mc1 GPU gauges show the busiest accelerator reading, never a stand-in', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises the fixture-shaped accelerator response only');

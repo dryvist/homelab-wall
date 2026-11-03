@@ -62,8 +62,9 @@ export function answer(q: string): unknown[] {
   if (q.includes('node_load1')) return vec(NODES.map((n, i) => [inst(n), [9.4, 3.1, 14.2][i]]));
   if (q.includes('hwmon')) return vec(NODES.map((n, i) => [inst(n), [44, 57, 60][i]]));
   if (q.includes('boot_time')) return vec(NODES.map((n, i) => [inst(n), (i + 1) * 20 * 86400]));
-  // Two accelerators: mc1's GPU gauges must show the busier one (64), never the other or a blend.
-  if (q.includes('accelerator:busy_percent')) return vec([[{ accelerator: 'accel-0' }, 37], [{ accelerator: 'accel-1' }, 64]]);
+  // Two accelerators: mc1's GPU gauges must show the busier one (64), never the other or a blend;
+  // mc3's GPU tile shows their mean (36/64 -> 50%).
+  if (q.includes('accelerator:busy_percent')) return vec([[{ accelerator: 'accel-0' }, 36], [{ accelerator: 'accel-1' }, 64]]);
   // D3: a shared NFS mount — same device + mountpoint reported by two nodes — must be shown
   // once, not once per node, and must not double-count in the RAW total.
   const SHARED_DEVICE = { device: 'nas:/export/shared', mountpoint: '/mnt/pve/shared-nfs', fstype: 'nfs4' };
@@ -92,7 +93,6 @@ export function answer(q: string): unknown[] {
   if (q.includes('litellm_request_queue_time_seconds_sum')) return vec([[{ model: 'model-large' }, 4.5]]);
   // model-mini: a >60s average (the reported bug's own "avg 203361ms") — proves the minutes range.
   if (q.includes('litellm_llm_api_latency_metric_sum')) return vec([[{ model: 'model-large' }, 0.842], [{ model: 'model-mini' }, 203.361]]);
-  if (q.includes('accelerator:busy_percent')) return vec([[{ accelerator: 'acc-a' }, 60], [{ accelerator: 'acc-b' }, 30]]);
   return [];
 }
 

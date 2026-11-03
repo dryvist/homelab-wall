@@ -51,9 +51,9 @@ for (const mode of ['2d', '3d'] as const) {
     await expect(page.locator('#reqfeed')).toContainText('2.5k ch');
     await expect(page.locator('#reqfeed')).not.toContainText('tok');
 
-    // The GPU tile shows the fixture's accelerator:busy_percent:avg5m mean (60/30 -> 45%), not a
+    // The GPU tile shows the fixture's accelerator:busy_percent:avg5m mean (36/64 -> 50%), not a
     // stand-in derivation, and carries no stand-in marker.
-    await expect(page.locator('#cxGpu')).toHaveText('45%');
+    await expect(page.locator('#cxGpu')).toHaveText('50%');
     await expect(page.locator('#cxGpu')).not.toHaveAttribute('data-source', 'stand-in');
 
     expect(faults).toEqual([]);
