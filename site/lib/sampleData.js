@@ -55,8 +55,9 @@ export const SAMPLE_ALLOWED = [
 
 export const SAMPLE_THREAT_STATS = { blockedToday: 482, uniqueSources: 137, topSource: 'edge-scanner' };
 
-// No GPU exporter exists yet — a deterministic per-node base the node's own gauge (mc1.js
-// drawNodes) animates around, standing in for the single flat "NO GPU" gauge it used to show.
+// A deterministic per-gauge base a node card's CPU/MEM/LOAD gauge (mc1.js drawNodes) animates
+// around when that one reading is missing. The GPU gauge no longer uses it: it draws the real
+// accelerator reading (Q.acceleratorBusy) or the plain no-data gauge.
 export const sampleGpuBase = (i) => 18 + (i % 3) * 14;
 
 export const SAMPLE_ACQ_CARDS = [

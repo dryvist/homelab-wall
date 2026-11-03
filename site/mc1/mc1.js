@@ -28,7 +28,7 @@ const appIndex = Object.fromEntries(apps.map((a) => [a.n, a]));
 // Grid-drawing order only (drawHex): same order as `apps`, with `null` gap cells re-inserted —
 // scoring/summary code below always uses `apps`/`appIndex`, never this.
 const hexCells = hexLayout.map((n) => (n === null ? null : appIndex[n]));
-const model = { nodes: [], storage: [], llm: [], llmAll: [], vlans: [], uptime: null, updated: 0 };
+const model = { nodes: [], storage: [], llm: [], llmAll: [], vlans: [], uptime: null, gpu: null, updated: 0 };
 // D-mc1-2: the node card list must be driven by which nodes are CONFIGURED, never by which
 // series a single poll happened to return — a node that drops out of Prometheus for one poll
 // (a scrape gap, a restart) must keep its card, not vanish from it.
@@ -50,6 +50,7 @@ async function refresh() {
     load: () => query(Q.nodeLoad),
     temp: () => query(Q.nodeTemp),
     upt: () => query(Q.nodeUptime),
+    gpu: () => query(Q.acceleratorBusy),
     hist: () => range(Q.nodeCpu, 30, 30),
     fsSize: () => query(Q.fsSize),
     fsAvail: () => query(Q.fsAvail),
@@ -71,6 +72,17 @@ async function refresh() {
     for (const a of apps) if (!seen.has(a.n)) a.s = null;
   }
   model.uptime = r.uptime?.[0]?.value ?? null;
+
+  // Q.acceleratorBusy is one row per `accelerator` label and carries no instance — not per-node
+  // data, so every node card's GPU gauge shows the same busiest-accelerator reading. Null-vs-empty
+  // like every other query here: a failed query keeps the last reading and is 'error'; an empty
+  // one leaves model.gpu null, which drawNodes renders as the plain no-data gauge, never a
+  // stand-in.
+  model.gpuFailed = r.gpu === null;
+  if (r.gpu) {
+    const busy = r.gpu.map((row) => row.value).filter(Number.isFinite);
+    model.gpu = busy.length ? Math.max(...busy) : null;
+  }
 
   if (r.cpu) {
     const [cores, mem, memT, load, temp, upt] = [r.cores, r.mem, r.memTotal, r.load, r.temp, r.upt].map(byHost);
@@ -244,12 +256,16 @@ function spark(id, h) {
   c.fillStyle = '#fff'; c.beginPath(); c.arc(W - 4, H - clamp(h[h.length - 1], 0, 100) / 100 * H, 4, 0, 7); c.fill();
 }
 function drawNodes() {
+  // One fleet-wide accelerator reading (see refresh), eased like the per-node values below. null
+  // means the query answered with no accelerator series: the plain no-data gauge ('—', empty
+  // track), never an animated stand-in.
+  model.gpuD = model.gpu == null ? null : lerp(model.gpuD ?? 0, model.gpu, 0.15);
   model.nodes.forEach((n, i) => {
     // A node with no exporter at all (n.pending — an extraNode never wired up), OR a real node
     // individually missing one metric (a per-metric exporter gap among many nodes), has no
     // cpu/mem/load reading for that gauge — a plausible animated stand-in replaces the '—' every
-    // gauge used to show, same as the GPU gauge below. Never written into `n`, so it's never
-    // mistaken for a reading; the gauge canvas itself carries the invisible stand-in marker.
+    // gauge used to show. Never written into `n`, so it's never mistaken for a reading; the
+    // gauge canvas itself carries the invisible stand-in marker.
     const stand = (offset) => sampleGpuBase(i + offset) + Math.sin(performance.now() / 4000 + i + offset) * 6;
     for (const k of ['cpu', 'mem', 'load']) n.d[k] = n[k] == null ? null : lerp(n.d[k] ?? 0, n[k], 0.15);
     const d = n.d;
@@ -258,10 +274,7 @@ function drawNodes() {
     gauge(`g${i}0`, cpu, 100, 'CPU', '%', hue(100 - cpu), cpuStandIn);
     gauge(`g${i}1`, mem, 100, 'MEM', '%', hue(100 - mem), memStandIn);
     gauge(`g${i}2`, load, n.cores || 1, 'LOAD', '', hue(100 - load / (n.cores || 1) * 100), loadStandIn);
-    // No GPU exporter exists yet on any node — a plausible animated value, standing in for the
-    // flat gauge this used to show.
-    const gpu = stand(3);
-    gauge(`g${i}3`, gpu, 100, 'GPU', '%', hue(100 - gpu), true);
+    gauge(`g${i}3`, model.gpuD, 100, 'GPU', '%', hue(100 - (model.gpuD ?? 0)), false);
     spark(`sp${i}`, n.hist || []);
     const meta = n.pending ? (n.role || 'node')
       : n.stale
@@ -562,7 +575,14 @@ function renderStatic() {
   const scored = apps.some((app) => app.s != null);
   appsSample = !scored;
   buildNodes(); renderHeader(); renderStorage(); renderLlm(); updateLabels(); renderVlans();
-  setState($('nodes'), 'pending', 'NO GPU EXPORTER');
+  // The node cards' own exporter data never pends the panel; only the accelerator reading does
+  // (the GPU gauge): a failed query is 'error', an empty one 'pending' (no accelerator series
+  // yet), a real reading 'ok'. data-gpu-busy is a test hook only (no visible marker): the value
+  // the GPU gauges draw, absent while there is none.
+  setState($('nodes'), model.gpuFailed ? 'error' : model.gpu != null ? 'ok' : 'pending',
+    model.gpuFailed ? 'GPU QUERY FAILED' : model.gpu != null ? '' : 'GPU METRICS PENDING');
+  if (model.gpu == null) delete $('nodes').dataset.gpuBusy;
+  else $('nodes').dataset.gpuBusy = String(Math.round(model.gpu));
   // The topology graph itself is real (config.groups/live app scores) — the panel stays 'ok' even
   // though its WAN overlay is a stand-in (no WAN exporter exists yet): a stand-in sub-element
   // never pends or badges the whole panel when the rest of it is live.

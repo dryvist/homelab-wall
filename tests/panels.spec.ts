@@ -49,12 +49,8 @@ for (const pageSpec of PAGES) {
         if (allowed.has(id!)) {
           await expect(panel).toHaveAttribute('data-state', 'pending');
           // A permanently-pending panel is marked data-source stand-in (invisible) and still has
-          // real-looking content, never a blank panel — no visible marker distinguishes it. mc1's
-          // "nodes" panel is the one exception: it's pending for an unrelated reason (no GPU
-          // exporter) while showing real per-node data, so it stays data-source 'live'.
-          if (!(pageSpec.id === 'mc1' && id === 'nodes')) {
-            await expect(panel).toHaveAttribute('data-source', 'stand-in');
-          }
+          // real-looking content, never a blank panel — no visible marker distinguishes it.
+          await expect(panel).toHaveAttribute('data-source', 'stand-in');
           await expect.poll(() => panel.innerText()).not.toBe('');
         } else {
           await expect(panel).toHaveAttribute('data-state', 'ok');
@@ -251,8 +247,6 @@ test('a no-data apps panel renders sample scores marked only by data-source, nev
 // rows this poll) shows stand-in content: no visible badge, no "pending" text — a machine-only
 // data-source="stand-in" marker (site/lib/stage.js setStandIn) is the only trace, so the panel
 // contract test above already covers its visible state (it must be 'ok', like a live panel).
-// mc1's "nodes" panel is deliberately excluded: it is forced 'pending' for an unrelated reason
-// (no GPU exporter) while still showing real per-node data.
 const STAND_IN_PANELS: Record<string, string[]> = {
   mc1: ['firewall'], // mc1's topology panel is a MIX (real graph + a stand-in #wan sub-element)
   mc2: ['threat', 'blocked'],
@@ -272,7 +266,7 @@ for (const [pageId, panelIds] of Object.entries(STAND_IN_PANELS)) {
       await expect(panel.locator('[data-sample-badge]'), `${pageId} [data-panel="${panelId}"] must have no visible badge`).toHaveCount(0);
       await expect(panel, `${pageId} [data-panel="${panelId}"] must have no pending text`).not.toContainText(/pending/i);
     }
-    // mc1's "nodes" panel: pending for an unrelated reason, has real data, never a stand-in.
+    // mc1's "nodes" panel is live (node exporter plus accelerator data), never a stand-in.
     if (pageId === 'mc1') {
       await expect(page.locator('[data-panel="nodes"]')).not.toHaveAttribute('data-source', 'stand-in');
       // The topology panel itself stays 'ok'/un-flagged (it's a real graph); only its WAN
@@ -294,6 +288,71 @@ test('mc1 VLAN readout shows real per-VLAN rates and drops the SAMPLE DATA badge
   await expect(vlans).toContainText('VLAN 10');
   await expect(vlans).toContainText('4.2');
   await expect(vlans.locator('[data-sample-badge]')).toHaveCount(0);
+});
+
+// Q.acceleratorBusy (site/lib/queries.js, the accelerator:busy_percent:avg5m recording rule) drives
+// every node card's GPU gauge with one fleet-wide reading: the BUSIEST accelerator — the fixture
+// answers two rows, 21 and 63 — never the first row or an average. The glyph itself is canvas
+// pixels, so the value is read from the machine-only data-gpu-busy hook mc1.js renderStatic sets
+// alongside it; the nodes panel is a live 'ok' panel and no GPU gauge canvas carries the stand-in
+// marker an animated sample value used to.
+test('mc1 GPU gauge shows the busiest accelerator and the nodes panel is live', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped accelerator response only');
+  await mockFeeds(page);
+  await page.goto('/mc1/?gl=2d');
+  const nodes = page.locator('[data-panel="nodes"]');
+  await expect(nodes).toHaveAttribute('data-state', 'ok');
+  await expect(nodes).toHaveAttribute('data-gpu-busy', '63');
+  // Each node card holds four gauge canvases then a sparkline; the fourth canvas is the GPU gauge.
+  const gpuGauges = page.locator('#nodelist .node canvas:nth-of-type(4)');
+  await expect(gpuGauges).not.toHaveCount(0);
+  const count = await gpuGauges.count();
+  for (let i = 0; i < count; i += 1) {
+    await expect(gpuGauges.nth(i)).not.toHaveAttribute('data-source', 'stand-in');
+  }
+});
+
+// The accelerator query succeeding with ZERO rows (no accelerator series yet — distinct from a
+// failure) leaves the GPU gauge in the plain no-data style: the nodes panel is 'pending', the value
+// hook is absent, the gauge carries no stand-in marker, and — under reduced motion, which stops
+// the gauge's own decorative ticks — its canvas paints identical pixels frame after frame, which
+// the animated sample value it used to show never did.
+test.describe('mc1 GPU gauge with no accelerator series', () => {
+  test.use({ reducedMotion: 'reduce' });
+
+  test('renders the no-data gauge, never an animated stand-in', async ({ page }) => {
+    test.skip(!!wallUrl, 'forces an empty accelerator response against the fixture server only');
+    await mockFeeds(page, { emptyQuery: (q) => q.includes('accelerator:busy_percent') });
+    await page.goto('/mc1/?gl=2d');
+    // The apps panel flips to 'ok' from the same renderStatic() call that settles the nodes
+    // panel, so this is what proves the first refresh has actually landed.
+    await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
+    const nodes = page.locator('[data-panel="nodes"]');
+    await expect(nodes).toHaveAttribute('data-state', 'pending');
+    await expect(nodes).not.toHaveAttribute('data-gpu-busy');
+    await expect(nodes.locator('[data-panel-message]')).toHaveText('');
+    const gauge = page.locator('#g03');
+    await expect(gauge).not.toHaveAttribute('data-source', 'stand-in');
+    // The gauge paints its '—' and label in the vendored web fonts: wait for them so a font swap
+    // between the two frames can't masquerade as animation.
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    const frame = () => gauge.evaluate((c) => (c as HTMLCanvasElement).toDataURL());
+    const before = await frame();
+    await page.waitForTimeout(1500); // several ticks of the ~10Hz drawNodes() repaint
+    expect(await frame(), 'a no-data GPU gauge must not animate').toBe(before);
+  });
+});
+
+// A failed accelerator query (HTTP 500 — settle() -> null) is an explicit 'error' on the nodes
+// panel, never silently the same 'pending' an empty answer gets, and nothing about it is visible.
+test('a failed accelerator query marks the nodes panel error, not pending', async ({ page }) => {
+  test.skip(!!wallUrl, 'forces a query failure against the fixture server only');
+  await mockFeeds(page, { failQuery: (q) => q.includes('accelerator:busy_percent') });
+  await page.goto('/mc1/?gl=2d');
+  const nodes = page.locator('[data-panel="nodes"]');
+  await expect(nodes).toHaveAttribute('data-state', 'error');
+  await expect(nodes).not.toHaveAttribute('data-gpu-busy');
+  await expect(nodes.locator('[data-panel-message]')).toHaveText('');
 });
 
 // A3: every panel meant to look live must visibly change within 10s even when the data source
@@ -376,9 +435,9 @@ test('the SAMPLE DATA badge never appears on a panel that has real data', async 
   await mockFeeds(page);
   await page.goto('/mc1/?gl=2d');
   await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
-  // Scoped to the panels that CAN have live data (nodes/topology/firewall are permanently
-  // pending on this page regardless of the fixture and are covered by the dedicated test above).
-  const liveCapable = page.locator('[data-panel="apps"], [data-panel="storage"], [data-panel="llm"]');
+  // Scoped to the panels that CAN have live data (firewall is a stand-in panel and topology
+  // carries a stand-in WAN sub-element; both are covered by the dedicated test above).
+  const liveCapable = page.locator('[data-panel="nodes"], [data-panel="apps"], [data-panel="storage"], [data-panel="llm"]');
   const count = await liveCapable.count();
   for (let i = 0; i < count; i += 1) {
     await expect(liveCapable.nth(i)).not.toHaveAttribute('data-source', 'stand-in');

@@ -33,6 +33,9 @@ export const Q = {
   nodeLoad: `node_load1{${NODE}}`,
   nodeTemp: `max by (instance) (node_hwmon_temp_celsius{${NODE}})`,
   nodeUptime: `time() - node_boot_time_seconds{${NODE}}`,
+  // Recording rule (prometheus-homelab-rules): per-accelerator busy %, 5m average, one row per
+  // `accelerator` label and no per-node instance — mc1's GPU gauge shows the busiest one.
+  acceleratorBusy: 'accelerator:busy_percent:avg5m',
   fsSize: `node_filesystem_size_bytes{${FS}}`,
   fsAvail: `node_filesystem_avail_bytes{${FS}}`,
   // Per-VLAN firewall event rate (apps PR #2214: a Cribl pipeline on the UniFi syslog source
