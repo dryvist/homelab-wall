@@ -50,14 +50,11 @@ for (const id of PAGES) {
     await page.goto(`/${id}/`);
     const panels = page.locator('[data-panel]');
     await expect(panels).not.toHaveCount(0);
-    // Web-first: every panel resolves out of 'pending' once the snapshot answers it (mc1's
-    // "nodes" panel stays pending for an unrelated reason — see panels.spec.ts — so it's excluded
-    // here rather than widening the wait).
+    // Web-first: every panel resolves out of 'pending' once the snapshot answers it — mc1's
+    // "nodes" panel included, via the snapshot's acceleratorBusy entry.
     const count = await panels.count();
     for (let i = 0; i < count; i += 1) {
-      const panel = panels.nth(i);
-      if (id === 'mc1' && (await panel.getAttribute('data-panel')) === 'nodes') continue;
-      await expect(panel).not.toHaveAttribute('data-state', 'pending');
+      await expect(panels.nth(i)).not.toHaveAttribute('data-state', 'pending');
     }
     expect(promCalls, 'snapshot mode must never call /api/prom').toEqual([]);
   });
