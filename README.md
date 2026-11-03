@@ -10,12 +10,12 @@ other dashboards.
 | --- | --- |
 | `site/mc1/` | Mission Control 1: nodes, storage, 3D topology, app health honeycomb, LLM status, firewall feeds |
 | `site/lib/` | Shared Prometheus client, PromQL (including the app health score), stage/GL helpers |
-| `site/vendor/`, `site/fonts/` | three.js and fonts, vendored so the page loads nothing from the internet |
+| `site/vendor/`, `site/fonts/` | three.js and fonts, vendored so no page loads code or fonts from the internet |
 | `tests/` | Playwright at 1920×1080 against fixture data |
 
 ## Runtime contract
 
-The page is static. It reads two things from its own origin:
+The pages are static. They read two things from their own origin:
 
 - `/config.json`: title, app groups, node roles, rendered by the deploying role.
 - Query results come from one of two sources, selected by `config.json`:
@@ -26,10 +26,21 @@ The page is static. It reads two things from its own origin:
     `site/lib/queries.js`'s `Q`. `scripts/gen-queries.mjs` regenerates the
     committed `site/queries.json` allow-list from `Q` whenever it changes.
 
-Sources that are not wired yet show a "pending" state rather than disappearing.
+MC5 also calls the public GitHub API (`https://api.github.com`) straight from
+the browser, with no token, for an organization's events, repositories and
+releases.
+
+A panel whose source is not wired yet, or whose query comes back empty or
+fails, shows plausible stand-in content instead of a placeholder. Nothing on
+screen marks it: a `data-source="stand-in"` attribute (plus `data-state`
+`empty`, `pending` or `error` for an empty or failed query) records it for
+automation only. MC1's GPU gauges are the exception: with no
+`accelerator:busy_percent:avg5m` reading they draw an empty gauge and the
+nodes panel is `pending` (`error` when the query fails), never a stand-in
+value.
 A node that drops out of a single poll shows a "stale" state instead of
 disappearing: it keeps its last known values, dims, and is labeled "STALE
-&lt;age&gt;", then "NO DATA since &lt;time&gt;" after about 5 minutes. The node set
+&lt;age&gt;", then "STALE since &lt;time&gt;" after about 5 minutes. The node set
 itself always comes from `config.json` (`nodeRoles` + `extraNodes`), never
 from whichever series a poll happens to return.
 On a software WebGL renderer the topology drops to a 2D mode; `?gl=3d` or
@@ -48,8 +59,12 @@ serves it as static files behind the gateway from `homelab-wall-feed`.
 
 ## Usage
 
-Open `/mc1/` full screen on a 1920×1080 display. The page refreshes its data
-every `refreshSeconds` (config, default 15) and reloads itself nightly.
+Open `/` full screen on a 1920×1080 display: the rotator cycles the Mission
+Control pages (or `config.json`'s `slides`). Each page refreshes its data every
+`refreshSeconds` (config, default 15). The rotator reloads the whole wall every
+`reloadMinutes` (config, default 60, clamped to 5–1440) once the origin is
+serving; a page opened on its own, such as `/mc1/`, reloads itself every 24
+hours.
 
 ## Develop
 

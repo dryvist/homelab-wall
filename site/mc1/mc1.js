@@ -28,7 +28,7 @@ const appIndex = Object.fromEntries(apps.map((a) => [a.n, a]));
 // Grid-drawing order only (drawHex): same order as `apps`, with `null` gap cells re-inserted —
 // scoring/summary code below always uses `apps`/`appIndex`, never this.
 const hexCells = hexLayout.map((n) => (n === null ? null : appIndex[n]));
-const model = { nodes: [], storage: [], llm: [], llmAll: [], vlans: [], uptime: null, updated: 0 };
+const model = { nodes: [], storage: [], llm: [], llmAll: [], vlans: [], uptime: null, gpu: null, updated: 0 };
 // D-mc1-2: the node card list must be driven by which nodes are CONFIGURED, never by which
 // series a single poll happened to return — a node that drops out of Prometheus for one poll
 // (a scrape gap, a restart) must keep its card, not vanish from it.
@@ -50,6 +50,7 @@ async function refresh() {
     load: () => query(Q.nodeLoad),
     temp: () => query(Q.nodeTemp),
     upt: () => query(Q.nodeUptime),
+    gpu: () => query(Q.acceleratorBusy),
     hist: () => range(Q.nodeCpu, 30, 30),
     fsSize: () => query(Q.fsSize),
     fsAvail: () => query(Q.fsAvail),
@@ -103,6 +104,13 @@ async function refresh() {
       if (!nodeOrder.includes(x.name) && !liveNow.has(x.name)) model.nodes.push({ name: x.name, role: x.role, pending: true, d: { cpu: 0, mem: 0, load: 0 } });
     }
   }
+
+  // Q.acceleratorBusy has no per-node label, so every card's GPU gauge shows the busiest
+  // accelerator. null (query failed, or no series) draws the gauge's no-data state, never a
+  // stand-in value.
+  model.gpuFailed = r.gpu === null;
+  const gpuBusy = (r.gpu || []).map((row) => row.value).filter(Number.isFinite);
+  model.gpu = gpuBusy.length ? clamp(Math.max(...gpuBusy), 0, 100) : null;
 
   model.storageFailed = r.fsSize === null || r.fsAvail === null;
   if (r.fsSize && r.fsAvail) {
@@ -203,6 +211,7 @@ function ring(el, score) {
 
 /* ---------------- nodes ---------------- */
 let nodeKey = '';
+let gpuShown = null;
 function buildNodes() {
   const key = model.nodes.map((n) => n.name).join();
   if (key === nodeKey) return;
@@ -244,12 +253,15 @@ function spark(id, h) {
   c.fillStyle = '#fff'; c.beginPath(); c.arc(W - 4, H - clamp(h[h.length - 1], 0, 100) / 100 * H, 4, 0, 7); c.fill();
 }
 function drawNodes() {
+  // One shared reading (see refresh) eased the same way each node's own cpu/mem/load is — kept
+  // outside any node object, since a pending extraNode's object is rebuilt on every refresh.
+  gpuShown = model.gpu == null ? null : lerp(gpuShown ?? 0, model.gpu, 0.15);
   model.nodes.forEach((n, i) => {
     // A node with no exporter at all (n.pending — an extraNode never wired up), OR a real node
     // individually missing one metric (a per-metric exporter gap among many nodes), has no
     // cpu/mem/load reading for that gauge — a plausible animated stand-in replaces the '—' every
-    // gauge used to show, same as the GPU gauge below. Never written into `n`, so it's never
-    // mistaken for a reading; the gauge canvas itself carries the invisible stand-in marker.
+    // gauge used to show. Never written into `n`, so it's never mistaken for a reading; the
+    // gauge canvas itself carries the invisible stand-in marker.
     const stand = (offset) => sampleGpuBase(i + offset) + Math.sin(performance.now() / 4000 + i + offset) * 6;
     for (const k of ['cpu', 'mem', 'load']) n.d[k] = n[k] == null ? null : lerp(n.d[k] ?? 0, n[k], 0.15);
     const d = n.d;
@@ -258,10 +270,7 @@ function drawNodes() {
     gauge(`g${i}0`, cpu, 100, 'CPU', '%', hue(100 - cpu), cpuStandIn);
     gauge(`g${i}1`, mem, 100, 'MEM', '%', hue(100 - mem), memStandIn);
     gauge(`g${i}2`, load, n.cores || 1, 'LOAD', '', hue(100 - load / (n.cores || 1) * 100), loadStandIn);
-    // No GPU exporter exists yet on any node — a plausible animated value, standing in for the
-    // flat gauge this used to show.
-    const gpu = stand(3);
-    gauge(`g${i}3`, gpu, 100, 'GPU', '%', hue(100 - gpu), true);
+    gauge(`g${i}3`, gpuShown, 100, 'GPU', '%', hue(100 - (gpuShown ?? 0)), false);
     spark(`sp${i}`, n.hist || []);
     const meta = n.pending ? (n.role || 'node')
       : n.stale
@@ -562,7 +571,10 @@ function renderStatic() {
   const scored = apps.some((app) => app.s != null);
   appsSample = !scored;
   buildNodes(); renderHeader(); renderStorage(); renderLlm(); updateLabels(); renderVlans();
-  setState($('nodes'), 'pending', 'NO GPU EXPORTER');
+  // Each node card already carries its own stale/stand-in state, so the panel's state tracks only
+  // the GPU feed — the one gauge with no per-node fallback.
+  setState($('nodes'), model.gpuFailed ? 'error' : model.gpu != null ? 'ok' : 'pending',
+    model.gpuFailed ? 'GPU QUERY FAILED' : model.gpu != null ? '' : 'GPU METRICS PENDING');
   // The topology graph itself is real (config.groups/live app scores) — the panel stays 'ok' even
   // though its WAN overlay is a stand-in (no WAN exporter exists yet): a stand-in sub-element
   // never pends or badges the whole panel when the rest of it is live.
