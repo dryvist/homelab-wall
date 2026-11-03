@@ -1,0 +1,3 @@
+# Third-party trees copied verbatim (scripts/vendor-*.mjs). The disclosure scan skips
+# lines added under these prefixes; this file itself is always scanned.
+site/vendor/
