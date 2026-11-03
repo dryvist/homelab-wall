@@ -255,7 +255,9 @@ function spark(id, h) {
 function drawNodes() {
   // One shared reading (see refresh) eased the same way each node's own cpu/mem/load is — kept
   // outside any node object, since a pending extraNode's object is rebuilt on every refresh.
-  gpuShown = model.gpu == null ? null : lerp(gpuShown ?? 0, model.gpu, 0.15);
+  // The first reading is shown as-is rather than eased up from 0, so a slow first frame never
+  // displays a value the feed did not report.
+  gpuShown = model.gpu == null ? null : gpuShown == null ? model.gpu : lerp(gpuShown, model.gpu, 0.15);
   model.nodes.forEach((n, i) => {
     // A node with no exporter at all (n.pending — an extraNode never wired up), OR a real node
     // individually missing one metric (a per-metric exporter gap among many nodes), has no
@@ -281,6 +283,9 @@ function drawNodes() {
     const el = $('nm' + i); if (el && el.textContent !== meta) el.textContent = meta;
     const card = $('node' + i); if (card) card.classList.toggle('stale', !!n.stale);
   });
+  renderQuorum();
+}
+function renderQuorum() {
   const up = model.nodes.filter((n) => !n.pending && !n.stale).length;
   $('quorum').textContent = `${up}/${model.nodes.length} UP`;
 }
@@ -570,7 +575,7 @@ function renderStatic() {
   // the estate ring and hex grid see it on their first paint.
   const scored = apps.some((app) => app.s != null);
   appsSample = !scored;
-  buildNodes(); renderHeader(); renderStorage(); renderLlm(); updateLabels(); renderVlans();
+  buildNodes(); renderQuorum(); renderHeader(); renderStorage(); renderLlm(); updateLabels(); renderVlans();
   // Each node card already carries its own stale/stand-in state, so the panel's state tracks only
   // the GPU feed — the one gauge with no per-node fallback.
   setState($('nodes'), model.gpuFailed ? 'error' : model.gpu != null ? 'ok' : 'pending',
