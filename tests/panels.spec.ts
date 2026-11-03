@@ -336,12 +336,18 @@ test('mc2 threat feed keeps firing rows within 10s on a frozen-data fixture', as
   await expect.poll(() => page.locator('#feed').innerHTML(), { timeout: 10_000, message: '#feed never gained a new row' }).not.toBe(before);
 });
 
-test('mc3 request feed keeps firing rows within 10s on a frozen-data fixture', async ({ page }) => {
+// The request feed is real metadata rows (GET /api/llm/recent), so on a frozen feed it must
+// stay stable: still data-feed="live", no new rows invented between polls — the fabricated
+// Poisson rows the old stand-in feed produced are exactly what this now forbids.
+test('mc3 request feed invents nothing on a frozen-data fixture and stays live', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises the fixture-shaped assertions only');
   await mockFeeds(page);
   await page.goto('/mc3/');
+  await expect(page.locator('#reqfeed')).toHaveAttribute('data-feed', 'live');
   const before = await page.locator('#reqfeed').innerHTML();
-  await expect.poll(() => page.locator('#reqfeed').innerHTML(), { timeout: 10_000, message: '#reqfeed never gained a new row' }).not.toBe(before);
+  await page.waitForTimeout(6000);
+  await expect(page.locator('#reqfeed')).toHaveAttribute('data-feed', 'live');
+  expect(await page.locator('#reqfeed').innerHTML()).toBe(before);
 });
 
 test('mc4 throughput numerals keep changing within 10s on a frozen-data fixture', async ({ page }) => {
