@@ -9,8 +9,9 @@ other dashboards.
 | Path | What |
 | --- | --- |
 | `site/mc1/` | Mission Control 1: nodes, storage, 3D topology, app health honeycomb, LLM status, firewall feeds |
+| `site/mc6/` | Mission Control 6 (LEXICON): a hero word cloud cycling the sources every 8 s plus a strip with one small cloud per source |
 | `site/lib/` | Shared Prometheus client, PromQL (including the app health score), stage/GL helpers |
-| `site/vendor/`, `site/fonts/` | three.js and fonts, vendored so no page loads code or fonts from the internet |
+| `site/vendor/`, `site/fonts/` | three.js, d3-cloud and fonts, vendored so no page loads code or fonts from the internet |
 | `tests/` | Playwright at 1920×1080 against fixture data |
 
 ## Runtime contract
@@ -29,6 +30,12 @@ The pages are static. They read two things from their own origin:
 MC5 also calls the public GitHub API (`https://api.github.com`) straight from
 the browser, with no token, for an organization's events, repositories and
 releases.
+
+MC6 reads `GET /api/words` (same origin), ClickHouse `FORMAT JSON`:
+`{"meta": [...], "data": [{"source": "user", "word": "deploy", "n": "412"}, ...], "rows": N}`.
+`n` is a UInt64 serialized as a string. Every known source keeps a tile even
+when the feed has no rows for it — an explicit NO FEED state; a feed that
+fails keeps its last good clouds and shows the stale indicator.
 
 A panel whose source is not wired yet, or whose query comes back empty or
 fails, shows plausible stand-in content instead of a placeholder. Nothing on
