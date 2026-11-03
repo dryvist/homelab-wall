@@ -114,6 +114,20 @@ test('one persistent iframe exists per slide and all stay non-blank', async ({ p
   expect(srcs.every((s) => s && !s.endsWith('about:blank'))).toBe(true);
 });
 
+// mc6 (LEXICON) joins DEFAULT_SLIDES after MC5. With no `slides` in config.json the defaults
+// apply: one persistent iframe per default slide, titled by slide name (buildLayers). The
+// slide documents themselves are aborted — this asserts the rotator's own bookkeeping, not
+// the pages' health (the panel suites cover that).
+test('rotator mc6: DEFAULT_SLIDES appends LEXICON after MC5', async ({ page }) => {
+  await page.route('**/config.json', (r) => r.fulfill({ json: {} })); // no slides key -> DEFAULT_SLIDES
+  for (const path of ['/mc1/', '/mc2/', '/mc3/', '/mc4/', '/mc5/', '/mc6/']) {
+    await page.route(`**${path}`, (r) => r.abort());
+  }
+  await page.goto('/');
+  const titles = await page.locator('iframe').evaluateAll((els) => els.map((el) => (el as HTMLIFrameElement).title));
+  expect(titles).toEqual(['MC1', 'MC2', 'MC3', 'MC4', 'MC5', 'LEXICON']);
+});
+
 test('a broken slide is skipped, never shown, with no application errors', async ({ page }) => {
   // The browser's own "Failed to load resource: 404" logging for the deliberately-broken URL is
   // expected here (that's the reachability probe doing its job) and is excluded — this still

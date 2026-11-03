@@ -41,6 +41,35 @@ export async function mockGithub(page: Page) {
   }));
 }
 
+// mc6: fixture rows for /api/words (site/mc6/mc6.js fetches it directly, ClickHouse FORMAT
+// JSON: n is a UInt64 serialized as a STRING). Sources with no rows here — gemini,
+// antigravity and opencode — must render explicit NO FEED tiles, never stand-in words. The
+// 'minion' row is deliberately from a source mc6 has never heard of: unknown sources are
+// handled generically, same tile treatment, label upper-cased.
+export const words = [
+  { source: 'user', word: 'deploy', n: '412' },
+  { source: 'user', word: 'backup', n: '187' },
+  { source: 'user', word: 'certificate', n: '55' },
+  { source: 'claude', word: 'refactor', n: '301' },
+  { source: 'claude', word: 'fixture', n: '96' },
+  { source: 'claude', word: 'typescript', n: '41' },
+  { source: 'codex', word: 'benchmark', n: '77' },
+  { source: 'codex', word: 'cache', n: '12' },
+  { source: 'zcode', word: 'prometheus', n: '64' },
+  { source: 'zcode', word: 'playwright', n: '29' },
+  { source: 'minion', word: 'banana', n: '9' },
+];
+
+// opts.failWords turns the words feed into a hard failure (HTTP 500) instead of answering it;
+// opts.emptyWords makes it succeed with zero rows — genuinely "no words yet".
+export async function mockWords(page: Page, opts: { failWords?: boolean; emptyWords?: boolean } = {}) {
+  await page.route('**/api/words', (r: Route) => {
+    if (opts.failWords) return r.fulfill({ status: 500, json: { error: 'forced failure' } });
+    const data = opts.emptyWords ? [] : words;
+    return r.fulfill({ json: { meta: [{ name: 'source', type: 'String' }, { name: 'word', type: 'String' }, { name: 'n', type: 'UInt64' }], data, rows: data.length } });
+  });
+}
+
 const NODES = ['node-a', 'node-b', 'node-c'];
 const inst = (n: string) => ({ instance: `${n}.example.test:9100`, job: 'pve_node_exporter' });
 const vec = (rows: Array<[Record<string, string>, number]>) =>
@@ -100,9 +129,10 @@ export function answer(q: string): unknown[] {
 // proving a failed query renders an explicit error, never a silent zero/empty result.
 // opts.emptyQuery forces a query to succeed with zero rows instead — genuinely "no data yet",
 // distinct from a failure, for proving the panel falls back to sample data (site/lib/sampleData.js).
-export async function mockFeeds(page: Page, opts: { failQuery?: (q: string) => boolean; emptyQuery?: (q: string) => boolean; recent?: unknown[] | ((n: number) => unknown[]) } = {}) {
+export async function mockFeeds(page: Page, opts: { failQuery?: (q: string) => boolean; emptyQuery?: (q: string) => boolean; recent?: unknown[] | ((n: number) => unknown[]); failWords?: boolean; emptyWords?: boolean } = {}) {
   await page.route('**/config.json', (r: Route) => r.fulfill({ json: config }));
   await mockGithub(page);
+  await mockWords(page, opts);
   await page.route('**/api/prom/**', (r: Route) => {
     const url = new URL(r.request().url());
     const q = url.searchParams.get('query') || '';
@@ -116,10 +146,9 @@ export async function mockFeeds(page: Page, opts: { failQuery?: (q: string) => b
   await mockRecent(page, opts);
 }
 
-// mc3's request feed (GET /api/llm/recent — metadata rows only, never message content) and the
-// ClickHouse word-cloud feed's absence on the static fixture server: /api/* has no live source
-// here, so mc3 shows its explicit NO FEED state unless a test routes its own answers via
-// opts.recent. fake data only.
+// mc3's request feed (GET /api/llm/recent — metadata rows only, never message content). Tests
+// pass their own rows through opts.recent, or opts.failQuery to get mc3's explicit NO FEED
+// state. fake data only.
 export const recentRows = [
   { ts: '2026-01-01 00:00:09', source: 'user', model: 'model-large', role: 'user', chars: 120 },
   { ts: '2026-01-01 00:00:08', source: 'claude', model: 'model-coder', role: 'assistant', chars: 2480 },
@@ -132,10 +161,11 @@ export async function mockRecent(page: Page, opts: { failQuery?: (q: string) => 
     const rows = typeof opts.recent === 'function' ? opts.recent(recentRows.length) : opts.recent ?? recentRows;
     return r.fulfill({ json: rows });
   });
-  // The other /api/ feed routes (e.g. /api/words) stay unwired on the fixture: pages must treat
-  // a 404 as an explicit no-feed state, never fabricated values.
+  // Any other /api/ route stays unwired on the fixture: pages must treat a 404 as an explicit
+  // no-feed state, never fabricated values. /api/words falls through to mockWords.
   await page.route('**/api/**', (r: Route) => {
-    if (r.request().url().includes('/api/prom/') || r.request().url().includes('/api/llm/recent') || r.request().url().includes('config.json')) return r.fallback();
+    const url = r.request().url();
+    if (['/api/prom/', '/api/llm/recent', '/api/words', 'config.json'].some((p) => url.includes(p))) return r.fallback();
     return r.fulfill({ status: 404, body: 'no feed' });
   });
 }
