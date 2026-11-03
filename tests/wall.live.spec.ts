@@ -23,16 +23,19 @@ const DEFAULT_SLIDES: SlideConfig[] = [
 
 const safeName = (name: string) => name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
 
+// The wall polls its feeds without pause, so networkidle may never arrive: each wait is bounded.
+const SETTLE_MS = 15_000;
+
 async function loginIfPresented(page: Page): Promise<'no-gate' | 'logged-in' | 'gated-no-credentials'> {
-  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: SETTLE_MS }).catch(() => {});
   const usernameField = page.getByLabel(/username/i).first();
-  const onLoginPage = await usernameField.isVisible({ timeout: 15_000 }).catch(() => false);
+  const onLoginPage = await usernameField.isVisible({ timeout: SETTLE_MS }).catch(() => false);
   if (!onLoginPage) return 'no-gate';
   if (!wallUser || !wallPassword) return 'gated-no-credentials';
   await usernameField.fill(wallUser);
   await page.getByLabel(/password/i).first().fill(wallPassword);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: SETTLE_MS }).catch(() => {});
   return 'logged-in';
 }
 
@@ -60,7 +63,8 @@ test('the rotator shows every configured slide, non-blank, with panels that keep
   const slides = config.slides?.length ? config.slides : DEFAULT_SLIDES;
   const configuredNames = new Set(slides.map((s) => s.name));
 
-  await page.waitForSelector('#layers', { timeout: 30_000 });
+  // #layers holds only fixed-position iframes, so it has no box of its own: wait for it to exist.
+  await page.waitForSelector('#layers', { state: 'attached', timeout: 30_000 });
   const dots = page.locator('#dots');
 
   const shown = new Map<string, number>();
