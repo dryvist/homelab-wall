@@ -263,11 +263,12 @@ function hardStops(segments) {
 
 // One d3-cloud layout for `items`, sorted by n descending. Font size scales with sqrt(n) between
 // the two box fractions. Each word is rasterised and placed once; the result keeps the word's
-// paint, its advance width and its phase next to d3-cloud's own fields.
+// paint and fill (built once here, on the drawing context c), its advance width and its phase
+// next to d3-cloud's own fields.
 // Layouts made so far, for the test hook.
 let layoutRuns = 0;
 
-function layoutCloud(items, [w, h], [minFrac, maxFrac], paintFor, hero) {
+function layoutCloud(c, items, [w, h], [minFrac, maxFrac], paintFor, hero) {
   layoutRuns += 1;
   const max = items.reduce((m, x) => Math.max(m, x.n), 1);
   const fmin = Math.max(6, Math.round(h * minFrac)), fmax = Math.max(fmin + 1, Math.round(h * maxFrac));
@@ -285,11 +286,13 @@ function layoutCloud(items, [w, h], [minFrac, maxFrac], paintFor, hero) {
     const word = sprite && layout.place(sprite);
     if (!word) return;
     const paint = paintFor(it, t);
+    const tw = widthOf(it.word, face, size);
     placed.push({
       ...word,
       paint,
       primary: paint.color,
-      tw: widthOf(it.word, face, size),
+      tw,
+      fill: fillFor(c, paint, tw / 2),
       halo: hero && tier === 0,
       vocab: hero && !!it.vocab,
       phase: hashOf(it.word) * TAU,
@@ -312,34 +315,37 @@ function fillFor(c, paint, hw) {
   return g;
 }
 
-// Paints one placed word at geo = {x, y, rot, size, alpha}. The advance width scales with geo.size
-// relative to the word's own size. A word drawn at its laid-out size reuses the fill built on its
-// first draw; a resized word during a transition builds a fill for its current width.
+// Paints one placed word at geo = {x, y, rot, size, alpha}. The word is drawn at its laid-out size
+// with the context scaled by geo.size / word.size, so its glyphs, underline and fill scale together.
+// The fill is built once per layout, in the word's own units, and is drawn under the same transform
+// as the glyphs, so it stays on its word.
 function drawWord(c, word, geo) {
   if (geo.alpha <= 0.001) return;
-  const hw = (word.tw * geo.size / word.size) / 2;
+  const k = geo.size / word.size;
+  const hw = word.tw / 2;
   c.save();
   c.globalAlpha = geo.alpha;
   c.translate(geo.x, geo.y);
   c.rotate(geo.rot * Math.PI / 180);
-  c.font = `${word.style} ${word.weight} ${geo.size}px ${word.font}`;
+  c.scale(k, k);
+  c.font = `${word.style} ${word.weight} ${word.size}px ${word.font}`;
   c.textAlign = 'center';
   c.textBaseline = 'alphabetic';
   if (word.halo) {
     c.shadowColor = word.primary;
     c.shadowBlur = Math.max(4, geo.size * 0.35);
   }
-  c.fillStyle = geo.size === word.size ? (word.fill ??= fillFor(c, word.paint, word.tw / 2)) : fillFor(c, word.paint, hw);
+  c.fillStyle = word.fill;
   c.fillText(word.text, 0, 0);
   c.shadowBlur = 0;
   if (word.vocab) {
-    c.lineWidth = Math.max(1, geo.size * 0.035);
+    c.lineWidth = Math.max(1 / k, word.size * 0.035); // at least one device pixel wide
     c.strokeStyle = VOCAB_OUTLINE;
     c.strokeText(word.text, 0, 0);
   }
   if (word.paint.segments) {
     // Underline: each source's share of the word, in that source's shade.
-    const y = geo.size * 0.14, th = Math.max(1.5, geo.size * 0.05);
+    const y = word.size * 0.14, th = Math.max(1.5 / k, word.size * 0.05); // at least one and a half device pixels
     let x = -hw;
     for (const seg of word.paint.segments) {
       const sw = 2 * hw * seg.share;
@@ -409,7 +415,7 @@ function paintTile(tile) {
   const key = `${w}x${h}`;
   let cached = tileLayouts.get(s.name);
   if (cached?.key !== key) {
-    cached = { key, placed: layoutCloud(sourceItems(s, TILE_WORDS), [w, Math.round(h * 0.78)], [0.1, 0.3], sourcePaint, false) };
+    cached = { key, placed: layoutCloud(c, sourceItems(s, TILE_WORDS), [w, Math.round(h * 0.78)], [0.1, 0.3], sourcePaint, false) };
     tileLayouts.set(s.name, cached);
   }
   c.save();
@@ -466,8 +472,8 @@ function heroPlaced(view) {
   let placed = heroLayouts.get(view.key);
   if (!placed) {
     placed = view.source
-      ? layoutCloud(sourceItems(view.source, HERO_WORDS), heroSize, [0.016, 0.085], sourcePaint, true)
-      : layoutCloud(mergedItems(), heroSize, [0.016, 0.085], mergedPaint, true);
+      ? layoutCloud(hero.getContext('2d'), sourceItems(view.source, HERO_WORDS), heroSize, [0.016, 0.085], sourcePaint, true)
+      : layoutCloud(hero.getContext('2d'), mergedItems(), heroSize, [0.016, 0.085], mergedPaint, true);
     heroLayouts.set(view.key, placed);
   }
   return placed;
