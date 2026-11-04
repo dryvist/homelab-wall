@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/dryvist/homelab-wall/compare/v0.13.3...v0.14.0) (2026-11-04)
+
+
+### Features
+
+* **mc6:** per-word colour, type tiers, CONVERGENCE view and morphing transitions ([#123](https://github.com/dryvist/homelab-wall/issues/123)) ([1781dcc](https://github.com/dryvist/homelab-wall/commit/1781dcce2483c5c00fbf1983fd66058a26f21659))
+
 ## [0.13.3](https://github.com/dryvist/homelab-wall/compare/v0.13.2...v0.13.3) (2026-11-04)
 
 
