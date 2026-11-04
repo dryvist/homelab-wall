@@ -896,3 +896,49 @@ test('mc6 maps rank to size and lightness, and a shared word to a multi-source f
   expect(top.sources).toEqual(expect.arrayContaining(['user', 'codex']));
   expect(top.fill).toBe('gradient');
 });
+
+// Maximum input: six known sources with 200 words each. Source s holds terms s*160 .. s*160+199
+// (mod 1000), so the union is 1,000 distinct terms and neighbouring sources share forty of them.
+const maxWords = ['user', 'claude', 'codex', 'antigravity', 'zcode', 'opencode'].flatMap((source, s) =>
+  Array.from({ length: 200 }, (_, i) => ({ source, word: `term${(s * 160 + i) % 1000}`, n: String(1000 - i) })));
+
+// At maximum input, a data refresh lays the layouts out again and the idle frames do not: each
+// refresh re-lays the six strip tiles and the hero's current view, seven layouts in all. The median
+// frame interval over 3s stays under 25ms at 1920x1080 (chromium only). Refreshes run every second.
+test('mc6 at maximum input lays out once per refresh and keeps a median frame under 25ms', async ({ page }) => {
+  test.skip(!!wallUrl, 'forces the words feed against the fixture server only');
+  test.skip(test.info().project.name !== 'chromium-1920x1080@1', 'chromium at 1920x1080 only');
+  test.setTimeout(90_000);
+  const hookStats = () => page.evaluate(() => (window as unknown as { __mc6: { stats(): { refreshes: number; layouts: number } } }).__mc6.stats());
+  await mockFeeds(page);
+  await page.route('**/config.json', (r: Route) => r.fulfill({ json: { ...config, refreshSeconds: 1 } }));
+  await page.route('**/api/words', (r: Route) => r.fulfill({ json: { meta: [], data: maxWords, rows: maxWords.length } }));
+  await page.goto('/mc6/');
+  await expect(page.locator('[data-panel="lexicon"]')).toHaveAttribute('data-state', 'ok');
+  // Opens the window just after a slot change, once the transition has settled, so no slot change
+  // or transition falls inside the 3s measured below.
+  await expect.poll(async () => (await drawnHero(page))?.view ?? null, { message: 'hero never drew' }).not.toBeNull();
+  const first = (await drawnHero(page))?.view;
+  await expect.poll(async () => (await drawnHero(page))?.view ?? null, { timeout: 15_000, message: 'hero never changed slot' }).not.toBe(first);
+  await page.waitForTimeout(1500);
+
+  const before = await hookStats();
+  const stamps = await page.evaluate(() => new Promise<number[]>((resolve) => {
+    const frames: number[] = [];
+    const start = performance.now();
+    const tick = (t: number) => {
+      frames.push(t);
+      if (t - start < 3000) requestAnimationFrame(tick);
+      else resolve(frames);
+    };
+    requestAnimationFrame(tick);
+  }));
+  const after = await hookStats();
+
+  const refreshes = after.refreshes - before.refreshes;
+  const gaps = stamps.slice(1).map((t, i) => t - stamps[i]).sort((a, b) => a - b);
+  const median = gaps[Math.floor(gaps.length / 2)];
+  expect(refreshes, 'data refreshes during the 3s window').toBeGreaterThanOrEqual(2);
+  expect(after.layouts - before.layouts, 'layouts during the 3s window').toBe(7 * refreshes);
+  expect(median, 'median frame interval over 3s (ms)').toBeLessThan(25);
+});
