@@ -267,6 +267,8 @@ function hardStops(segments) {
 // next to d3-cloud's own fields.
 // Layouts made so far, for the test hook.
 let layoutRuns = 0;
+// Gradients built so far, for the test hook: word fills and backdrops.
+let fillRuns = 0, backdropRuns = 0;
 
 function layoutCloud(c, items, [w, h], [minFrac, maxFrac], paintFor, hero) {
   layoutRuns += 1;
@@ -310,6 +312,7 @@ const at = (word, alpha = 1) => ({ x: word.x, y: word.y, rot: word.rotate, size:
 // A gradient fill spans the word's advance width: hw is half that width, in the word's own units.
 function fillFor(c, paint, hw) {
   if (!paint.stops) return paint.color;
+  fillRuns += 1;
   const g = c.createLinearGradient(-hw, 0, hw, 0);
   for (const [offset, color] of paint.stops) g.addColorStop(offset, color);
   return g;
@@ -365,6 +368,7 @@ function paintBackdrop(c, w, h, color, dpr) {
   const key = `${w}x${h}@${dpr}|${color}`;
   let cached = backdrops.get(c);
   if (cached?.key !== key) {
+    backdropRuns += 1;
     const gradient = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7);
     gradient.addColorStop(0, hexAlpha(color, 0.1));
     gradient.addColorStop(1, 'rgba(4,7,12,0)');
@@ -467,6 +471,7 @@ function fitHero() {
 // The hero rotation: every source that has words, in strip order, then the merged view.
 const MERGED = Symbol('convergence');
 const MERGED_VIEW = { key: MERGED, label: 'CONVERGENCE', color: '', source: null };
+const viewName = (view) => (view.key === MERGED ? 'CONVERGENCE' : view.key);
 function liveViews() {
   const live = sources.filter((s) => s.words.length).map((s) => ({ key: s.name, label: s.label, color: s.color, source: s }));
   return live.length ? [...live, MERGED_VIEW] : [];
@@ -689,7 +694,7 @@ async function refresh() {
 // Returns copies; nothing in the page reads it.
 window.__mc6 = Object.freeze({
   drawn: () => (current ? {
-    view: current.view.key === MERGED ? 'CONVERGENCE' : current.view.key,
+    view: viewName(current.view),
     words: current.placed.map((w) => ({
       text: w.text,
       size: w.size,
@@ -702,7 +707,13 @@ window.__mc6 = Object.freeze({
       fill: w.paint.segments ? 'segments' : w.paint.stops ? 'gradient' : 'solid',
     })),
   } : null),
-  stats: () => ({ refreshes: refreshRuns, layouts: layoutRuns }),
+  stats: () => ({
+    refreshes: refreshRuns,
+    layouts: layoutRuns,
+    fills: fillRuns,
+    backdrops: backdropRuns,
+    view: current ? viewName(current.view) : null,
+  }),
 });
 
 // Probes every face against a deadline, and waits for all of them before the first refresh. A probe
