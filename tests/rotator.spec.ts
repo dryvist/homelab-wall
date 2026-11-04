@@ -128,6 +128,21 @@ test('rotator mc6: DEFAULT_SLIDES appends LEXICON after MC5', async ({ page }) =
   expect(titles).toEqual(['MC1', 'MC2', 'MC3', 'MC4', 'MC5', 'LEXICON']);
 });
 
+// The rotator keeps at most 10 layers. The deployed wall configures 8, so all of them get a
+// layer; a configured eleventh slide is the first one left out.
+test('up to 10 configured slides each get a layer, and an eleventh is left out', async ({ page }) => {
+  const many = Array.from({ length: 11 }, (_, i) => ({ name: `Slide ${i}`, url: `/slide-${i}`, seconds: 10 }));
+  await page.route('**/config.json', (r) => r.fulfill({ json: { slides: many, holdSeconds: 30 } }));
+  await page.route('**/slide-*', (r) => r.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><title>s</title><script>parent.postMessage({wall:\'ready\'},\'*\')</script>',
+  }));
+  await page.goto('/');
+  await expect(page.locator('iframe')).toHaveCount(10);
+  await expect(page.locator('iframe[src$="/slide-9"]')).toHaveCount(1);
+  await expect(page.locator('iframe[src$="/slide-10"]')).toHaveCount(0);
+});
+
 test('a broken slide is skipped, never shown, with no application errors', async ({ page }) => {
   // The browser's own "Failed to load resource: 404" logging for the deliberately-broken URL is
   // expected here (that's the reachability probe doing its job) and is excluded — this still
