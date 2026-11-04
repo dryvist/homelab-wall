@@ -193,7 +193,7 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
 
   /* ---------------- accelerator anchors ---------------- */
   // A node draws an additive glow sprite that fades to nothing at its edge, a wireframe core sized by
-  // busy %, and a hairline halo ring. Every translucent layer is at most 0.25 opacity. A dim node (idle
+  // busy %, and a hairline halo ring. The glow and the halo ring are at most 0.25 opacity. A dim node (idle
   // or no data) draws its outline only. The cloud node (the last anchor) gets an octahedron core
   // instead of an icosahedron.
   const icoGeom = new THREE.IcosahedronGeometry(1, 2);
