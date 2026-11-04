@@ -765,6 +765,15 @@ async function heroWordPixels(page: Page) {
   });
 }
 
+// The hero's drawn view as the page reports it through window.__mc6.drawn(): the view's name or
+// 'CONVERGENCE', and each drawn word with its size, rank lightness, source mix and fill kind.
+async function drawnHero(page: Page) {
+  return page.evaluate(() => {
+    const hook = (window as unknown as { __mc6?: { drawn(): unknown } }).__mc6;
+    return (hook?.drawn() ?? null) as { view: string; words: { text: string; size: number; lightness: number; sources: string[]; fill: string }[] } | null;
+  });
+}
+
 // One source with forty words, so the hero cloud is a blob around the middle of its box.
 const heroWords = Array.from({ length: 40 }, (_, i) => ({ source: 'user', word: `term${i}`, n: String(400 - i * 9) }));
 
@@ -836,6 +845,11 @@ test('mc6 hero rotation ends on a CONVERGENCE view of every source', async ({ pa
   await expect(label).toHaveText('CONVERGENCE');
   await expect(page.locator('#herosub')).toContainText('SHARED VOCAB');
   await expect(page.locator('#herosub')).toContainText('deploy');
+  // The merged view paints ink, and the words it draws come from at least two of the fixture's sources.
+  await expect.poll(async () => (await heroWordPixels(page)).count, { message: 'CONVERGENCE canvas stays blank' }).toBeGreaterThan(1000);
+  const drawn = await drawnHero(page);
+  expect(drawn?.view).toBe('CONVERGENCE');
+  expect(new Set(drawn?.words.flatMap((w) => w.sources)).size, 'distinct sources among the drawn words').toBeGreaterThanOrEqual(2);
   // Asserts the merged view draws without a page error.
   expect(pageErrors).toEqual([]);
 });
@@ -862,4 +876,23 @@ test('mc6 hero canvas is non-blank and keeps changing while idle', async ({ page
   const before = await heroPixelDigest(page);
   await page.waitForTimeout(3000);
   expect(await heroPixelDigest(page), 'hero pixels unchanged over 3s').not.toBe(before);
+});
+
+// The hook's rank mapping for the operator's view: the top-ranked word ('deploy', n 412) is larger
+// and lighter than the bottom-ranked one ('certificate', n 55), and 'deploy', also held by codex,
+// reports a fill that runs across both sources.
+test('mc6 maps rank to size and lightness, and a shared word to a multi-source fill', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped words response only');
+  await page.clock.install();
+  await mockFeeds(page);
+  await page.goto('/mc6/');
+  await expect(page.locator('#herolabel')).toHaveText('OPERATOR');
+  await expect.poll(async () => (await drawnHero(page))?.words.map((w) => w.text) ?? [], { message: 'operator view never drew deploy and certificate' }).toEqual(expect.arrayContaining(['deploy', 'certificate']));
+  const words = (await drawnHero(page))?.words ?? [];
+  const top = words.find((w) => w.text === 'deploy')!;
+  const bottom = words.find((w) => w.text === 'certificate')!;
+  expect(top.size, 'top-ranked word size').toBeGreaterThan(bottom.size);
+  expect(top.lightness, 'top-ranked word lightness').toBeGreaterThan(bottom.lightness);
+  expect(top.sources).toEqual(expect.arrayContaining(['user', 'codex']));
+  expect(top.fill).toBe('gradient');
 });
