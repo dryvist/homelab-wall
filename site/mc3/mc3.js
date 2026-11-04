@@ -17,16 +17,19 @@ const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e
 const cfg = await loadConfig();
 
 /* ---------------- accelerator anchors: layout, naming, attachment ---------------- */
-// Four device roles (the `accelerator` label of Q.acceleratorBusy) and the cloud node. x and y are
-// each anchor's slot around the hub, from -1 to 1; the 3D scene and the 2D fallback each map a slot
-// into their own space, so this table is the only layout definition.
+// Four device roles (the `accelerator` label of Q.acceleratorBusy) and the cloud node. `angle` is each
+// anchor's place on the ellipse around the hub, in screen degrees (0 = right, 90 = down). layoutAnchors
+// turns it into a CSS-px point, and the 3D scene and the 2D fallback both draw from those points.
 const ANCHOR_DEFS = [
-  { id: 'gpu-primary', kind: 'gpu', x: -0.97, y: 0.22 },
-  { id: 'gpu-secondary', kind: 'gpu', x: -0.6, y: -0.8 },
-  { id: 'mac-primary', kind: 'mac', x: 0.97, y: 0.22 },
-  { id: 'mac-secondary', kind: 'mac', x: 0.6, y: -0.8 },
-  { id: 'cloud', kind: 'cloud', x: 0, y: 0.95 },
+  { id: 'gpu-primary', kind: 'gpu', angle: 200 },
+  { id: 'gpu-secondary', kind: 'gpu', angle: 250 },
+  { id: 'mac-primary', kind: 'mac', angle: 290 },
+  { id: 'mac-secondary', kind: 'mac', angle: 340 },
+  { id: 'cloud', kind: 'cloud', angle: 90 },
 ];
+// Label box under each node: LABEL_W wide, LABEL_TOP below the node's centre (.alab in mc3.css), LABEL_H tall.
+const LABEL_W = 320, LABEL_TOP = 40, LABEL_H = 84, EDGE = 16;
+let slots = ANCHOR_DEFS.map(() => ({ x: 0, y: 0 })); // CSS-px node points, set by layoutAnchors
 const CLOUD = ANCHOR_DEFS.length - 1;
 const ROLE = new Map(ANCHOR_DEFS.slice(0, CLOUD).map((d, i) => [d.id, i]));
 // Mirrors site/mc3/core3d.js: requests are drawn one bead each up to BEAD_RING, packed into rings
@@ -386,6 +389,7 @@ async function pollFeed() {
 // One label per anchor, always present. Its text comes from accel (the same readings the scene
 // draws); its position comes each frame from the renderer's own projection (placeAnchors).
 function renderAnchors() {
+  layoutAnchors();
   const host = $('anchors');
   if (host.children.length !== accel.length) {
     host.innerHTML = accel.map((d) => `<div class="anchor kind-${d.kind}" data-accel="${d.id}"><div class="alab"></div></div>`).join('');
@@ -413,20 +417,28 @@ function renderAnchors() {
   });
 }
 
-// 2D layout of the anchor slots: the hub's own radius sets the scale.
-function anchor2D(i) {
-  const cw = reactor.clientWidth, ch = reactor.clientHeight, R = Math.min(cw, ch) * 0.3;
-  return { x: cw / 2 + ANCHOR_DEFS[i].x * R * 1.6, y: ch / 2 - ANCHOR_DEFS[i].y * R * 1.2 };
-}
-// CSS-px position of anchor i: the 3D scene's projection when it runs, otherwise the 2D layout.
-function anchorPoint(i) {
-  return core3d ? core3d.screenOf(i) : anchor2D(i);
+// The free area for the anchors, in CSS px: right of the fleet panel, under the header, above the model
+// tile strip. The ellipse keeps every node's label box inside that area, so nothing clips at an edge.
+// Both render paths read the same points (slots), and the 3D scene pins its nodes to them.
+function layoutAnchors() {
+  const fleet = $('apps').getBoundingClientRect();
+  const head = document.querySelector('header').getBoundingClientRect();
+  const strip = $('modeltab').getBoundingClientRect();
+  const x0 = fleet.right + EDGE, x1 = innerWidth - EDGE;
+  const y0 = head.bottom + EDGE, y1 = (strip.height ? strip.top : innerHeight) - EDGE;
+  const minX = x0 + LABEL_W / 2, maxX = x1 - LABEL_W / 2;
+  const minY = y0 + LABEL_TOP, maxY = y1 - LABEL_TOP - LABEL_H;
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, rx = (maxX - minX) / 2, ry = (maxY - minY) / 2;
+  slots = ANCHOR_DEFS.map((d) => {
+    const a = (d.angle * Math.PI) / 180;
+    return { x: clamp(cx + rx * Math.cos(a), minX, maxX), y: clamp(cy + ry * Math.sin(a), minY, maxY) };
+  });
+  core3d?.layout(slots);
 }
 function placeAnchors() {
   const host = $('anchors');
   for (let i = 0; i < accel.length; i++) {
-    const p = anchorPoint(i);
-    host.children[i].style.transform = `translate3d(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px,0)`;
+    host.children[i].style.transform = `translate3d(${slots[i].x.toFixed(1)}px,${slots[i].y.toFixed(1)}px,0)`;
   }
 }
 
@@ -456,7 +468,7 @@ function drawReactor(now) {
   const t = RM ? 0 : now / 1000;
   const dt = lastDraw ? Math.min((now - lastDraw) / 1000, 0.1) : 0;
   lastDraw = now;
-  const at = (i) => { const p = anchor2D(i); return { x: p.x * dpr, y: p.y * dpr }; };
+  const at = (i) => ({ x: slots[i].x * dpr, y: slots[i].y * dpr });
 
   for (let i = 0; i < 6; i++) {
     const rr = R * (0.5 + i * 0.11), rot = t * (0.12 + i * 0.04) * (i % 2 ? -1 : 1);
@@ -485,26 +497,43 @@ function drawReactor(now) {
     c.beginPath(); c.arc(x, y, (m.up ? 4 : 3) * dpr, 0, Math.PI * 2);
     c.fillStyle = m.up ? (m.tok > 0.05 ? '#38ff9c' : '#3ee6ff') : '#ff3b5c';
     c.shadowColor = c.fillStyle; c.shadowBlur = 8 * dpr; c.fill(); c.shadowBlur = 0;
+    // An up model streams from its dot into the hub: travelling sparks, the 2D stand-in for the 3D stream.
+    if (m.up) {
+      for (let s = 0; s < 3; s++) {
+        const f = (t * 0.3 + s / 3 + k * 0.21) % 1;
+        c.beginPath(); c.arc(x + (cx - x) * f, y + (cy - y) * f, 1.6 * dpr, 0, Math.PI * 2);
+        c.globalAlpha = Math.sin(f * Math.PI) * 0.9;
+        c.fillStyle = m.tok > 0.05 ? '#38ff9c' : '#3ee6ff'; c.fill();
+      }
+      c.globalAlpha = 1;
+    }
   }
 
-  // Anchor nodes (labelled by the DOM layer), their busy arc, and their request beads.
+  // Anchor nodes (labelled by the DOM layer): a compact glow, an outline core sized by busy %, a
+  // hairline halo and the busy arc, then the request beads. Nothing fills the node, so the particles
+  // behind it stay visible; an idle or no-data node is an outline only.
   accel.forEach((d, i) => {
-    const p = at(i), r0 = R * 0.12, color = ANCHOR_COLOR[d.kind];
-    c.globalAlpha = isDim(d) ? 0.4 : 1;
-    const halo = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, r0 * 2.6);
-    halo.addColorStop(0, `${color}55`); halo.addColorStop(1, `${color}00`);
-    c.fillStyle = halo; c.beginPath(); c.arc(p.x, p.y, r0 * 2.6, 0, Math.PI * 2); c.fill();
+    const p = at(i), color = ANCHOR_COLOR[d.kind], dimmed = isDim(d);
+    const lit = d.busy == null ? 0 : clamp(d.busy / 100, 0, 1);
+    // Core radius 20-35 CSS px (a 40-70 px node at 1920x1080), scaled with the viewport height.
+    const r0 = (20 + 15 * lit) * (Math.min(reactor.clientWidth, reactor.clientHeight) / 1080) * dpr;
+    if (!dimmed) {
+      const halo = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, r0 * 2.2);
+      halo.addColorStop(0, `${color}40`); halo.addColorStop(1, `${color}00`);
+      c.fillStyle = halo; c.beginPath(); c.arc(p.x, p.y, r0 * 2.2, 0, Math.PI * 2); c.fill();
+    }
+    c.beginPath(); c.arc(p.x, p.y, r0 * 1.9, 0, Math.PI * 2);
+    c.strokeStyle = `${color}${dimmed ? '1a' : '38'}`; c.lineWidth = dpr; c.stroke();
     c.beginPath();
     if (d.kind === 'cloud') {
       c.moveTo(p.x, p.y - r0); c.lineTo(p.x + r0, p.y); c.lineTo(p.x, p.y + r0); c.lineTo(p.x - r0, p.y); c.closePath();
     } else {
       c.arc(p.x, p.y, r0, 0, Math.PI * 2);
     }
-    c.fillStyle = 'rgba(0,0,0,.7)'; c.fill();
-    c.strokeStyle = color; c.lineWidth = 2.5 * dpr; c.stroke();
+    c.strokeStyle = dimmed ? `${color}80` : color; c.lineWidth = (dimmed ? 1.5 : 2.5) * dpr; c.stroke();
     if (d.busy != null) {
-      c.beginPath(); c.arc(p.x, p.y, r0 + 7 * dpr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * d.busy / 100);
-      c.lineWidth = 3 * dpr; c.stroke();
+      c.beginPath(); c.arc(p.x, p.y, r0 + 6 * dpr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * lit);
+      c.strokeStyle = color; c.lineWidth = 3 * dpr; c.stroke();
     }
 
     const target = Math.min(d.active, BEAD_CAP);
@@ -521,7 +550,6 @@ function drawReactor(now) {
       c.beginPath(); c.arc(x, y, (rings > 1 ? 2.2 : 3.2) * dpr * fade, 0, Math.PI * 2);
       c.fillStyle = color; c.shadowColor = color; c.shadowBlur = 10 * dpr; c.fill(); c.shadowBlur = 0;
     }
-    c.globalAlpha = 1;
   });
 }
 
@@ -561,6 +589,7 @@ async function startGpuCore() {
     });
     if (core3d && core3d !== core) core3d.dispose();
     core3d = core;
+    core.layout(slots);
     core.sync(model.models.length ? model.models : reactorList, model.tokensToday, accel);
     drawScene = (now) => core.render(now);
   } catch (e) {
@@ -581,6 +610,8 @@ onDispose(() => clearInterval(clockId));
 // litellm query on this very page delay 'ready' past the rotator's probe window and get MC3
 // skipped as broken on the live wall.
 renderAnchors();
+addEventListener('resize', layoutAnchors);
+onDispose(() => removeEventListener('resize', layoutAnchors));
 loop(0, (now) => { drawScene(now); placeAnchors(); }); // uncapped: native refresh rate, the display has headroom to spare
 // The first feed poll runs alongside the first refresh, never after it: a slow refresh must not
 // hold the request feed on its empty placeholder (pollFeed handles its own failures).

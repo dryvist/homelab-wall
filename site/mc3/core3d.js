@@ -8,7 +8,7 @@
 // frame time forces the budget down. A slice of each core's particles flows to the central hub
 // along an arc (only while that model is actually serving tokens); request-feed rows arrive as
 // CPU-driven comets. Post: bloom -> afterimage trails -> subtle chromatic aberration.
-// Each model's core sits on its accelerator anchor: a fixed node the active-request beads orbit.
+// Each model's core sits on its accelerator anchor, and the stream from that core runs to the hub.
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, PI, cross, float, hash, instanceIndex, instancedArray, mix, mx_noise_vec3, oneMinus, pass,
@@ -30,12 +30,13 @@ const COMET_MAX = 32;
 const TRAIL = 18;
 const SLOW_FRAME_MS = 20;
 const FAST_FRAME_MS = 17.5;
-// Accelerator anchors (mc3.js ANCHOR_DEFS order): fixed nodes on a flattened ellipse around the
-// hub. Each one is lit by its busy reading; its active requests orbit it as beads.
+// Accelerator anchors (mc3.js ANCHOR_DEFS order). Each is pinned to a screen point that mc3.js lays
+// out in the free area, so it holds its place while the camera drifts. The wireframe core runs from
+// ANCHOR_R_MIN (no busy reading) to ANCHOR_R_MAX (fully busy); at this camera 1 unit is about 4.5 px,
+// so the core spans roughly 40-70 px across.
 const MAX_ANCHORS = 8;
-const ANCHOR_RX = 150;
-const ANCHOR_RY = 70;
-const ANCHOR_R = 9;
+const ANCHOR_R_MIN = 4.6;
+const ANCHOR_R_MAX = 7.8;
 const ANCHOR_COLOR = { gpu: '#3ee6ff', mac: '#38ff9c', cloud: '#ffb347' };
 // Mirrors mc3.js: beads are drawn one each up to BEAD_RING, then packed into rings up to BEAD_CAP.
 const BEAD_RING = 12;
@@ -191,21 +192,32 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
   let cometsDirty = false;
 
   /* ---------------- accelerator anchors ---------------- */
-  // Node i: a wireframe core, a glow lit by its busy reading and an orbit ring. The cloud node
-  // (the last anchor) gets an octahedron core instead of an icosahedron.
+  // A node is a compact glow, never a filled surface: an additive radial sprite that fades to
+  // nothing at its edge, a thin wireframe core sized by busy %, and a hairline halo ring. Every
+  // translucent layer stays at or below 0.25 opacity. A dim node (idle or no data) keeps only its
+  // outline, so the particles behind it stay dominant. The cloud node (the last anchor) gets an
+  // octahedron core instead of an icosahedron.
   const icoGeom = new THREE.IcosahedronGeometry(1, 2);
   const octGeom = new THREE.OctahedronGeometry(1, 0);
+  const ringGeom = new THREE.TorusGeometry(1, 0.035, 6, 96);
   const anchorNodes = Array.from({ length: MAX_ANCHORS }, () => {
     const grp = new THREE.Group();
+    const glowCol = uniform(new THREE.Color());
+    const glowA = uniform(0);
+    const glowMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    glowMat.colorNode = Fn(() => {
+      const d = uv().sub(0.5).length().mul(2);
+      const fall = oneMinus(smoothstep(0, 1, d));
+      return vec4(glowCol, fall.mul(fall).mul(glowA));
+    })();
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), glowMat);
     const core = new THREE.Mesh(icoGeom, new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(), wireframe: true, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
-    core.scale.setScalar(ANCHOR_R);
-    const glow = new THREE.Mesh(new THREE.SphereGeometry(6, 24, 24), new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(), transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false }));
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(13, 0.5, 8, 96), new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(), transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const ring = new THREE.Mesh(ringGeom, new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(), transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false }));
     ring.rotation.set(1.1, 0, 0.3);
     grp.add(glow, core, ring);
     grp.visible = false;
     scene.add(grp);
-    return { grp, core, glow, ring };
+    return { grp, glow, glowCol, glowA, core, ring };
   });
   // Request beads: one instanced mesh with BEAD_CAP slots per anchor.
   const beadMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), MAX_ANCHORS * BEAD_CAP);
@@ -213,13 +225,26 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
   for (let j = 0; j < MAX_ANCHORS * BEAD_CAP; j++) { beadMesh.setMatrixAt(j, ZERO); beadMesh.setColorAt(j, BLACK); }
   scene.add(beadMesh);
   const anchorState = Array.from({ length: MAX_ANCHORS }, () => ({
-    kind: 'gpu', centre: new THREE.Vector3(), color: new THREE.Color(), active: 0, shown: 0, lit: 0.2, litTarget: 0.2,
+    kind: 'gpu', dim: true, centre: new THREE.Vector3(), color: new THREE.Color(), pt: { x: 0, y: 0 },
+    active: 0, shown: 0, lit: 0, litTarget: 0,
   }));
   let anchorCount = 0;
   const ORIGIN = new THREE.Vector3();
-  const tmpP = new THREE.Vector3();
-  // Anchor slot (-1..1 across and up) -> world position on the flattened ellipse; the left side sits nearer the camera.
-  const anchorWorld = (x, y) => new THREE.Vector3(x * ANCHOR_RX, y * ANCHOR_RY, -x * 34);
+  const ndcV = new THREE.Vector3();
+  const rayV = new THREE.Vector3();
+
+  // Pins each anchor to its screen point: the world point on the z = 0 plane under that pixel, from
+  // this frame's camera. The node keeps its place in the free area while the camera drifts.
+  function pinAnchors() {
+    if (!canvas.clientWidth || !canvas.clientHeight) return;
+    cam.updateMatrixWorld();
+    for (let i = 0; i < anchorCount; i++) {
+      const { x, y } = anchorState[i].pt;
+      ndcV.set((x / canvas.clientWidth) * 2 - 1, 1 - (y / canvas.clientHeight) * 2, 0.5).unproject(cam);
+      rayV.copy(ndcV).sub(cam.position).normalize();
+      anchorState[i].centre.copy(cam.position).addScaledVector(rayV, -cam.position.z / rayV.z);
+    }
+  }
 
   /* ---------------- post-processing ---------------- */
   const pipeline = new THREE.RenderPipeline(renderer);
@@ -237,6 +262,7 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
   /* ---------------- state ---------------- */
   const state = Array.from({ length: MAX_CORES }, () => ({
     name: '', up: false, centre: new THREE.Vector3(), target: new THREE.Vector3(), radius: 0, targetRadius: 0,
+    anchor: -1, offset: new THREE.Vector3(),
     flow: 0, stream: 0, bright: 0, targetBright: 0, color: new THREE.Color(), targetColor: new THREE.Color(),
   }));
   let coreCount = 0;
@@ -250,20 +276,21 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
   let hubPulse = 0;
 
   // models: [{n, up, tok, anchor}] (any order; sorted by name here so a core keeps its slot, position
-  // and colour while the model tab re-sorts by load). anchors: [{x, y, kind, busy, active}] in the
-  // order mc3.js lists them. A model's anchor index picks its node; a missing or invalid index
-  // puts it on the last anchor, the cloud node. tokensToday: real 24h total or null.
+  // and colour while the model tab re-sorts by load). anchor indexes `anchors`; a missing or invalid
+  // index puts the model on the last anchor, the cloud node. tokensToday: real 24h total or null.
+  // anchors: [{kind, busy, active, dim}] in mc3.js ANCHOR_DEFS order; their screen points come from layout().
   function sync(models, tokensToday, anchors = []) {
     anchorCount = Math.min(MAX_ANCHORS, anchors.length);
     anchors.slice(0, anchorCount).forEach((a, i) => {
       const s = anchorState[i];
       s.kind = a.kind;
-      s.centre.copy(anchorWorld(a.x, a.y));
+      s.dim = !!a.dim;
       s.active = Math.max(0, Math.round(a.active || 0));
-      s.litTarget = Number.isFinite(a.busy) ? 0.35 + 0.65 * (a.busy / 100) : 0.2;
+      s.litTarget = Number.isFinite(a.busy) ? clamp(a.busy / 100, 0, 1) : 0;
       s.color.set(ANCHOR_COLOR[a.kind] ?? ANCHOR_COLOR.gpu);
-      anchorNodes[i].core.geometry = a.kind === 'cloud' ? octGeom : icoGeom;
-      anchorNodes[i].grp.position.copy(s.centre);
+      const node = anchorNodes[i];
+      node.core.geometry = a.kind === 'cloud' ? octGeom : icoGeom;
+      node.glowCol.value.copy(s.color);
     });
     const list = [...models].sort((x, y) => x.n.localeCompare(y.n)).slice(0, MAX_CORES);
     const g = Number.isFinite(tokensToday) ? clamp(Math.log10(1 + tokensToday) / 8, 0.12, 1) : 0.3;
@@ -280,16 +307,16 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
       const share = maxTok > 0 && m.up ? (m.tok || 0) / maxTok : 0;
       s.name = m.n;
       s.up = !!m.up;
-      // A core sits on its anchor; models sharing one spread on a small ring around it.
+      // A core rides its anchor (render() follows the anchor's pinned point); models sharing one anchor spread on a small ring.
       const a = at[i];
       const k = a >= 0 ? seenAt[a]++ : 0;
       const n = a >= 0 ? perAnchor[a] : 1;
-      s.target.copy(a >= 0 ? anchorState[a].centre : ORIGIN);
+      s.anchor = a;
+      s.offset.set(0, 0, 0);
       if (n > 1) {
         const ang = (k / n) * Math.PI * 2 + a * 0.7;
-        s.target.add(new THREE.Vector3(Math.cos(ang) * ANCHOR_SPREAD, Math.sin(ang) * ANCHOR_SPREAD * 0.5, 0));
+        s.offset.set(Math.cos(ang) * ANCHOR_SPREAD, Math.sin(ang) * ANCHOR_SPREAD * 0.5, 0);
       }
-      if (!s.radius) s.centre.copy(s.target);
       s.targetRadius = (12 + 20 * g) * (0.75 + 0.5 * share);
       s.flow = m.up ? 0.3 + 1.7 * tn : 0.06;
       s.stream = m.up && (m.tok || 0) > 0.05 ? 0.12 + 0.55 * tn : 0;
@@ -298,6 +325,11 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
       if (!s.bright) s.color.copy(s.targetColor);
     });
     for (let i = list.length; i < MAX_CORES; i++) { state[i].radius = 0; state[i].targetRadius = 0; state[i].bright = 0; state[i].targetBright = 0; state[i].name = ''; }
+  }
+
+  // Screen points (CSS px) for the anchors, from mc3.js; applied on the next frame.
+  function layout(points) {
+    points.slice(0, MAX_ANCHORS).forEach((p, i) => { anchorState[i].pt = { x: p.x, y: p.y }; });
   }
 
   // row: one /api/llm/recent row ({ts, source, model, role, chars}). Launches from the core
@@ -381,11 +413,16 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
       a.lit += (a.litTarget - a.lit) * ease;
       a.shown += ((live ? Math.min(a.active, BEAD_CAP) : 0) - a.shown) * ease;
       if (live) {
-        node.core.material.color.copy(a.color).multiplyScalar(0.6 + a.lit);
-        node.ring.material.color.copy(a.color).multiplyScalar(0.8 + a.lit);
-        node.glow.material.color.copy(a.color);
-        node.glow.material.opacity = 0.25 + 0.35 * a.lit;
-        node.glow.scale.setScalar(6 * (1 + 0.2 * a.lit));
+        node.grp.position.copy(a.centre);
+        const r = ANCHOR_R_MIN + (ANCHOR_R_MAX - ANCHOR_R_MIN) * a.lit;
+        node.core.scale.setScalar(r);
+        node.core.material.color.copy(a.color).multiplyScalar(a.dim ? 0.6 : 1.1 + 0.5 * a.lit);
+        node.core.material.opacity = a.dim ? 0.3 : 0.95;
+        node.glow.scale.setScalar(r * 4.4);
+        node.glowA.value = a.dim ? 0 : 0.12 + 0.13 * a.lit;
+        node.ring.scale.setScalar(r * 2.3);
+        node.ring.material.color.copy(a.color).multiplyScalar(a.dim ? 0.5 : 1);
+        node.ring.material.opacity = a.dim ? 0.1 : 0.22;
         if (!RM) { node.core.rotation.y += dt * 0.4; node.core.rotation.x += dt * 0.15; node.ring.rotation.z += dt * 0.5; }
       }
       const drawn = live ? Math.min(a.active, BEAD_CAP) : 0;
@@ -399,7 +436,7 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
         const j = Math.floor(k / rings);
         const inRing = Math.ceil((n - ring) / rings);
         const phi = (j / inRing) * Math.PI * 2 + ring * 0.9 + (ring % 2 ? -1 : 1) * (RM ? 0 : t) * (0.9 / (1 + ring * 0.35));
-        const R = 17 + ring * 4.5;
+        const R = 14 + ring * 4.5;
         tmpV.set(Math.cos(phi) * R, Math.sin(phi) * R * 0.4, Math.sin(phi) * R * 0.4).add(a.centre);
         const size = (rings > 1 ? 1.1 : 1.5) * fade;
         m4.makeScale(size, size, size).setPosition(tmpV);
@@ -411,13 +448,6 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
     if (beadMesh.instanceColor) beadMesh.instanceColor.needsUpdate = true;
   }
 
-  // CSS-px position of anchor i over the canvas, from the scene's own camera (mc3.js places labels there).
-  function screenOf(i) {
-    cam.updateMatrixWorld();
-    tmpP.copy(anchorState[i].centre).project(cam);
-    return { x: ((tmpP.x + 1) / 2) * canvas.clientWidth, y: ((1 - tmpP.y) / 2) * canvas.clientHeight };
-  }
-
   function render(now) {
     // Reduced motion: no camera drift, no trails/aberration, a slowed flow and a ~8 fps redraw.
     if (RM && now - lastRender < 125) return;
@@ -426,9 +456,20 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
     adapt(now);
     const t = now / 1000;
 
+    // Camera drift first, so the anchors are pinned against this frame's view.
+    if (!RM) {
+      cam.position.x = AIM.x + Math.sin(t * 0.07) * 24;
+      cam.position.y = 14 + Math.sin(t * 0.05) * 10;
+      cam.lookAt(AIM);
+    }
+    pinAnchors();
+
     const ease = 1 - Math.exp(-dt * 1.8);
     for (let i = 0; i < MAX_CORES; i++) {
       const s = state[i];
+      if (s.anchor >= 0) s.target.copy(anchorState[s.anchor].centre).add(s.offset);
+      else s.target.copy(ORIGIN);
+      if (!s.radius) s.centre.copy(s.target);
       s.centre.lerp(s.target, ease);
       s.radius += (s.targetRadius - s.radius) * ease;
       s.bright += (s.targetBright - s.bright) * ease;
@@ -456,9 +497,6 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
     if (n) renderer.compute(kernelFor(n));
 
     if (!RM) {
-      cam.position.x = AIM.x + Math.sin(t * 0.07) * 24;
-      cam.position.y = 14 + Math.sin(t * 0.05) * 10;
-      cam.lookAt(AIM);
       hub.rotation.y += dt * 0.35;
       hubRings.forEach((r, i) => { r.rotation.z += dt * (0.25 + i * 0.12) * (i % 2 ? -1 : 1); });
     }
@@ -484,5 +522,5 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
     renderer.dispose();
   }
 
-  return { render, sync, comet, screenOf, dispose, backend: renderer.backend?.isWebGPUBackend ? 'webgpu' : 'webgl2' };
+  return { render, sync, layout, comet, dispose, backend: renderer.backend?.isWebGPUBackend ? 'webgpu' : 'webgl2' };
 }
