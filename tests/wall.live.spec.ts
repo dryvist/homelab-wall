@@ -26,7 +26,7 @@ const safeName = (name: string) => name.replace(/[^a-z0-9]+/gi, '-').toLowerCase
 // The wall polls its feeds without pause, so networkidle may never arrive: each wait is bounded.
 const SETTLE_MS = 15_000;
 
-type LoginResult = 'no-gate' | 'logged-in' | 'gated-no-credentials' | 'login-rejected';
+type LoginResult = 'no-gate' | 'logged-in' | 'gated-no-credentials' | 'login-unconfirmed';
 
 async function loginIfPresented(page: Page): Promise<LoginResult> {
   await page.waitForLoadState('networkidle', { timeout: SETTLE_MS }).catch(() => {});
@@ -38,8 +38,10 @@ async function loginIfPresented(page: Page): Promise<LoginResult> {
   await usernameField.fill(wallUser);
   await page.getByLabel(/password/i).first().fill(wallPassword);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  // The form still showing after the bound proves only that sign-in was not confirmed in time:
+  // the gate may have rejected the credentials, or it may be slow.
   const leftLoginPage = await usernameField.waitFor({ state: 'hidden', timeout: SETTLE_MS }).then(() => true, () => false);
-  if (!leftLoginPage) return 'login-rejected';
+  if (!leftLoginPage) return 'login-unconfirmed';
   await page.waitForLoadState('networkidle', { timeout: SETTLE_MS }).catch(() => {});
   return 'logged-in';
 }
@@ -56,7 +58,7 @@ test('the rotator shows every configured slide, non-blank, with panels that keep
   const loginResult = await loginIfPresented(page);
   testInfo.attach('login', { body: loginResult });
   expect(loginResult, 'gate present, no credentials supplied').not.toBe('gated-no-credentials');
-  expect(loginResult, 'gate rejected the supplied credentials').not.toBe('login-rejected');
+  expect(loginResult, `sign-in not confirmed within ${SETTLE_MS} ms: credentials rejected or the gate is slow`).not.toBe('login-unconfirmed');
 
   const config = await page.evaluate(async () => {
     try {
