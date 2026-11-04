@@ -638,6 +638,11 @@ onDispose(() => clearInterval(clockId));
 renderAnchors();
 addEventListener('resize', layoutAnchors);
 onDispose(() => removeEventListener('resize', layoutAnchors));
+// The label layout also follows the header, fleet panel and tile strip: a font load or a change in the
+// model count can resize them after the last layout, and the labels must not sit on the strip.
+const layoutObserver = new ResizeObserver(layoutAnchors);
+for (const el of [document.querySelector('header'), $('apps'), $('modeltab')]) layoutObserver.observe(el);
+onDispose(() => layoutObserver.disconnect());
 loop(0, (now) => { drawScene(now); placeAnchors(); }); // uncapped: native refresh rate, the display has headroom to spare
 // The first feed poll runs alongside the first refresh, never after it: a slow refresh must not
 // hold the request feed on its empty placeholder (pollFeed handles its own failures).
