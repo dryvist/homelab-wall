@@ -407,7 +407,6 @@ async function pollFeed() {
 // One label per anchor, always present. Its text comes from accel (the same readings the scene
 // draws); its position comes each frame from the renderer's own projection (placeAnchors).
 function renderAnchors() {
-  layoutAnchors();
   const host = $('anchors');
   if (host.children.length !== accel.length) {
     host.innerHTML = accel.map((d) => `<div class="anchor kind-${d.kind}" data-accel="${d.id}"><div class="alab"></div></div>`).join('');
@@ -433,6 +432,7 @@ function renderAnchors() {
     const badge = d.active > BEAD_RING ? `<em class="badge">×${d.active}</em>` : '';
     el.querySelector('.alab').innerHTML = `<b class="an">${esc(d.name)}</b><span class="ab">${busyLine}</span><span class="as">${statusLine}</span>${badge}`;
   });
+  layoutAnchors();
 }
 
 // The free area for the anchors, in CSS px: right of the fleet panel, under the header, above the model
@@ -452,6 +452,9 @@ function layoutAnchors() {
     return { x: clamp(cx + rx * Math.cos(a), minX, maxX), y: clamp(cy + ry * Math.sin(a), minY, maxY) };
   });
   core3d?.layout(slots);
+  // Labels move now, not on the next render frame: a 3D frame can take seconds, and a label left on
+  // an earlier layout would sit on the tile strip until then.
+  placeAnchors();
 }
 function placeAnchors() {
   const host = $('anchors');
