@@ -139,18 +139,19 @@ function deriveAccelerators(r) {
 
   // Requests: each local server's count lands on its device's anchor when its host is a known device.
   const active = ANCHOR_DEFS.map(() => 0);
-  let local = 0;
+  let onDevices = 0;
   for (const row of [...(r.vllm || []), ...(r.llama || [])]) {
-    if (!Number.isFinite(row.value)) continue;
-    local += row.value;
-    const role = hostRole.get(hostOf(row.labels.instance));
-    if (role != null) active[ROLE.get(role)] += row.value;
+    const role = Number.isFinite(row.value) ? hostRole.get(hostOf(row.labels.instance)) : undefined;
+    if (role == null) continue;
+    active[ROLE.get(role)] += row.value;
+    onDevices += row.value;
   }
-  // Cloud = router-wide in flight minus every local server's count. Without both readings the
-  // share is unknown, so the node draws none.
+  // Cloud = router-wide in flight minus the counts drawn on a device. A local server on an unmatched
+  // host is not subtracted, so its requests stay on cloud. Without both readings the share is unknown,
+  // so the node draws none.
   const inflight = r.inflight?.[0]?.value;
   const known = r.vllm != null && r.llama != null && Number.isFinite(inflight);
-  active[CLOUD] = known ? Math.max(0, Math.round(inflight - local)) : 0;
+  active[CLOUD] = known ? Math.max(0, Math.round(inflight - onDevices)) : 0;
   model.inflight = Number.isFinite(inflight) ? inflight : null;
 
   const plain = ANCHOR_DEFS.map((d, i) => {
