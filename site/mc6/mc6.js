@@ -293,6 +293,11 @@ function drawHero(now) {
     markActive(next.name);
   }
 
+  // d3-cloud places words around 0,0 inside the layout box, so draw from the canvas midpoint
+  // (paintTile does the same for the strip tiles).
+  c.save();
+  c.translate(w / 2, h / 2);
+
   // Transition progress for every mode: reduced motion drops only the positional glide
   // (inside the branch below), never the crossfade itself.
   const t = Math.min(1, ((now - epoch) % CYCLE_MS) / FADE_MS);
@@ -317,6 +322,7 @@ function drawHero(now) {
       drawWord(c, p, current.source.color, pulse);
     }
   }
+  c.restore();
 }
 
 function hash(text) {
