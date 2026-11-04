@@ -965,23 +965,32 @@ const maxWords = ['user', 'claude', 'codex', 'antigravity', 'zcode', 'opencode']
 // canvas width and the displayed view.
 type Frame = { t: number; L: number; R: number; fills: number; backdrops: number; cw: number; view: string | null };
 
-// Median frame interval bounds in ms per chromium project, for the steady window and for the CONVERGENCE
-// transition: 25ms everywhere, and 40ms for the transition at 2560x1440.
+// Median frame interval bounds in ms, per environment and chromium project, for the steady window and
+// for the CONVERGENCE transition. Local (CI unset): 25ms everywhere, and 40ms for the transition at
+// 2560x1440. CI (GitHub-hosted runners, CI set): 60ms steady and 140ms transition at both sizes. The CI
+// bounds were set from measured CI medians of 66.6ms (transition, 1920x1080) and 33.3ms (steady,
+// 2560x1440), and catch regressions of roughly 2x or more on a shared CPU runner. The local bounds are
+// the kiosk target.
 const FRAME_MS = {
-  'chromium-1920x1080@1': { steady: 25, transition: 25 },
-  'chromium-2560x1440': { steady: 25, transition: 40 },
+  local: {
+    'chromium-1920x1080@1': { steady: 25, transition: 25 },
+    'chromium-2560x1440': { steady: 25, transition: 40 },
+  },
+  ci: {
+    'chromium-1920x1080@1': { steady: 60, transition: 140 },
+    'chromium-2560x1440': { steady: 60, transition: 140 },
+  },
 };
 
 // At maximum input a refresh lays the clouds out only when the words change. Refreshes run every
 // second here. Over a steady 3s window of identical refreshes no layout runs. A refresh that reads one
-// changed word lays out seven clouds: six strip tiles and the hero's current view. The median frame
-// interval stays under the FRAME_MS bound for the project through the steady window and through one
-// CONVERGENCE switch and its 1.4s transition (chromium at 1920x1080 and 2560x1440: 25ms, and 40ms for
-// the transition at 2560x1440).
-test('mc6 at maximum input relays out only on changed words, with median frames under 25ms (40ms for the 2560 transition)', async ({ page }) => {
+// changed word lays out seven clouds: six strip tiles and the hero's current view. Layout counts and
+// gradient builds are hard assertions in every environment. The steady and transition medians are
+// checked last, against the FRAME_MS bounds for the environment and project.
+test('mc6 at maximum input relays out only on changed words; median frames stay under their FRAME_MS bounds (local 25ms, 40ms at 2560 transition; CI 60ms steady, 140ms transition)', async ({ page }) => {
   test.skip(!!wallUrl, 'forces the words feed against the fixture server only');
-  test.skip(!(test.info().project.name in FRAME_MS), 'chromium at 1920x1080 and 2560x1440 only');
-  const bound = FRAME_MS[test.info().project.name as keyof typeof FRAME_MS];
+  test.skip(!(test.info().project.name in FRAME_MS.local), 'chromium at 1920x1080 and 2560x1440 only');
+  const bound = (process.env.CI ? FRAME_MS.ci : FRAME_MS.local)[test.info().project.name as keyof typeof FRAME_MS.local];
   test.setTimeout(150_000);
   await mockFeeds(page);
   await page.route('**/config.json', (r: Route) => r.fulfill({ json: { ...config, refreshSeconds: 1 } }));
@@ -1037,14 +1046,16 @@ test('mc6 at maximum input relays out only on changed words, with median frames 
   const transitionMedian = medianOf(transition);
   const laidOut = transition.slice(1).filter((f, i) => f.L !== transition[i].L).length;
   const built = transition.slice(1).filter((f, i) => f.fills > transition[i].fills || f.backdrops > transition[i].backdrops).length;
+  // Both medians are recorded before any assertion, so every run prints them, whichever check fails.
+  const medians = `steady ${steadyMedian.toFixed(1)}ms (bound ${bound.steady}ms), transition ${transitionMedian.toFixed(1)}ms (bound ${bound.transition}ms)`;
   test.info().annotations.push({ type: 'measured', description: `steady median ${steadyMedian}ms; transition median ${transitionMedian}ms over ${transition.length} frames, ${laidOut} of them laid out, ${built} built a gradient` });
+  test.info().annotations.push({ type: 'frame-median', description: medians });
+  console.log(`frame-median ${test.info().project.name}: ${medians}`);
 
   expect(refreshes, 'refreshes during the 3s window').toBeGreaterThanOrEqual(2);
   expect(layouts, 'layouts during identical-words refreshes in the 3s window').toBe(0);
   expect(createdWithoutLayout(steady), 'steady frames that create a gradient without a layout').toBe(0);
-  expect(steadyMedian, 'median steady frame interval (ms)').toBeLessThan(bound.steady);
   expect(createdWithoutLayout(transition), 'transition frames that create a gradient without a layout').toBe(0);
-  expect(transitionMedian, 'median transition frame interval (ms)').toBeLessThan(bound.transition);
 
   // The feed gains one word as the sampler starts. The sampler runs for 2.5s, which covers the refresh
   // that reads the new words and at least one more that reads the same words again.
@@ -1070,4 +1081,8 @@ test('mc6 at maximum input relays out only on changed words, with median frames 
   expect(changedRefreshes.filter((r) => r.layouts > 0).map((r) => r.layouts), 'layouts per refresh that reads changed words').toEqual([7]);
   expect(changedRefreshes.filter((r) => r.layouts === 0).length, 'refreshes that lay out nothing').toBeGreaterThanOrEqual(1);
   expect(changedRefreshes.every((r) => r.sameView), 'the displayed view held across those refreshes').toBe(true);
+
+  // Timing last, and soft, so a steady failure still reports the transition median.
+  expect.soft(steadyMedian, 'median steady frame interval (ms)').toBeLessThan(bound.steady);
+  expect.soft(transitionMedian, 'median transition frame interval (ms)').toBeLessThan(bound.transition);
 });
