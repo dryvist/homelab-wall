@@ -26,8 +26,10 @@ const SKIP_NOTE_MS = 4000;
 // slide that was down at boot (or hung mid-session) can rejoin rotation once it recovers.
 const REPROBE_MS = 5 * 60 * 1000;
 const FADE_MS = 800; // matches .layer{transition:opacity .8s ease} below
-// Hard ceiling under Chromium's 16-context-per-page limit. The deployed wall configures 8 slides
-// (MC1-5, LEXICON, GLANCE, HOMARR); 10 leaves room for two more. Slides past it are not shown.
+// Hard ceiling under Chromium's 16-live-WebGL-context limit. Every layer stays loaded, and a slide
+// holds at most one GL context, its renderer: hardwareGL() releases its probe context at once
+// (site/lib/stage.js). The deployed wall configures 8 slides (MC1-5, LEXICON, GLANCE, HOMARR);
+// 10 leaves room for two more. Slides past it are not shown.
 const MAX_LAYERS = 10;
 const CIRC = 2 * Math.PI * 6;
 

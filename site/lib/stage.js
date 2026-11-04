@@ -71,15 +71,24 @@ export function observeCanvas(cell, canvas, onResize) {
 
 // True when WebGL is backed by real hardware. A software rasteriser
 // (SwiftShader, llvmpipe) would burn node CPU, so pages fall back to 2D.
+// The answer is computed once per page, and the probe context is released
+// at once: every slide stays loaded in the rotator, and Chromium drops the
+// oldest WebGL context past 16 live ones, so a probe must not hold a context
+// until garbage collection.
+let hardwareGLResult;
 export function hardwareGL() {
+  if (hardwareGLResult !== undefined) return hardwareGLResult;
+  let gl = null;
   try {
-    const gl = document.createElement('canvas').getContext('webgl');
-    if (!gl) return false;
+    gl = document.createElement('canvas').getContext('webgl');
+    if (!gl) return (hardwareGLResult = false);
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
     const r = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
-    return !/swiftshader|llvmpipe|software|basic render/i.test(String(r));
+    return (hardwareGLResult = !/swiftshader|llvmpipe|software|basic render/i.test(String(r)));
   } catch {
-    return false;
+    return (hardwareGLResult = false);
+  } finally {
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
   }
 }
 
