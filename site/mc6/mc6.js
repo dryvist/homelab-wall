@@ -37,6 +37,8 @@ const FADE_MS = 1000;      // glide/crossfade window at the start of each cycle
 const STALE_MS = 5 * 60 * 1000; // matches mc1's stale label: age, then "since <time>"
 const HERO_WORDS = 80;     // top words per source in the hero cloud
 const TILE_WORDS = 30;     // top words per source in a strip tile
+const CONVERGENCE_WORDS = 120; // top words of the merged view, by total n across sources
+const VOCAB_OUTLINE = 'rgba(232,244,255,0.85)'; // outline on words shared by the operator and an agent
 const WORDS_KEY = 'mc6.words';
 
 const cfg = await loadConfig();
@@ -137,10 +139,11 @@ function renderSubtitle() {
 
 // Words held by more than one source, most frequent overall first.
 function renderShared() {
-  const total = (mix) => mix.reduce((sum, m) => sum + m.n, 0);
-  const shared = [...shareMap].filter(([, mix]) => mix.length > 1).sort(([, a], [, b]) => total(b) - total(a));
+  const shared = [...shareMap].filter(([, mix]) => mix.length > 1).sort(([, a], [, b]) => totalOf(b) - totalOf(a));
   $('shared').textContent = shared.length ? `SHARED ${shared.length} · ${shared.slice(0, 4).map(([word]) => word).join(' · ')}` : '';
 }
+
+const totalOf = (mix) => mix.reduce((sum, m) => sum + m.n, 0);
 
 function ageLabel(at) {
   const s = Math.max(0, Math.round((Date.now() - at) / 1000));
@@ -199,9 +202,43 @@ function widthOf(text, face, size) {
   return measurer.measureText(text).width;
 }
 
-// The words of one source (or of a merged view) as layout items, each carrying its mix.
+// The words of one source as layout items, each carrying every source's entry for the same text.
 function sourceItems(source, cap) {
   return source.words.slice(0, cap).map((w) => ({ word: w.word, n: w.n, mix: shareMap.get(w.word) }));
+}
+
+// Words held by both the operator (user) and at least one agent: the shared vocabulary.
+const isVocab = (mix) => mix.some((m) => m.source === 'user') && mix.some((m) => m.source !== 'user');
+
+// Every word of every source, sized by its total n across sources, largest first.
+function mergedItems() {
+  const items = [];
+  for (const [word, mix] of shareMap) {
+    const total = totalOf(mix);
+    items.push({ word, n: total, total, mix, vocab: isVocab(mix) });
+  }
+  return items.sort((a, b) => b.n - a.n).slice(0, CONVERGENCE_WORDS);
+}
+
+// A merged word is one segment per source holding it, each as wide as that source's share of the
+// word's total n. The glyphs fill with the segments left to right, and an underline repeats them.
+function mergedPaint(item, t) {
+  const segments = item.mix.map((m) => ({ share: m.n / item.total, color: shade(m.base, t) }));
+  const paint = { color: segments[0].color, segments };
+  if (segments.length > 1) paint.stops = hardStops(segments);
+  return paint;
+}
+
+// Gradient stops that hold each segment's colour across its share, with hard edges between shares.
+function hardStops(segments) {
+  const stops = [];
+  let at = 0;
+  for (const seg of segments) {
+    stops.push([at, seg.color]);
+    at = Math.min(1, at + seg.share);
+    stops.push([at, seg.color]);
+  }
+  return stops;
 }
 
 // One d3-cloud layout for `items`, sorted by n descending. Font size scales with sqrt(n) between
@@ -228,7 +265,8 @@ function layoutCloud(items, [w, h], [minFrac, maxFrac], paintFor, hero) {
       paint,
       primary: paint.color,
       tw: widthOf(it.word, face, size),
-      halo: hero && tier === 0,
+      halo: hero && (tier === 0 || !!it.vocab),
+      vocab: hero && !!it.vocab,
       phase: hashOf(it.word) * TAU,
     });
   });
@@ -265,6 +303,23 @@ function drawWord(c, word, geo, now) {
   }
   c.fillStyle = fillOf(c, word, hw, now);
   c.fillText(word.text, 0, 0);
+  c.shadowBlur = 0;
+  if (word.vocab) {
+    c.lineWidth = Math.max(1, geo.size * 0.035);
+    c.strokeStyle = VOCAB_OUTLINE;
+    c.strokeText(word.text, 0, 0);
+  }
+  if (word.paint.segments) {
+    // Underline: each source's share of the word, in that source's shade.
+    const y = geo.size * 0.14, th = Math.max(1.5, geo.size * 0.05);
+    let x = -hw;
+    for (const seg of word.paint.segments) {
+      const sw = 2 * hw * seg.share;
+      c.fillStyle = seg.color;
+      c.fillRect(x, y, sw, th);
+      x += sw;
+    }
+  }
   c.restore();
 }
 
@@ -356,9 +411,12 @@ function fitHero() {
   }
 }
 
-// The hero rotation: every source that has words, in strip order.
+// The hero rotation: every source that has words, in strip order, then the merged view.
+const MERGED = Symbol('convergence');
+const MERGED_VIEW = { key: MERGED, label: 'CONVERGENCE', color: '', source: null };
 function liveViews() {
-  return sources.filter((s) => s.words.length).map((s) => ({ key: s.name, label: s.label, color: s.color, source: s }));
+  const live = sources.filter((s) => s.words.length).map((s) => ({ key: s.name, label: s.label, color: s.color, source: s }));
+  return live.length ? [...live, MERGED_VIEW] : [];
 }
 
 function viewOf(key) {
@@ -368,7 +426,9 @@ function viewOf(key) {
 function heroPlaced(view) {
   let placed = heroLayouts.get(view.key);
   if (!placed) {
-    placed = layoutCloud(sourceItems(view.source, HERO_WORDS), heroSize, [0.016, 0.085], sourcePaint, true);
+    placed = view.source
+      ? layoutCloud(sourceItems(view.source, HERO_WORDS), heroSize, [0.016, 0.085], sourcePaint, true)
+      : layoutCloud(mergedItems(), heroSize, [0.016, 0.085], mergedPaint, true);
     heroLayouts.set(view.key, placed);
   }
   return placed;
@@ -395,10 +455,22 @@ function markActive(view) {
   const el = $('herolabel');
   el.textContent = view ? view.label : '';
   el.style.color = view?.color ?? '';
+  el.classList.toggle('merged', view?.key === MERGED);
+  $('herosub').textContent = heroSub(view);
   for (const tile of $('strip').children) {
     if (view && tile.dataset.wordSource === view.key) tile.setAttribute('data-active', '');
     else tile.removeAttribute('data-active');
   }
+}
+
+// The line under the hero label: a source's shown words out of its total, or for the merged view
+// the distinct terms and the shared vocabulary, most frequent first.
+function heroSub(view) {
+  if (!view) return '';
+  if (view.source) return `${Math.min(view.source.words.length, HERO_WORDS)} OF ${view.source.words.length} WORDS`;
+  const vocab = [...shareMap].filter(([, mix]) => isVocab(mix)).sort(([, a], [, b]) => totalOf(b) - totalOf(a)).map(([word]) => word);
+  const head = `${shareMap.size} TERMS`;
+  return vocab.length ? `${head} · SHARED VOCAB ${vocab.slice(0, 5).join(' · ')}` : `${head} · NO SHARED VOCAB`;
 }
 
 // Slow breathing scale and drift of the whole hero cloud, a percent or so and a few pixels, so a
@@ -453,7 +525,7 @@ function drawHero(now) {
   const c = hero.getContext('2d');
   const [w, h] = heroSize;
   const list = liveViews();
-  paintBackdrop(c, w, h, current?.view.color ?? '#3ee6ff');
+  paintBackdrop(c, w, h, current?.view.color || '#3ee6ff');
   if (!list.length) return;
   epoch ??= now;
 
