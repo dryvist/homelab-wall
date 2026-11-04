@@ -5,7 +5,7 @@
 // KNOWN GAP: that precomputed metric is defined in a separate repo and still encodes the old
 // 0-100 formula. Q.appScore's "or" prefers it when present, so the live wall keeps showing 0-100
 // values until that definition is updated to match this expression — this file alone cannot fix it.
-const CATALOG = 'group=~"catalog-.+",group!="catalog-authed"';
+const CATALOG = 'group=~".+ · (UI|API)"';
 const NODE = 'job="pve_node_exporter"';
 // A network mount of another node's own pool reports the same bytes as that pool's own local
 // reading under a different device+mountpoint, so it must be excluded here rather than deduped
