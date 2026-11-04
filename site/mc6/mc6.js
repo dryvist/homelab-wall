@@ -381,41 +381,49 @@ function renderStrip() {
   paintTiles();
 }
 
-const tileLayouts = new Map(); // source name -> {placed} at tile scale
+const tileLayouts = new Map(); // source name -> {key, placed} at the tile's CSS size
 function paintTiles() {
   for (const tile of $('strip').children) paintTile(tile);
 }
 
+// The layout is in the tile's CSS pixels; the canvas backing store follows the render quality and
+// the context is scaled to match, so a quality step repaints without relaying out.
 function paintTile(tile) {
   const canvas = tile.querySelector('canvas');
   if (!canvas) return;
   const s = sources.find((x) => x.name === tile.dataset.wordSource);
   if (!s) return;
   const dpr = adaptiveDpr();
-  const w = Math.max(1, Math.round(tile.clientWidth * dpr)), h = Math.max(1, Math.round(tile.clientHeight * dpr));
-  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; tileLayouts.delete(s.name); }
+  const w = Math.max(1, tile.clientWidth), h = Math.max(1, tile.clientHeight);
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+  }
   const c = canvas.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
   paintBackdrop(c, w, h, s.color);
 
   // Lay the cloud out in the tile minus the label band at the top, then draw it centered a
-  // little below the tile's middle so its top edge clears the label.
-  const box = [w, Math.round(h * 0.78)];
-  let placed = tileLayouts.get(s.name)?.placed;
-  if (!placed) {
-    placed = layoutCloud(sourceItems(s, TILE_WORDS), box, [0.1, 0.3], sourcePaint, false);
-    tileLayouts.set(s.name, { placed });
+  // little below the tile's middle so its top edge clears the label. A layout is kept while the
+  // tile's CSS size holds.
+  const key = `${w}x${h}`;
+  let cached = tileLayouts.get(s.name);
+  if (cached?.key !== key) {
+    cached = { key, placed: layoutCloud(sourceItems(s, TILE_WORDS), [w, Math.round(h * 0.78)], [0.1, 0.3], sourcePaint, false) };
+    tileLayouts.set(s.name, cached);
   }
   c.save();
   c.translate(w / 2, h / 2 + Math.round(h * 0.09));
-  for (const word of placed) drawWord(c, word, at(word));
+  for (const word of cached.placed) drawWord(c, word, at(word));
   c.restore();
 }
 
 /* ---------------- hero: cycles the sources, shared words glide ---------------- */
 const hero = $('cloudhero');
 const heroBox = $('hero');
-let heroSize = [0, 0];
-const heroLayouts = new Map(); // view key -> placed[] at hero scale (cleared on any resize/refresh)
+let heroSize = [0, 0];  // the hero's CSS pixels: the layout box
+let heroDpr = 1;        // canvas pixels per CSS pixel, from adaptiveDpr()
+const heroLayouts = new Map(); // view key -> placed[] at hero scale (cleared on a CSS resize or refresh)
 // The hero's rotation clock starts on the first frame that has words, so the first source
 // always gets a full cycle however long the first /api/words response takes.
 let epoch = null;
@@ -423,16 +431,19 @@ let lastSlot = -1;
 let current = null;  // {view, placed}
 let previous = null; // the view the hero is gliding away from, while FADE_MS runs
 
+// The canvas backing store follows the render quality; the layout box stays the hero's CSS size, so
+// a quality step resizes and repaints the canvas without relaying out the clouds.
 function fitHero() {
   const dpr = adaptiveDpr();
-  const w = Math.max(1, Math.round(heroBox.clientWidth * dpr)), h = Math.max(1, Math.round(heroBox.clientHeight * dpr));
-  if (hero.width !== w || hero.height !== h) {
-    hero.width = w;
-    hero.height = h;
+  const w = Math.max(1, heroBox.clientWidth), h = Math.max(1, heroBox.clientHeight);
+  heroDpr = dpr;
+  if (hero.width !== Math.round(w * dpr) || hero.height !== Math.round(h * dpr)) {
+    hero.width = Math.round(w * dpr);
+    hero.height = Math.round(h * dpr);
+  }
+  if (heroSize[0] !== w || heroSize[1] !== h) {
     heroSize = [w, h];
     heroLayouts.clear();
-    tileLayouts.clear();
-    paintTiles();
     current = null;
     previous = null;
     lastSlot = -1;
@@ -596,6 +607,7 @@ function drawSteady(c, placed, now) {
 function drawHero(now) {
   fitHero();
   const c = hero.getContext('2d');
+  c.setTransform(heroDpr, 0, 0, heroDpr, 0, 0);
   const [w, h] = heroSize;
   const list = liveViews();
   paintBackdrop(c, w, h, current?.view.color || '#3ee6ff');
