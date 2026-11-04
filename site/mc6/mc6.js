@@ -2,7 +2,7 @@
 // driven by the same-origin /api/words feed (ClickHouse FORMAT JSON). A hero cloud cycles the
 // sources and a merged CONVERGENCE view every 8s, with words morphing, dispersing and condensing
 // between them, and a strip below keeps one small cloud per source on screen, active one
-// highlighted. Each cloud is laid out with d3-cloud 2.0.0 once per data refresh: every word is
+// highlighted. Each cloud is laid out with d3-cloud 2.0.0 whenever the words change: every word is
 // rasterised with getSprite() (family, weight, size and angle chosen per word) and then placed
 // with place() (coordinates centred at 0, rotate in degrees); see
 // https://github.com/jasondavies/d3-cloud (v2 README, "Canvas Rendering").
@@ -103,29 +103,39 @@ let shareMap = new Map();  // word -> [{source, base, n}] for every source holdi
 let staleAt = null;
 let totalWords = 0;
 let refreshRuns = 0;       // data refreshes applied, for the test hook
+let builtFrom = null;      // signature of the rows the sources and layouts were last built from
+
+// The rows as one string, whatever their order. A refresh whose rows match the last build keeps its
+// layouts.
+const signatureOf = (rows) => rows.map((row) => `${row?.source}\u0001${row?.word}\u0001${row?.n}`).sort().join('\u0002');
 
 function apply(rows, heldOver) {
   refreshRuns += 1;
-  const by = groupRows(rows);
-  for (const name of by.keys()) slotOf(name); // fix unknowns' slots before ordering
-  const names = [...new Set([...KNOWN_SOURCES, ...by.keys()])].sort((a, b) => slotOf(a) - slotOf(b));
-  sources = names.map((name) => ({ name, label: LABEL(name), color: colorOf(name), base: hueSat(colorOf(name)), words: by.get(name) || [] }));
-  shareMap = new Map();
-  for (const s of sources) {
-    for (const w of s.words) {
-      let mix = shareMap.get(w.word);
-      if (!mix) shareMap.set(w.word, (mix = []));
-      mix.push({ source: s.name, base: s.base, n: w.n });
+  const sig = signatureOf(rows);
+  if (sig !== builtFrom) {
+    builtFrom = sig;
+    const by = groupRows(rows);
+    for (const name of by.keys()) slotOf(name); // fix unknowns' slots before ordering
+    const names = [...new Set([...KNOWN_SOURCES, ...by.keys()])].sort((a, b) => slotOf(a) - slotOf(b));
+    sources = names.map((name) => ({ name, label: LABEL(name), color: colorOf(name), base: hueSat(colorOf(name)), words: by.get(name) || [] }));
+    shareMap = new Map();
+    for (const s of sources) {
+      for (const w of s.words) {
+        let mix = shareMap.get(w.word);
+        if (!mix) shareMap.set(w.word, (mix = []));
+        mix.push({ source: s.name, base: s.base, n: w.n });
+      }
     }
+    totalWords = sources.reduce((sum, s) => sum + s.words.length, 0);
+    renderShared();
+    tileLayouts.clear();
+    renderStrip();
+    refreshHeroLayouts();
   }
-  totalWords = sources.reduce((sum, s) => sum + s.words.length, 0);
   staleAt = heldOver ?? null;
   panel.classList.toggle('stale', staleAt != null);
+  // The subtitle's STALE age is redrawn on every refresh, whether or not the words changed.
   renderSubtitle();
-  renderShared();
-  tileLayouts.clear();
-  renderStrip();
-  refreshHeroLayouts();
   markActive(current?.view ?? null);
   // A fresh poll that answers nothing is genuinely empty (state 'empty'); a poll that failed
   // but left us last-good data (lastGood.js) renders it held over (state 'stale', dimmed via
@@ -441,7 +451,7 @@ const hero = $('cloudhero');
 const heroBox = $('hero');
 let heroSize = [0, 0];  // the hero's CSS pixels: the layout box
 let heroDpr = 1;        // canvas pixels per CSS pixel, from adaptiveDpr()
-const heroLayouts = new Map(); // view key -> placed[] at hero scale (cleared on a CSS resize or refresh)
+const heroLayouts = new Map(); // view key -> placed[] at hero scale (cleared on a CSS resize or a words change)
 // The hero's rotation clock starts on the first frame that has words, so the first source
 // always gets a full cycle however long the first /api/words response takes.
 let epoch = null;

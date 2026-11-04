@@ -972,18 +972,22 @@ const FRAME_MS = {
   'chromium-2560x1440': { steady: 25, transition: 40 },
 };
 
-// At maximum input, a data refresh lays the layouts out again and the idle frames do not: each
-// refresh re-lays the six strip tiles and the hero's current view, seven layouts in all. Refreshes run
-// every second. The median frame interval stays under the FRAME_MS bound for the project over a steady
-// 3s window, and through one CONVERGENCE switch and its 1.4s glide, disperse and condense transition.
-test('mc6 at maximum input lays out once per refresh and keeps median frames under the FRAME_MS bound (40ms for the 2560 transition)', async ({ page }) => {
+// At maximum input a refresh lays the clouds out only when the words change. Refreshes run every
+// second here. Over a steady 3s window of identical refreshes no layout runs. A refresh that reads one
+// changed word lays out seven clouds: six strip tiles and the hero's current view. The median frame
+// interval stays under the FRAME_MS bound for the project through the steady window and through one
+// CONVERGENCE switch and its 1.4s transition (chromium at 1920x1080 and 2560x1440: 25ms, and 40ms for
+// the transition at 2560x1440).
+test('mc6 at maximum input relays out only on changed words, with median frames under 25ms (40ms for the 2560 transition)', async ({ page }) => {
   test.skip(!!wallUrl, 'forces the words feed against the fixture server only');
   test.skip(!(test.info().project.name in FRAME_MS), 'chromium at 1920x1080 and 2560x1440 only');
   const bound = FRAME_MS[test.info().project.name as keyof typeof FRAME_MS];
   test.setTimeout(150_000);
   await mockFeeds(page);
   await page.route('**/config.json', (r: Route) => r.fulfill({ json: { ...config, refreshSeconds: 1 } }));
-  await page.route('**/api/words', (r: Route) => r.fulfill({ json: { meta: [], data: maxWords, rows: maxWords.length } }));
+  // The feed answers the maximum input until the changed-words step below, which adds one word.
+  let feed = maxWords;
+  await page.route('**/api/words', (r: Route) => r.fulfill({ json: { meta: [], data: feed, rows: feed.length } }));
   await page.goto('/mc6/');
   await expect(page.locator('[data-panel="lexicon"]')).toHaveAttribute('data-state', 'ok');
   // Opens the window just after a slot change, once the transition has settled, so no slot change
@@ -1035,10 +1039,35 @@ test('mc6 at maximum input lays out once per refresh and keeps median frames und
   const built = transition.slice(1).filter((f, i) => f.fills > transition[i].fills || f.backdrops > transition[i].backdrops).length;
   test.info().annotations.push({ type: 'measured', description: `steady median ${steadyMedian}ms; transition median ${transitionMedian}ms over ${transition.length} frames, ${laidOut} of them laid out, ${built} built a gradient` });
 
-  expect(refreshes, 'data refreshes during the 3s window').toBeGreaterThanOrEqual(2);
-  expect(layouts, 'layouts during the 3s window').toBe(7 * refreshes);
+  expect(refreshes, 'refreshes during the 3s window').toBeGreaterThanOrEqual(2);
+  expect(layouts, 'layouts during identical-words refreshes in the 3s window').toBe(0);
   expect(createdWithoutLayout(steady), 'steady frames that create a gradient without a layout').toBe(0);
   expect(steadyMedian, 'median steady frame interval (ms)').toBeLessThan(bound.steady);
   expect(createdWithoutLayout(transition), 'transition frames that create a gradient without a layout').toBe(0);
   expect(transitionMedian, 'median transition frame interval (ms)').toBeLessThan(bound.transition);
+
+  // The feed gains one word as the sampler starts. The sampler runs for 2.5s, which covers the refresh
+  // that reads the new words and at least one more that reads the same words again.
+  const changedFrames = page.evaluate(() => new Promise<Frame[]>((resolve) => {
+    const w = window as unknown as { __mc6: { stats(): { refreshes: number; layouts: number; fills: number; backdrops: number; view: string | null } } };
+    const canvas = document.getElementById('cloudhero') as HTMLCanvasElement;
+    const samples: Frame[] = [];
+    const start = performance.now();
+    const tick = (t: number) => {
+      const s = w.__mc6.stats();
+      samples.push({ t, L: s.layouts, R: s.refreshes, fills: s.fills, backdrops: s.backdrops, cw: canvas.width, view: s.view });
+      if (t - start < 2500) requestAnimationFrame(tick);
+      else resolve(samples);
+    };
+    requestAnimationFrame(tick);
+  }));
+  feed = [...maxWords, { source: 'user', word: 'fresh', n: '999' }];
+  const changed = await changedFrames;
+  const changedRefreshes = changed.slice(1).flatMap((f, i) => (f.R !== changed[i].R
+    ? [{ layouts: f.L - changed[i].L, sameView: f.view === changed[i].view }]
+    : []));
+  expect(changedRefreshes.length, 'refreshes in the 2.5s window after the change').toBeGreaterThanOrEqual(2);
+  expect(changedRefreshes.filter((r) => r.layouts > 0).map((r) => r.layouts), 'layouts per refresh that reads changed words').toEqual([7]);
+  expect(changedRefreshes.filter((r) => r.layouts === 0).length, 'refreshes that lay out nothing').toBeGreaterThanOrEqual(1);
+  expect(changedRefreshes.every((r) => r.sameView), 'the displayed view held across those refreshes').toBe(true);
 });
