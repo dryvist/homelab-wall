@@ -810,8 +810,8 @@ test('mc6 hero redraws the displayed source when a poll changes its words', asyn
   await expect.poll(async () => (await heroWordPixels(page)).count, { message: 'hero kept the first poll words' }).toBeGreaterThan(before * 2);
 });
 
-// A word two sources both hold ('deploy': the operator and codex in the fixture) is marked as
-// shared in the panel header, the same list the shared-vocabulary line draws from.
+// A word two sources both hold ('deploy': the operator and codex in the fixture) is listed as
+// shared in the panel header.
 test('mc6 marks a word held by two sources as shared', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises the fixture-shaped words response only');
   await mockFeeds(page);
@@ -821,8 +821,8 @@ test('mc6 marks a word held by two sources as shared', async ({ page }) => {
 });
 
 // The hero rotation ends on a CONVERGENCE view after the last source with rows. The fake clock
-// advances past the five sources' 8s slots instead of waiting them out; its line under the label
-// names the operator-and-agent vocabulary ('deploy' in the fixture).
+// advances past the five sources' 8s slots; the line under the label names the operator-and-agent
+// vocabulary ('deploy' in the fixture).
 test('mc6 hero rotation ends on a CONVERGENCE view of every source', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises the fixture-shaped words response only');
   const pageErrors: string[] = [];
@@ -836,7 +836,7 @@ test('mc6 hero rotation ends on a CONVERGENCE view of every source', async ({ pa
   await expect(label).toHaveText('CONVERGENCE');
   await expect(page.locator('#herosub')).toContainText('SHARED VOCAB');
   await expect(page.locator('#herosub')).toContainText('deploy');
-  // The merged view is drawn on the same frame loop; an exception there would stop the hero.
+  // Asserts the merged view draws without a page error.
   expect(pageErrors).toEqual([]);
 });
 

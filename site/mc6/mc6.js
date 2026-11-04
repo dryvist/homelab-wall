@@ -28,7 +28,7 @@ const LABELS = { user: 'OPERATOR', claude: 'CLAUDE', codex: 'CODEX', antigravity
 const LABEL = (source) => LABELS[source] || `${source}`.toUpperCase();
 
 // Chakra Petch carries the display tiers and JetBrains Mono the tail. wall.css declares the faces;
-// each one is loaded before the first layout, since d3-cloud measures text with the faces present.
+// FACES lists each face the layouts use, for document.fonts.load.
 const DISPLAY = '"Chakra Petch",sans-serif';
 const MONO = '"JetBrains Mono",monospace';
 const FACES = [`700 16px ${DISPLAY}`, `600 16px ${DISPLAY}`, `400 16px ${DISPLAY}`, `600 16px ${MONO}`, `400 16px ${MONO}`];
@@ -295,8 +295,8 @@ function fillOf(c, word, hw, now) {
   return g;
 }
 
-// Paints one placed word at geo = {x, y, rot, size, alpha}. The glyphs are scaled from the word's
-// own width, so a size lerp during a transition keeps the advance width consistent.
+// Paints one placed word at geo = {x, y, rot, size, alpha}. The advance width scales with geo.size
+// relative to the word's own size.
 function drawWord(c, word, geo, now) {
   if (geo.alpha <= 0.001) return;
   const hw = (word.tw * geo.size / word.size) / 2;
@@ -483,8 +483,8 @@ function heroSub(view) {
   return vocab.length ? `${head} · SHARED VOCAB ${vocab.slice(0, 5).join(' · ')}` : `${head} · NO SHARED VOCAB`;
 }
 
-// Slow breathing scale and drift of the whole hero cloud, a percent or so and a few pixels, so a
-// static cloud never looks frozen. Each value is a function of the frame time alone.
+// Slow breathing scale and drift of the whole hero cloud, about a percent and a few pixels. Each
+// value is a function of the frame time alone.
 function idleMotion(now) {
   if (RM) return { x: 0, y: 0, s: 1 };
   const T = now / 1000;
@@ -636,8 +636,7 @@ async function refresh() {
   apply(rows, null);
 }
 
-// Every face is loaded before the first layout: d3-cloud measures each word with the face it is
-// drawn in, so a layout made before the faces arrive would be sized for the fallback.
+// Loads every face in FACES, then runs the first refresh and its layouts.
 await Promise.all(FACES.map((face) => document.fonts?.load(face))).catch(() => {});
 await refresh().catch((e) => console.warn('refresh', e));
 const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
