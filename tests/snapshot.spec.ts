@@ -4,7 +4,7 @@
 import { expect, test } from '@playwright/test';
 import type { Route } from '@playwright/test';
 import { Q } from '../site/lib/queries.js';
-import { config, answer, mockGithub } from './fixture';
+import { config, answer, mockGithub, mockWords } from './fixture';
 
 const wallUrl = process.env.WALL_URL;
 
@@ -31,13 +31,15 @@ function buildSnapshot() {
 async function mockSnapshotFeeds(page: import('@playwright/test').Page) {
   // mc5 fetches the public GitHub API directly (no token, no Prometheus query) — route it the
   // same way fixture.ts's mockGithub does for panels.spec.ts, or CI hits the real network and
-  // mc5's ticker/releases/repos panels stay 'pending' past the test's 5s budget.
+  // mc5's ticker/releases/repos panels stay 'pending' past the test's 5s budget. mc6's
+  // /api/words is likewise its own same-origin endpoint, orthogonal to snapshot mode.
   await mockGithub(page);
+  await mockWords(page);
   await page.route('**/config.json', (r: Route) => r.fulfill({ json: { ...config, snapshot: '/data/snapshot.json' } }));
   await page.route('**/data/snapshot.json', (r: Route) => r.fulfill({ json: buildSnapshot() }));
 }
 
-const PAGES = ['mc1', 'mc2', 'mc3', 'mc4', 'mc5'] as const;
+const PAGES = ['mc1', 'mc2', 'mc3', 'mc4', 'mc5', 'mc6'] as const;
 
 for (const id of PAGES) {
   test(`${id} resolves every query from the snapshot, never calling /api/prom`, async ({ page }) => {

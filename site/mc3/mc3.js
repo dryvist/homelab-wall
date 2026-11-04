@@ -379,8 +379,9 @@ onDispose(() => clearInterval(clockId));
 // litellm query on this very page delay 'ready' past the rotator's probe window and get MC3
 // skipped as broken on the live wall.
 loop(0, (now) => drawScene(now)); // uncapped: native refresh rate, the display has headroom to spare
-await refresh().catch((e) => console.warn('refresh', e));
-await pollFeed();
+// The first feed poll runs alongside the first refresh, never after it: a slow refresh must not
+// hold the request feed on its empty placeholder (pollFeed handles its own failures).
+await Promise.all([refresh().catch((e) => console.warn('refresh', e)), pollFeed()]);
 const feedId = setInterval(pollFeed, FEED_POLL_MS);
 onDispose(() => clearInterval(feedId));
 const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);

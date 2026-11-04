@@ -18,6 +18,7 @@ const DEFAULT_SLIDES: SlideConfig[] = [
   { name: 'MC3', url: '/mc3/' },
   { name: 'MC4', url: '/mc4/' },
   { name: 'MC5', url: '/mc5/' },
+  { name: 'LEXICON', url: '/mc6/' },
 ];
 
 const safeName = (name: string) => name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();

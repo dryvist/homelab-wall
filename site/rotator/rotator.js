@@ -10,6 +10,7 @@ const DEFAULT_SLIDES = [
   { name: 'MC3', url: '/mc3/' },
   { name: 'MC4', url: '/mc4/' },
   { name: 'MC5', url: '/mc5/' },
+  { name: 'LEXICON', url: '/mc6/' },
 ];
 const MIN_HOLD = 30;
 const MAX_HOLD = 60;
@@ -26,7 +27,7 @@ const SKIP_NOTE_MS = 4000;
 const REPROBE_MS = 5 * 60 * 1000;
 const FADE_MS = 800; // matches .layer{transition:opacity .8s ease} below
 // ponytail: hard ceiling under Chromium's 16-context-per-page limit — the configured slide count
-// (6: MC1-5 + Glance) is nowhere near it. Raise only if that changes.
+// (7: MC1-6 + Glance) is nowhere near it. Raise only if that changes.
 const MAX_LAYERS = 8;
 const CIRC = 2 * Math.PI * 6;
 
