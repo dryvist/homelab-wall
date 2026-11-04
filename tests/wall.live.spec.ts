@@ -23,16 +23,26 @@ const DEFAULT_SLIDES: SlideConfig[] = [
 
 const safeName = (name: string) => name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
 
-async function loginIfPresented(page: Page): Promise<'no-gate' | 'logged-in' | 'gated-no-credentials'> {
-  await page.waitForLoadState('networkidle').catch(() => {});
+// The wall polls its feeds without pause, so networkidle may never arrive: each wait is bounded.
+const SETTLE_MS = 15_000;
+
+type LoginResult = 'no-gate' | 'logged-in' | 'gated-no-credentials' | 'login-unconfirmed';
+
+async function loginIfPresented(page: Page): Promise<LoginResult> {
+  await page.waitForLoadState('networkidle', { timeout: SETTLE_MS }).catch(() => {});
   const usernameField = page.getByLabel(/username/i).first();
-  const onLoginPage = await usernameField.isVisible({ timeout: 15_000 }).catch(() => false);
+  // isVisible() ignores its timeout and returns at once; waitFor() gives a late login form time to render.
+  const onLoginPage = await usernameField.waitFor({ state: 'visible', timeout: SETTLE_MS }).then(() => true, () => false);
   if (!onLoginPage) return 'no-gate';
   if (!wallUser || !wallPassword) return 'gated-no-credentials';
   await usernameField.fill(wallUser);
   await page.getByLabel(/password/i).first().fill(wallPassword);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await page.waitForLoadState('networkidle').catch(() => {});
+  // The form still showing after the bound proves only that sign-in was not confirmed in time:
+  // the gate may have rejected the credentials, or it may be slow.
+  const leftLoginPage = await usernameField.waitFor({ state: 'hidden', timeout: SETTLE_MS }).then(() => true, () => false);
+  if (!leftLoginPage) return 'login-unconfirmed';
+  await page.waitForLoadState('networkidle', { timeout: SETTLE_MS }).catch(() => {});
   return 'logged-in';
 }
 
@@ -48,6 +58,7 @@ test('the rotator shows every configured slide, non-blank, with panels that keep
   const loginResult = await loginIfPresented(page);
   testInfo.attach('login', { body: loginResult });
   expect(loginResult, 'gate present, no credentials supplied').not.toBe('gated-no-credentials');
+  expect(loginResult, `sign-in not confirmed within ${SETTLE_MS} ms: credentials rejected or the gate is slow`).not.toBe('login-unconfirmed');
 
   const config = await page.evaluate(async () => {
     try {
@@ -60,7 +71,9 @@ test('the rotator shows every configured slide, non-blank, with panels that keep
   const slides = config.slides?.length ? config.slides : DEFAULT_SLIDES;
   const configuredNames = new Set(slides.map((s) => s.name));
 
-  await page.waitForSelector('#layers', { timeout: 30_000 });
+  // The rotator's buildLayers() fills #layers with fixed-position iframes, so #layers has no box of
+  // its own: wait for the first layer iframe to be attached.
+  await page.waitForSelector('#layers iframe.layer', { state: 'attached', timeout: 30_000 });
   const dots = page.locator('#dots');
 
   const shown = new Map<string, number>();
