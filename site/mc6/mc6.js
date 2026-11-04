@@ -226,7 +226,9 @@ const hero = $('cloudhero');
 const heroBox = $('hero');
 let heroSize = [0, 0];
 const heroLayouts = new Map(); // source name -> placed[] at hero scale (cleared on any resize/refresh)
-let epoch = performance.now();
+// The hero's rotation clock starts on the first frame that has words, so the first source
+// always gets a full cycle however long the first /api/words response takes.
+let epoch = null;
 let lastSlot = -1;
 let current = null;  // {source, placed}
 let previous = null; // the source the hero is gliding away from, while FADE_MS runs
@@ -293,6 +295,7 @@ function drawHero(now) {
   const live = liveSources();
   paintBackdrop(c, w, h, current?.source?.color ?? '#3ee6ff');
   if (!live.length) return;
+  epoch ??= now;
 
   const slot = Math.floor((now - epoch) / CYCLE_MS);
   if (slot !== lastSlot) {
