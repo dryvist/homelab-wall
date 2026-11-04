@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
-import { mockFeeds, recentRows } from './fixture';
+import { mockFeeds, recentRows, type FeedOpts } from './fixture';
 
 // mc3-specific contract: the request feed is real metadata rows from GET /api/llm/recent (never
 // message content, never fabricated rows), the GPU tile reads Q.acceleratorBusy, and the hero
@@ -106,6 +106,23 @@ const ANCHOR_NAMES = {
   cloud: 'cloud',
 } as const;
 
+// Accelerator attachment under failed or empty feeds, and split request counts. The expected
+// data-active and data-models values are listed in ANCHOR_IDS order.
+const ANCHOR_IDS = ['gpu-primary', 'gpu-secondary', 'mac-primary', 'mac-secondary', 'cloud'] as const;
+const DEVICE_QUERIES = ['DCGM_FI_DEV_GPU_UTIL', 'macmon_gpu_usage_ratio'];
+const ATTACHMENT_CASES: Array<{ name: string; feeds: FeedOpts; active: string[]; models: string[] }> = [
+  // No device rows: no model has a device host, and every in-flight request falls to cloud.
+  { name: 'device queries fail', feeds: { failQuery: (q) => DEVICE_QUERIES.some((d) => q.includes(d)) }, active: ['0', '0', '0', '0', '3'], models: ['0', '0', '0', '0', '4'] },
+  { name: 'device queries return no rows', feeds: { emptyQuery: (q) => DEVICE_QUERIES.some((d) => q.includes(d)) }, active: ['0', '0', '0', '0', '3'], models: ['0', '0', '0', '0', '4'] },
+  // No serving URLs: every model sits on cloud, while the device rows still draw their own anchors.
+  { name: 'llmApiBase fails', feeds: { failQuery: (q) => q.includes('api_base') }, active: ['0', '0', '0', '0', '3'], models: ['0', '0', '0', '0', '4'] },
+  { name: 'llmApiBase returns no rows', feeds: { emptyQuery: (q) => q.includes('api_base') }, active: ['0', '0', '0', '0', '3'], models: ['0', '0', '0', '0', '4'] },
+  // Two local requests against one router in-flight request: the device share is drawn, cloud clamps to zero.
+  { name: 'local total exceeds router in-flight', feeds: { inflight: 1, vllmRunning: 2 }, active: ['2', '0', '0', '0', '0'], models: ['1', '1', '0', '0', '2'] },
+  // Neither local host matches a device, so their live requests stay on cloud with the rest.
+  { name: 'unmatched hosts have live requests', feeds: { emptyQuery: (q) => DEVICE_QUERIES.some((d) => q.includes(d)), inflight: 5, vllmRunning: 2, llamaRunning: 1 }, active: ['0', '0', '0', '0', '5'], models: ['0', '0', '0', '0', '4'] },
+];
+
 for (const mode of ['2d', '3d'] as const) {
   test(`mc3 ${mode}: the fleet list is AI-only and all five anchors draw with their names`, async ({ page }) => {
     test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
@@ -185,6 +202,40 @@ for (const mode of ['2d', '3d'] as const) {
       expect(box.bottom, `${accel} label bottom edge`).toBeLessThanOrEqual(layout.strip.top - 8);
       expect(name, `${accel} name shown whole`).toBe(true);
     }
+    expect(faults).toEqual([]);
+  });
+
+  for (const c of ATTACHMENT_CASES) {
+    test(`mc3 ${mode}: ${c.name} still draws five anchors with the requests and models on the right nodes`, async ({ page }) => {
+      test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+      if (mode === '3d') test.slow();
+      const faults = watchFaults(page);
+      await mockFeeds(page, c.feeds);
+      await page.goto(`/mc3/?gl=${mode}`);
+      await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
+      await expect(page.locator('#anchors .anchor')).toHaveCount(5);
+      for (const [i, id] of ANCHOR_IDS.entries()) {
+        const el = page.locator(`#anchors [data-accel="${id}"]`);
+        await expect(el).toHaveAttribute('data-active', c.active[i]);
+        await expect(el).toHaveAttribute('data-models', c.models[i]);
+      }
+      // Only the forced 500 from the feed under test is expected; anything else is a fault.
+      expect(faults.filter((f) => !(f.startsWith('500 ') && f.includes('/api/prom/')) && !f.includes('status of 500'))).toEqual([]);
+    });
+  }
+
+  // The base fixture writes model-coder's serving host in mixed case and reports host-b from two
+  // exporter ports. Both attach by host, and the repeated device name is listed once.
+  test(`mc3 ${mode}: a mixed-case serving host and repeated device rows attach to one anchor`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+    if (mode === '3d') test.slow();
+    const faults = watchFaults(page);
+    await mockFeeds(page);
+    await page.goto(`/mc3/?gl=${mode}`);
+    await expect(page.locator('#anchors [data-accel="gpu-secondary"]')).toHaveAttribute('data-models', '1');
+    await expect(page.locator('#anchors [data-accel="gpu-secondary"] .an')).toHaveText(ANCHOR_NAMES['gpu-secondary']);
+    await expect(page.locator('#modeltab .mc').filter({ hasText: 'model-coder' }).locator('.mcat')).toHaveText(ANCHOR_NAMES['gpu-secondary']);
+    await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveAttribute('data-models', '2');
     expect(faults).toEqual([]);
   });
 

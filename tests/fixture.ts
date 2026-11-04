@@ -131,9 +131,12 @@ export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
   if (q.includes('unifi_vlan_fw_events_total')) return vec([[{ vlan: '10' }, 4.2], [{ vlan: '20' }, 1.1], [{ vlan: '30' }, 0.4]]);
   // mc3 accelerator anchors. Hosts are placeholders and device names are example values. The GPU
   // series without an accelerator label belongs to gpu-primary; a vendor word leads one model name.
+  // host-b reports from a second exporter port with its host in upper case: the same device, so its
+  // name is listed once and its host still matches.
   if (q.includes('DCGM_FI_DEV_GPU_UTIL')) return vec([
     [{ instance: 'gpu-host-a.example.test:9400', modelName: 'Example GPU 1' }, 1],
     [{ accelerator: 'gpu-secondary', instance: 'gpu-host-b.example.test:9400', modelName: 'VENDOR Example GPU 2' }, 1],
+    [{ accelerator: 'gpu-secondary', instance: 'GPU-HOST-B.example.test:9401', modelName: 'VENDOR Example GPU 2' }, 1],
     [{ accelerator: 'gpu-secondary', instance: 'gpu-host-c.example.test:9400', modelName: 'VENDOR Example GPU 2' }, 1],
   ]);
   // Both Mac anchors read the same chip, so both labels carry their role tag.
@@ -141,10 +144,11 @@ export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
     [{ accelerator: 'mac-primary', chip: 'Example Chip 3', instance: 'mac-host-a.example.test:9100' }, 1],
     [{ accelerator: 'mac-secondary', chip: 'Example Chip 3', instance: 'mac-host-b.example.test:9100' }, 1],
   ]);
-  // Each model's serving URL. A URL names a device host; hosted rungs have no URL host at all.
+  // Each model's serving URL. A URL names a device host; hosted rungs have no URL host at all. The
+  // host match ignores case, so model-coder's URL writes its host in mixed case.
   if (q.includes('api_base')) return vec([
     [{ litellm_model_name: 'model-large', api_base: 'http://gpu-host-a.example.test:8000/v1', api_provider: 'local' }, 1],
-    [{ litellm_model_name: 'model-coder', api_base: 'http://gpu-host-b.example.test:8080/v1', api_provider: 'local' }, 1],
+    [{ litellm_model_name: 'model-coder', api_base: 'http://GPU-Host-B.Example.test:8080/v1', api_provider: 'local' }, 1],
     [{ litellm_model_name: 'model-small', api_provider: 'openai' }, 1],
     [{ litellm_model_name: 'model-mini', api_provider: 'openrouter' }, 1],
   ]);
