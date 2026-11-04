@@ -92,18 +92,27 @@ async function refresh() {
     const tok = Object.fromEntries((r.tok || []).map((x) => [x.labels.model, x.value]));
     const queue = Object.fromEntries((r.queue || []).map((x) => [x.labels.model, x.value]));
     const latency = Object.fromEntries((r.latency || []).map((x) => [x.labels.model, x.value]));
-    const apiBase = Object.fromEntries((r.apiBase || []).map((x) => [x.labels.litellm_model_name, x.labels]));
+    // A model can have several serving-URL rows, so the URLs are grouped under their model name.
+    const apiBase = new Map();
+    for (const x of r.apiBase || []) {
+      const n = x.labels.litellm_model_name;
+      apiBase.set(n, [...(apiBase.get(n) ?? []), x.labels.api_base]);
+    }
     model.models = r.state.map((x) => {
       const n = x.labels.litellm_model_name;
-      // Attached to the device whose host its serving URL names. Everything else, hosted rungs
-      // included (no URL host), belongs to the cloud node.
-      const role = hostRole.get(hostOf(apiBase[n]?.api_base));
+      // Attached to the first device, in anchor order, that one of its serving URLs names. A model
+      // whose URLs name no device (hosted rungs, an empty URL) belongs to the cloud node.
+      let anchor = CLOUD;
+      for (const url of apiBase.get(n) ?? []) {
+        const role = hostRole.get(hostOf(url));
+        if (role != null) anchor = Math.min(anchor, ROLE.get(role));
+      }
       return {
         n, up: x.value < 2, tok: tok[n] ?? 0,
         // Both undefined for an idle model (no requests in the window -> no series) — real
         // absence, not a failed query, so it renders a quiet idle state, never a stand-in badge.
         queue: queue[n], latencyMs: Number.isFinite(latency[n]) ? latency[n] * 1000 : undefined,
-        anchor: role == null ? CLOUD : ROLE.get(role),
+        anchor,
       };
     }).sort((a, b) => (b.up - a.up) || b.tok - a.tok || a.n.localeCompare(b.n)).slice(0, 8);
   }
