@@ -224,7 +224,7 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
   for (let j = 0; j < MAX_ANCHORS * BEAD_CAP; j++) { beadMesh.setMatrixAt(j, ZERO); beadMesh.setColorAt(j, BLACK); }
   scene.add(beadMesh);
   const anchorState = Array.from({ length: MAX_ANCHORS }, () => ({
-    kind: 'gpu', dim: true, centre: new THREE.Vector3(), color: new THREE.Color(), pt: { x: 0, y: 0 },
+    id: '', kind: 'gpu', dim: true, centre: new THREE.Vector3(), color: new THREE.Color(), pt: { x: 0, y: 0 },
     active: 0, shown: 0, lit: 0, litTarget: 0,
   }));
   let anchorCount = 0;
@@ -282,6 +282,7 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
     anchorCount = Math.min(MAX_ANCHORS, anchors.length);
     anchors.slice(0, anchorCount).forEach((a, i) => {
       const s = anchorState[i];
+      s.id = a.id;
       s.kind = a.kind;
       s.dim = !!a.dim;
       s.active = Math.max(0, Math.round(a.active || 0));
@@ -406,11 +407,13 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
   // pack into rings, BEAD_CAP drawn at most. The count eases toward its reading, so beads grow in
   // and fade out rather than snapping.
   function drawAnchors(dt, t, ease) {
+    const dimmedIds = []; // the anchors drawn dim this frame, read by the render-path checks
     for (let i = 0; i < MAX_ANCHORS; i++) {
       const a = anchorState[i];
       const node = anchorNodes[i];
       const live = i < anchorCount;
       node.grp.visible = live;
+      if (live && a.dim) dimmedIds.push(a.id);
       a.lit += (a.litTarget - a.lit) * ease;
       a.shown += ((live ? Math.min(a.active, BEAD_CAP) : 0) - a.shown) * ease;
       if (live) {
@@ -447,6 +450,7 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
     }
     beadMesh.instanceMatrix.needsUpdate = true;
     if (beadMesh.instanceColor) beadMesh.instanceColor.needsUpdate = true;
+    canvas.dataset.dimAnchors = dimmedIds.join(',');
   }
 
   function render(now) {

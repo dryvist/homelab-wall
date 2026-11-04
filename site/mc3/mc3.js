@@ -186,7 +186,7 @@ function deriveAccelerators(r) {
 
 /* ---------------- header ---------------- */
 // The anchors as the 3D scene takes them: the busy and request readings, and whether the node is dim.
-const sceneAnchors = () => accel.map((d) => ({ kind: d.kind, busy: d.busy, active: d.active, dim: isDim(d) }));
+const sceneAnchors = () => accel.map((d) => ({ id: d.id, kind: d.kind, busy: d.busy, active: d.active, dim: isDim(d) }));
 
 function render() {
   renderApps();
@@ -535,8 +535,10 @@ function drawReactor(now) {
   // Anchor nodes (labelled by the DOM layer): a compact glow, an outline core sized by busy %, a
   // hairline halo and the busy arc, then the request beads. Nothing fills the node, so the particles
   // behind it stay visible; an idle or no-data node is an outline only.
+  const dimmedIds = []; // the anchors drawn dim this frame, read by the render-path checks
   accel.forEach((d, i) => {
     const p = at(i), color = ANCHOR_COLOR[d.kind], dimmed = isDim(d);
+    if (dimmed) dimmedIds.push(d.id);
     const lit = d.busy == null ? 0 : clamp(d.busy / 100, 0, 1);
     // Core radius 20-35 CSS px (a 40-70 px node at 1920x1080), scaled with the viewport height.
     const r0 = (20 + 15 * lit) * (Math.min(reactor.clientWidth, reactor.clientHeight) / 1080) * dpr;
@@ -574,6 +576,7 @@ function drawReactor(now) {
       c.fillStyle = color; c.shadowColor = color; c.shadowBlur = 10 * dpr; c.fill(); c.shadowBlur = 0;
     }
   });
+  reactor.dataset.dimAnchors = dimmedIds.join(',');
 }
 
 /* ---------------- boot ---------------- */

@@ -283,6 +283,41 @@ for (const mode of ['2d', '3d'] as const) {
     expect(faults).toEqual([]);
   });
 
+  // An idle anchor (busy, but no model or request on it) and a no-data anchor render dim. The reactor
+  // canvas lists the dim anchors as the render path drew them, so both modes must list the same ones.
+  test(`mc3 ${mode}: an idle anchor and a no-data anchor render dim`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+    if (mode === '3d') test.slow();
+    const faults = watchFaults(page);
+    await mockFeeds(page);
+    await page.goto(`/mc3/?gl=${mode}`);
+    // mac-primary reads 20% busy with nothing on it; mac-secondary has no busy series.
+    await expect(page.locator('#reactor')).toHaveAttribute('data-dim-anchors', 'mac-primary,mac-secondary');
+    await expect(page.locator('#anchors [data-accel="mac-primary"]')).toHaveClass(/dim/);
+    await expect(page.locator('#anchors [data-accel="mac-secondary"]')).toHaveClass(/dim/);
+    await expect(page.locator('#anchors [data-accel="gpu-primary"]')).not.toHaveClass(/dim/);
+    expect(faults).toEqual([]);
+  });
+
+  // With both models routed to devices and no requests in flight, cloud has nothing on it: it renders dim.
+  test(`mc3 ${mode}: a cloud node with no models or requests renders dim`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+    if (mode === '3d') test.slow();
+    const faults = watchFaults(page);
+    await mockFeeds(page, {
+      inflight: 0,
+      extraApiBase: [
+        { litellm_model_name: 'model-mini', api_base: 'http://gpu-host-a.example.test:8000/v1', api_provider: 'local' },
+        { litellm_model_name: 'model-small', api_base: 'http://gpu-host-b.example.test:8080/v1', api_provider: 'local' },
+      ],
+    });
+    await page.goto(`/mc3/?gl=${mode}`);
+    await expect(page.locator('#reactor')).toHaveAttribute('data-dim-anchors', 'mac-primary,mac-secondary,cloud');
+    await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveClass(/dim/);
+    await expect(page.locator('#anchors [data-accel="gpu-primary"]')).not.toHaveClass(/dim/);
+    expect(faults).toEqual([]);
+  });
+
   // Bracketed IPv6 hosts (documentation-range 2001:db8::/32) are read whole: a local server on one IPv6
   // device and a serving URL on the other each attach to their own device.
   test(`mc3 ${mode}: bracketed IPv6 hosts stay distinct for requests and serving URLs`, async ({ page }) => {
