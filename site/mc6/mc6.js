@@ -715,4 +715,5 @@ tickClock();
 const clockId = setInterval(tickClock, 1000);
 onDispose(() => clearInterval(clockId));
 // Nightly reload keeps a 24/7 kiosk's memory flat.
-setTimeout(() => location.reload(), 24 * 3600 * 1000);
+const reloadId = setTimeout(() => location.reload(), 24 * 3600 * 1000);
+onDispose(() => clearTimeout(reloadId));
