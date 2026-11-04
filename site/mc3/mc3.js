@@ -39,8 +39,13 @@ const BEAD_CAP = 36;
 const ANCHOR_COLOR = { gpu: '#3ee6ff', mac: '#38ff9c', cloud: '#ffb347' };
 // A device model name can lead with its vendor as one all-caps word; that word is dropped.
 const VENDOR_WORD = /^[A-Z]{4,}\s+/;
-// The host of a "host:port" instance label or a "scheme://host:port/path" serving URL.
-const hostOf = (s) => String(s ?? '').replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split(/[/:]/)[0].toLowerCase();
+// The host of a "host:port" instance label or a "scheme://host:port/path" serving URL. A bracketed IPv6
+// address ("[fd00::1]:8000") is read whole, so distinct IPv6 hosts stay distinct.
+const hostOf = (s) => {
+  const rest = String(s ?? '').replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+  const v6 = rest.match(/^\[([^\]]*)\]/);
+  return (v6 ? v6[1] : rest.split(/[/:]/)[0]).toLowerCase();
+};
 // Dim when nothing is attached or in flight; an accelerator without a busy series is always dim.
 const isDim = (d) => (d.kind === 'cloud' ? d.active === 0 && d.models === 0 : d.busy == null || (d.models === 0 && d.active === 0));
 // /config.json may override an anchor's display name; a missing or blank entry keeps the label.
