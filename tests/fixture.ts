@@ -80,7 +80,15 @@ const vec = (rows: Array<[Record<string, string>, number]>) =>
 
 // mc3's per-answer state. inflight is the router-wide count of requests in flight; vllmRunning and
 // llamaRunning are the two local inference servers' counts (both default to zero).
-export interface AnswerOpts { inflight?: number; vllmRunning?: number; llamaRunning?: number }
+// extraLocal adds more local-server rows, [instance, count], to the vLLM count. extraApiBase adds more
+// serving-URL rows for a model, one labels object each.
+export interface AnswerOpts {
+  inflight?: number;
+  vllmRunning?: number;
+  llamaRunning?: number;
+  extraLocal?: Array<[string, number]>;
+  extraApiBase?: Array<Record<string, string>>;
+}
 
 // The AI-category services (group "AI · UI" / "AI · API" in Gatus). Q.aiAppScore keeps only these.
 const AI_APPS = ['kilo', 'lima', 'mike'];
@@ -139,10 +147,11 @@ export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
     [{ accelerator: 'gpu-secondary', instance: 'GPU-HOST-B.example.test:9401', modelName: 'VENDOR Example GPU 2' }, 1],
     [{ accelerator: 'gpu-secondary', instance: 'gpu-host-c.example.test:9400', modelName: 'VENDOR Example GPU 2' }, 1],
   ]);
-  // Both Mac anchors read the same chip, so both labels carry their role tag.
+  // Both Mac anchors read the same chip, so both labels carry their role tag. The Mac devices export
+  // from documentation-range IPv6 addresses (2001:db8::/32), so the bracketed host tells them apart.
   if (q.includes('macmon_gpu_usage_ratio')) return vec([
-    [{ accelerator: 'mac-primary', chip: 'Example Chip 3', instance: 'mac-host-a.example.test:9100' }, 1],
-    [{ accelerator: 'mac-secondary', chip: 'Example Chip 3', instance: 'mac-host-b.example.test:9100' }, 1],
+    [{ accelerator: 'mac-primary', chip: 'Example Chip 3', instance: '[2001:db8::1]:9100' }, 1],
+    [{ accelerator: 'mac-secondary', chip: 'Example Chip 3', instance: '[2001:db8::2]:9100' }, 1],
   ]);
   // Each model's serving URL. A URL names a device host; hosted rungs have no URL host at all. The
   // host match ignores case, so model-coder's URL writes its host in mixed case.
@@ -151,8 +160,12 @@ export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
     [{ litellm_model_name: 'model-coder', api_base: 'http://GPU-Host-B.Example.test:8080/v1', api_provider: 'local' }, 1],
     [{ litellm_model_name: 'model-small', api_provider: 'openai' }, 1],
     [{ litellm_model_name: 'model-mini', api_provider: 'openrouter' }, 1],
+    ...(opts.extraApiBase ?? []).map((labels): [Record<string, string>, number] => [labels, 1]),
   ]);
-  if (q.includes('vllm:num_requests_running')) return vec([[{ instance: 'gpu-host-a.example.test:8000' }, opts.vllmRunning ?? 0]]);
+  if (q.includes('vllm:num_requests_running')) return vec([
+    [{ instance: 'gpu-host-a.example.test:8000' }, opts.vllmRunning ?? 0],
+    ...(opts.extraLocal ?? []).map(([instance, v]): [Record<string, string>, number] => [{ instance }, v]),
+  ]);
   if (q.includes('llamacpp:requests_processing')) return vec([[{ instance: 'gpu-host-b.example.test:8080' }, opts.llamaRunning ?? 0]]);
   if (q.includes('litellm_in_flight_requests')) return vec([[{}, opts.inflight ?? 3]]);
   if (q.includes('litellm_deployment_state')) return vec([[{ litellm_model_name: 'model-large' }, 0], [{ litellm_model_name: 'model-coder' }, 0], [{ litellm_model_name: 'model-small' }, 2], [{ litellm_model_name: 'model-mini' }, 0]]);

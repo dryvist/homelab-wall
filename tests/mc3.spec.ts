@@ -205,6 +205,26 @@ for (const mode of ['2d', '3d'] as const) {
     expect(faults).toEqual([]);
   });
 
+  // Bracketed IPv6 hosts (documentation-range 2001:db8::/32) are read whole: a local server on one IPv6
+  // device and a serving URL on the other each attach to their own device.
+  test(`mc3 ${mode}: bracketed IPv6 hosts stay distinct for requests and serving URLs`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+    if (mode === '3d') test.slow();
+    const faults = watchFaults(page);
+    await mockFeeds(page, {
+      inflight: 2,
+      extraLocal: [['[2001:db8::1]:8000', 2]],
+      extraApiBase: [{ litellm_model_name: 'model-small', api_base: 'http://[2001:db8::2]:8000/v1', api_provider: 'local' }],
+    });
+    await page.goto(`/mc3/?gl=${mode}`);
+    await expect(page.locator('#anchors [data-accel="mac-primary"]')).toHaveAttribute('data-active', '2');
+    await expect(page.locator('#anchors [data-accel="mac-secondary"]')).toHaveAttribute('data-active', '0');
+    await expect(page.locator('#anchors [data-accel="mac-secondary"]')).toHaveAttribute('data-models', '1');
+    await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveAttribute('data-active', '0');
+    await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveAttribute('data-models', '1');
+    expect(faults).toEqual([]);
+  });
+
   for (const c of ATTACHMENT_CASES) {
     test(`mc3 ${mode}: ${c.name} still draws five anchors with the requests and models on the right nodes`, async ({ page }) => {
       test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
