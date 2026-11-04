@@ -21,6 +21,16 @@ function watchFaults(page: Page) {
   return faults;
 }
 
+// Readiness gates. The page writes its refresh state (anchor counts, labels) in render(), and the 3D scene
+// writes its own state (stream count, dim anchors, label positions) from its first drawn frame, which sets
+// data-scene="ready". A build or a first frame can take many seconds on a loaded runner, so every test waits
+// for these signals here, with one bound, and then asserts with the default timeout.
+const READY_TIMEOUT = 60_000;
+async function awaitReady(page: Page, mode: '2d' | '3d') {
+  await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok', { timeout: READY_TIMEOUT });
+  if (mode === '3d') await expect(page.locator('#reactor')).toHaveAttribute('data-scene', 'ready', { timeout: READY_TIMEOUT });
+}
+
 for (const mode of ['2d', '3d'] as const) {
   test(`mc3 ${mode}: ready message, live feed rows, and no console errors`, async ({ page }) => {
     test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
@@ -38,6 +48,7 @@ for (const mode of ['2d', '3d'] as const) {
     });
     await mockFeeds(page);
     await page.goto(`/mc3/?gl=${mode}`);
+    await awaitReady(page, mode);
     // stage.js signalReady is once-guarded, so exactly one ready per load — the rotator contract.
     // Forced 3D on CI runs WebGPURenderer's WebGL2 backend on a software rasterizer, where the
     // first frame (shader builds plus the particle init dispatch) takes far longer than on the
@@ -130,6 +141,7 @@ for (const mode of ['2d', '3d'] as const) {
     const faults = watchFaults(page);
     await mockFeeds(page);
     await page.goto(`/mc3/?gl=${mode}`);
+    await awaitReady(page, mode);
     await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
     // autobrr is a catalog service outside the AI category: the list holds the three AI services only.
     await expect(page.locator('#applist .ar')).toHaveCount(3);
@@ -160,6 +172,7 @@ for (const mode of ['2d', '3d'] as const) {
     const faults = watchFaults(page);
     await mockFeeds(page, { emptyQuery: (q) => q.includes('litellm_deployment_state') });
     await page.goto(`/mc3/?gl=${mode}`);
+    await awaitReady(page, mode);
     await expect(page.locator('#subtitle')).toContainText('0 MODELS');
     await expect(page.locator('#anchors .anchor')).toHaveCount(5);
     for (const [id, name] of Object.entries(ANCHOR_NAMES)) {
@@ -178,6 +191,7 @@ for (const mode of ['2d', '3d'] as const) {
     const faults = watchFaults(page);
     await mockFeeds(page);
     await page.goto(`/mc3/?gl=${mode}`);
+    await awaitReady(page, mode);
     await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
     await expect(page.locator('#anchors .anchor')).toHaveCount(5);
     const layout = await page.evaluate(() => {
@@ -221,6 +235,7 @@ for (const mode of ['2d', '3d'] as const) {
       ],
     });
     await page.goto(`/mc3/?gl=${mode}`);
+    await awaitReady(page, mode);
     await expect(page.locator('#anchors [data-accel="gpu-primary"]')).toHaveAttribute('data-models', '1');
     await expect(page.locator('#anchors [data-accel="gpu-secondary"]')).toHaveAttribute('data-models', '1');
     await expect(page.locator('#anchors [data-accel="mac-primary"]')).toHaveAttribute('data-models', '0');
@@ -239,6 +254,7 @@ for (const mode of ['2d', '3d'] as const) {
       extraApiBase: [{ litellm_model_name: 'model-small', api_base: 'https://api.example.test/v1', api_provider: 'openai' }],
     });
     await page.goto(`/mc3/?gl=${mode}`);
+    await awaitReady(page, mode);
     await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveAttribute('data-models', '2');
     await expect(page.locator('#anchors [data-accel="gpu-primary"]')).toHaveAttribute('data-models', '1');
     await expect(page.locator('#anchors [data-accel="gpu-secondary"]')).toHaveAttribute('data-models', '1');
@@ -260,6 +276,7 @@ for (const mode of ['2d', '3d'] as const) {
       extraApiBase: [{ litellm_model_name: 'model-small', api_base: 'http://gpu-host-c.example.test:8001/v1', api_provider: 'local' }],
     });
     await page.goto(`/mc3/?gl=${mode}`);
+    await awaitReady(page, mode);
     const gpuSecondary = page.locator('#anchors [data-accel="gpu-secondary"]');
     await expect(gpuSecondary.locator('.an')).toHaveText(ANCHOR_NAMES['gpu-secondary']);
     await expect(gpuSecondary).toHaveAttribute('data-models', '2');
@@ -279,8 +296,8 @@ for (const mode of ['2d', '3d'] as const) {
     const faults = watchFaults(page);
     await mockFeeds(page);
     await page.goto(`/mc3/?gl=${mode}`);
-    // The 3D count is written once the scene has built, which can outlast the default wait under load.
-    await expect(page.locator('#reactor')).toHaveAttribute('data-streams', '2', { timeout: 20_000 });
+    await awaitReady(page, mode);
+    await expect(page.locator('#reactor')).toHaveAttribute('data-streams', '2');
     expect(faults).toEqual([]);
   });
 
@@ -292,9 +309,9 @@ for (const mode of ['2d', '3d'] as const) {
     const faults = watchFaults(page);
     await mockFeeds(page);
     await page.goto(`/mc3/?gl=${mode}`);
-    // mac-primary reads 20% busy with nothing on it; mac-secondary has no busy series. The 3D hook is
-    // written by a rendered frame, and the first software-GL frame can outlast the default wait under load.
-    await expect(page.locator('#reactor')).toHaveAttribute('data-dim-anchors', 'mac-primary,mac-secondary', { timeout: 20_000 });
+    await awaitReady(page, mode);
+    // mac-primary reads 20% busy with nothing on it; mac-secondary has no busy series.
+    await expect(page.locator('#reactor')).toHaveAttribute('data-dim-anchors', 'mac-primary,mac-secondary');
     await expect(page.locator('#anchors [data-accel="mac-primary"]')).toHaveClass(/dim/);
     await expect(page.locator('#anchors [data-accel="mac-secondary"]')).toHaveClass(/dim/);
     await expect(page.locator('#anchors [data-accel="gpu-primary"]')).not.toHaveClass(/dim/);
@@ -314,7 +331,8 @@ for (const mode of ['2d', '3d'] as const) {
       ],
     });
     await page.goto(`/mc3/?gl=${mode}`);
-    await expect(page.locator('#reactor')).toHaveAttribute('data-dim-anchors', 'mac-primary,mac-secondary,cloud', { timeout: 20_000 });
+    await awaitReady(page, mode);
+    await expect(page.locator('#reactor')).toHaveAttribute('data-dim-anchors', 'mac-primary,mac-secondary,cloud');
     await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveClass(/dim/);
     await expect(page.locator('#anchors [data-accel="gpu-primary"]')).not.toHaveClass(/dim/);
     expect(faults).toEqual([]);
@@ -332,6 +350,7 @@ for (const mode of ['2d', '3d'] as const) {
       extraApiBase: [{ litellm_model_name: 'model-small', api_base: 'http://[2001:db8::2]:8000/v1', api_provider: 'local' }],
     });
     await page.goto(`/mc3/?gl=${mode}`);
+    await awaitReady(page, mode);
     await expect(page.locator('#anchors [data-accel="mac-primary"]')).toHaveAttribute('data-active', '2');
     await expect(page.locator('#anchors [data-accel="mac-secondary"]')).toHaveAttribute('data-active', '0');
     await expect(page.locator('#anchors [data-accel="mac-secondary"]')).toHaveAttribute('data-models', '1');
@@ -347,6 +366,7 @@ for (const mode of ['2d', '3d'] as const) {
       const faults = watchFaults(page);
       await mockFeeds(page, c.feeds);
       await page.goto(`/mc3/?gl=${mode}`);
+      await awaitReady(page, mode);
       await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
       await expect(page.locator('#anchors .anchor')).toHaveCount(5);
       for (const [i, id] of ANCHOR_IDS.entries()) {
@@ -367,6 +387,7 @@ for (const mode of ['2d', '3d'] as const) {
     const faults = watchFaults(page);
     await mockFeeds(page);
     await page.goto(`/mc3/?gl=${mode}`);
+    await awaitReady(page, mode);
     await expect(page.locator('#anchors [data-accel="gpu-secondary"]')).toHaveAttribute('data-models', '1');
     await expect(page.locator('#anchors [data-accel="gpu-secondary"] .an')).toHaveText(ANCHOR_NAMES['gpu-secondary']);
     await expect(page.locator('#modeltab .mc').filter({ hasText: 'model-coder' }).locator('.mcat')).toHaveText(ANCHOR_NAMES['gpu-secondary']);
@@ -382,6 +403,7 @@ for (const mode of ['2d', '3d'] as const) {
       const faults = watchFaults(page);
       await mockFeeds(page, { inflight });
       await page.goto(`/mc3/?gl=${mode}`);
+      await awaitReady(page, mode);
       const cloud = page.locator('#anchors [data-accel="cloud"]');
       await expect(cloud).toHaveAttribute('data-active', String(inflight));
       await expect(cloud).toHaveAttribute('data-beads', String(inflight));
@@ -398,6 +420,7 @@ for (const mode of ['2d', '3d'] as const) {
     const faults = watchFaults(page);
     await mockFeeds(page, { inflight: 8, vllmRunning: 8 });
     await page.goto(`/mc3/?gl=${mode}`);
+    await awaitReady(page, mode);
     const gpu = page.locator('#anchors [data-accel="gpu-primary"]');
     await expect(gpu).toHaveAttribute('data-active', '8');
     await expect(gpu).toHaveAttribute('data-beads', '8');
