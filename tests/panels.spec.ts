@@ -732,3 +732,45 @@ test('mc6 hero cycles to the next source and moves the strip highlight within 10
   await expect.poll(active, { timeout: 12_000, message: 'hero never cycled past OPERATOR' }).not.toBe('user');
   await expect.poll(() => page.locator('#herolabel').textContent(), { timeout: 12_000 }).not.toBe('OPERATOR');
 });
+
+// The hero canvas holds a faint radial haze (alpha 0.1 at most) under the words, which are drawn
+// at alpha 0.8 or more. Counting pixels above alpha 128 therefore counts word pixels only, and
+// their mean position says where on the canvas the words were drawn (0..1 on each axis).
+async function heroWordPixels(page: Page) {
+  return page.locator('#cloudhero').evaluate((el) => {
+    const canvas = el as HTMLCanvasElement;
+    const { width, height } = canvas;
+    const data = canvas.getContext('2d')!.getImageData(0, 0, width, height).data;
+    let count = 0;
+    let sumX = 0;
+    let sumY = 0;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (data[(y * width + x) * 4 + 3] > 128) {
+          count += 1;
+          sumX += x;
+          sumY += y;
+        }
+      }
+    }
+    return { count, cx: count ? sumX / count / width : 0, cy: count ? sumY / count / height : 0 };
+  });
+}
+
+// One source with forty words, so the hero cloud is a blob around the middle of its box.
+const heroWords = Array.from({ length: 40 }, (_, i) => ({ source: 'user', word: `term${i}`, n: String(400 - i * 9) }));
+
+// d3-cloud places words around 0,0, so the hero only shows its cloud on the canvas when it draws
+// from the canvas midpoint: the drawn words must sit around the middle, not the top-left corner.
+test('mc6 hero draws the active source words around the middle of its canvas', async ({ page }) => {
+  test.skip(!!wallUrl, 'forces the words feed against the fixture server only');
+  await mockFeeds(page);
+  await page.route('**/api/words', (r: Route) => r.fulfill({ json: { meta: [], data: heroWords, rows: heroWords.length } }));
+  await page.goto('/mc6/');
+  await expect(page.locator('[data-panel="lexicon"]')).toHaveAttribute('data-state', 'ok');
+  await expect.poll(async () => {
+    const { count, cx, cy } = await heroWordPixels(page);
+    if (count < 1000) return 'blank';
+    return cx > 0.3 && cx < 0.7 && cy > 0.3 && cy < 0.7 ? 'centred' : `off-centre (${cx.toFixed(2)}, ${cy.toFixed(2)})`;
+  }, { message: 'hero words drawn around the canvas middle' }).toBe('centred');
+});
