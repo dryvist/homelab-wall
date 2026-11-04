@@ -357,13 +357,21 @@ function drawWord(c, word, geo) {
   c.restore();
 }
 
-// Faint radial haze in the source's colour — keeps every canvas non-blank even with no words.
-function paintBackdrop(c, w, h, color) {
+// Faint radial haze in the source's colour — keeps every canvas non-blank even with no words. Its
+// gradient is cached per canvas context and rebuilt only when the size, DPR or colour changes.
+const backdrops = new WeakMap();
+function paintBackdrop(c, w, h, color, dpr) {
   c.clearRect(0, 0, w, h);
-  const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7);
-  g.addColorStop(0, hexAlpha(color, 0.1));
-  g.addColorStop(1, 'rgba(4,7,12,0)');
-  c.fillStyle = g;
+  const key = `${w}x${h}@${dpr}|${color}`;
+  let cached = backdrops.get(c);
+  if (cached?.key !== key) {
+    const gradient = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7);
+    gradient.addColorStop(0, hexAlpha(color, 0.1));
+    gradient.addColorStop(1, 'rgba(4,7,12,0)');
+    cached = { key, gradient };
+    backdrops.set(c, cached);
+  }
+  c.fillStyle = cached.gradient;
   c.fillRect(0, 0, w, h);
 }
 
@@ -407,7 +415,7 @@ function paintTile(tile) {
   }
   const c = canvas.getContext('2d');
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
-  paintBackdrop(c, w, h, s.color);
+  paintBackdrop(c, w, h, s.color, dpr);
 
   // Lay the cloud out in the tile minus the label band at the top, then draw it centered a
   // little below the tile's middle so its top edge clears the label. A layout is kept while the
@@ -616,7 +624,7 @@ function drawHero(now) {
   c.setTransform(heroDpr, 0, 0, heroDpr, 0, 0);
   const [w, h] = heroSize;
   const list = liveViews();
-  paintBackdrop(c, w, h, current?.view.color || '#3ee6ff');
+  paintBackdrop(c, w, h, current?.view.color || '#3ee6ff', heroDpr);
   if (!list.length) return;
   epoch ??= now;
 
