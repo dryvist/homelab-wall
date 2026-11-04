@@ -97,12 +97,13 @@ function armLayer(layer) {
 // posting {wall:'ready'} once its own site/lib/stage.js render loop has painted a first frame; a
 // probe window with no 'ready' means it's broken (Track G3) — the same conclusion the cross-origin
 // probe below draws from a failed or stalled load.
-// The wall's own ?gl= (2d or 3d) is passed on to each same-origin slide, which reads it from its
-// own location; cross-origin slides get their configured URL untouched.
+// The wall's own ?gl= (2d or 3d) is passed on to each same-origin wall slide (/mcN/), which reads
+// it from its own location; every other slide gets its configured URL untouched.
 const FORWARDED_GL = new URLSearchParams(location.search).get('gl');
 function slideUrl(url) {
   if (!FORWARDED_GL || !sameOrigin(url)) return url;
   const u = new URL(url, location.href);
+  if (!/^\/mc\d+\//.test(u.pathname)) return url;
   u.searchParams.set('gl', FORWARDED_GL);
   return u.pathname + u.search + u.hash;
 }
