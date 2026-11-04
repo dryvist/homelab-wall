@@ -45,6 +45,10 @@ jobs:
   test:
     name: Playwright (${{ matrix.project }})
     runs-on: ubuntu-latest
+    # Playwright's own image carries the browsers and their system packages, so no step installs
+    # them through apt. Its version matches @playwright/test in package-lock.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-resolute@sha256:f76885029244e5a384243a930ff283cef67d90653978ee27a77dd4cff8882fb4
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -62,13 +66,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: lts/*
-          cache: npm
       - run: npm ci
       - run: node scripts/vendor-three.mjs
-      - run: npx playwright install --with-deps "$(cut -d- -f1 <<< '${{ matrix.project }}')"
+      # The fixture web server (playwright.config.ts) is python3's http.server.
+      - run: python3 --version
       - run: npx playwright test --project="${{ matrix.project }}"
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
