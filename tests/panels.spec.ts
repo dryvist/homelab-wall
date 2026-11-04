@@ -904,10 +904,10 @@ const maxWords = ['user', 'claude', 'codex', 'antigravity', 'zcode', 'opencode']
 
 // At maximum input, a data refresh lays the layouts out again and the idle frames do not: each
 // refresh re-lays the six strip tiles and the hero's current view, seven layouts in all. The median
-// frame interval over 3s stays under 25ms at 1920x1080 (chromium only). Refreshes run every second.
+// frame interval over 3s stays under 25ms (chromium at 1920x1080 and 2560x1440). Refreshes run every second.
 test('mc6 at maximum input lays out once per refresh and keeps a median frame under 25ms', async ({ page }) => {
   test.skip(!!wallUrl, 'forces the words feed against the fixture server only');
-  test.skip(test.info().project.name !== 'chromium-1920x1080@1', 'chromium at 1920x1080 only');
+  test.skip(!['chromium-1920x1080@1', 'chromium-2560x1440'].includes(test.info().project.name), 'chromium at 1920x1080 and 2560x1440 only');
   test.setTimeout(90_000);
   const hookStats = () => page.evaluate(() => (window as unknown as { __mc6: { stats(): { refreshes: number; layouts: number } } }).__mc6.stats());
   await mockFeeds(page);
