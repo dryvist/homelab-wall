@@ -153,6 +153,41 @@ for (const mode of ['2d', '3d'] as const) {
     expect(faults).toEqual([]);
   });
 
+  // Every label box sits inside the viewport with a margin, right of the fleet panel and above the model
+  // tile strip, and every name is shown whole (no ellipsis), on both render paths.
+  test(`mc3 ${mode}: every anchor label stays inside the viewport, clear of the fleet panel and tile strip`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+    if (mode === '3d') test.slow();
+    const faults = watchFaults(page);
+    await mockFeeds(page);
+    await page.goto(`/mc3/?gl=${mode}`);
+    await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
+    await expect(page.locator('#anchors .anchor')).toHaveCount(5);
+    const layout = await page.evaluate(() => {
+      const box = (el: Element) => { const b = el.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom }; };
+      return {
+        vw: innerWidth,
+        vh: innerHeight,
+        fleet: box(document.getElementById('apps')!),
+        strip: box(document.getElementById('modeltab')!),
+        labels: [...document.querySelectorAll('#anchors .anchor')].map((el) => ({
+          accel: (el as HTMLElement).dataset.accel,
+          box: box(el.querySelector('.alab')!),
+          name: el.querySelector('.an')!.scrollWidth <= el.querySelector('.an')!.clientWidth + 1,
+        })),
+      };
+    });
+    expect(layout.strip.bottom).toBeGreaterThan(layout.strip.top);
+    for (const { accel, box, name } of layout.labels) {
+      expect(box.left, `${accel} label left edge`).toBeGreaterThanOrEqual(layout.fleet.right + 8);
+      expect(box.right, `${accel} label right edge`).toBeLessThanOrEqual(layout.vw - 8);
+      expect(box.top, `${accel} label top edge`).toBeGreaterThanOrEqual(8);
+      expect(box.bottom, `${accel} label bottom edge`).toBeLessThanOrEqual(layout.strip.top - 8);
+      expect(name, `${accel} name shown whole`).toBe(true);
+    }
+    expect(faults).toEqual([]);
+  });
+
   // 1 vs 8 vs 25 active: beads are drawn one each up to 12, then packed into rings with a ×N badge.
   for (const inflight of [0, 3, 25]) {
     test(`mc3 ${mode}: ${inflight} in flight draws ${inflight} beads on the cloud node`, async ({ page }) => {
