@@ -17,6 +17,7 @@
   font:600 clamp(11px,1.1vmin,13px)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);
   display:flex;justify-content:space-between;border-bottom:1px solid var(--grid)}
 .panel>h2 span{color:var(--dim);letter-spacing:.1em}
+#shared{color:var(--amber)}
 .panel [data-panel-message]{color:var(--amber);font:600 9px/1 var(--mono);letter-spacing:.1em;white-space:nowrap}
 
 header{grid-row:1;display:flex;align-items:center;gap:clamp(16px,2.4vmin,30px)}
@@ -35,6 +36,11 @@ header{grid-row:1;display:flex;align-items:center;gap:clamp(16px,2.4vmin,30px)}
 #herolabel{position:absolute;top:clamp(4px,.6vmin,10px);left:clamp(10px,1.4vmin,18px);
   font:700 clamp(14px,1.8vmin,24px)/1 var(--disp);letter-spacing:.3em;
   text-shadow:0 0 16px currentColor;pointer-events:none}
+#herolabel.merged{background:linear-gradient(90deg,#3ee6ff,#7b8cff,#38ff9c,#ffb347,#ff4fd8,#b6ff3e);
+  -webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none}
+#herosub{position:absolute;top:calc(clamp(4px,.6vmin,10px) + clamp(14px,1.8vmin,24px) + 6px);
+  left:clamp(10px,1.4vmin,18px);font:400 clamp(9px,1vmin,12px)/1 var(--mono);letter-spacing:.18em;
+  color:var(--dim);pointer-events:none}
 
 /* Strip: one tile per source, always all visible; column count is set inline per render
    (mc6.js) to an explicit repeat(N,minmax(0,1fr)) so N sources never orphan a tile onto a

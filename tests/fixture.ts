@@ -55,6 +55,8 @@ export const words = [
   { source: 'claude', word: 'typescript', n: '41' },
   { source: 'codex', word: 'benchmark', n: '77' },
   { source: 'codex', word: 'cache', n: '12' },
+  // 'deploy' is held by the operator and codex: a word shared between a prompt source and an agent.
+  { source: 'codex', word: 'deploy', n: '33' },
   { source: 'zcode', word: 'prometheus', n: '64' },
   { source: 'zcode', word: 'playwright', n: '29' },
   { source: 'minion', word: 'banana', n: '9' },

@@ -765,6 +765,15 @@ async function heroWordPixels(page: Page) {
   });
 }
 
+// The hero's drawn view as the page reports it through window.__mc6.drawn(): the view's name or
+// 'CONVERGENCE', and each drawn word with its size, rank lightness, source mix and fill kind.
+async function drawnHero(page: Page) {
+  return page.evaluate(() => {
+    const hook = (window as unknown as { __mc6?: { drawn(): unknown } }).__mc6;
+    return (hook?.drawn() ?? null) as { view: string; words: { text: string; size: number; x: number; y: number; angle: number; width: number; lightness: number; sources: string[]; fill: string }[] } | null;
+  });
+}
+
 // One source with forty words, so the hero cloud is a blob around the middle of its box.
 const heroWords = Array.from({ length: 40 }, (_, i) => ({ source: 'user', word: `term${i}`, n: String(400 - i * 9) }));
 
@@ -808,4 +817,272 @@ test('mc6 hero redraws the displayed source when a poll changes its words', asyn
 
   releaseLaterPolls();
   await expect.poll(async () => (await heroWordPixels(page)).count, { message: 'hero kept the first poll words' }).toBeGreaterThan(before * 2);
+});
+
+// A word two sources both hold ('deploy': the operator and codex in the fixture) is listed as
+// shared in the panel header.
+test('mc6 marks a word held by two sources as shared', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped words response only');
+  await mockFeeds(page);
+  await page.goto('/mc6/');
+  await expect(page.locator('[data-panel="lexicon"]')).toHaveAttribute('data-state', 'ok');
+  await expect(page.locator('#shared')).toContainText('deploy');
+});
+
+// The hero rotation ends on a CONVERGENCE view after the last source with rows. The fake clock
+// advances past the five sources' 8s slots; the line under the label names the operator-and-agent
+// vocabulary ('deploy' in the fixture).
+test('mc6 hero rotation ends on a CONVERGENCE view of every source', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped words response only');
+  const pageErrors: string[] = [];
+  page.on('pageerror', (e) => pageErrors.push(e.message));
+  await page.clock.install();
+  await mockFeeds(page);
+  await page.goto('/mc6/');
+  const label = page.locator('#herolabel');
+  await expect(label).toHaveText('OPERATOR');
+  await page.clock.fastForward(5 * 8000 + 500);
+  await expect(label).toHaveText('CONVERGENCE');
+  await expect(page.locator('#herosub')).toContainText('SHARED VOCAB');
+  await expect(page.locator('#herosub')).toContainText('deploy');
+  // The merged view paints ink, and every fixture source with rows shows up among the drawn words.
+  await expect.poll(async () => (await heroWordPixels(page)).count, { message: 'CONVERGENCE canvas stays blank' }).toBeGreaterThan(1000);
+  const drawn = await drawnHero(page);
+  expect(drawn?.view).toBe('CONVERGENCE');
+  const withRows = [...new Set(words.map((w) => w.source))].sort();
+  expect([...new Set(drawn?.words.flatMap((w) => w.sources))].sort(), 'sources among the drawn words').toEqual(withRows);
+  // Asserts the merged view draws without a page error.
+  expect(pageErrors).toEqual([]);
+});
+
+// A digest of every pixel of the hero canvas: equal digests mean the canvas did not change.
+async function heroPixelDigest(page: Page) {
+  return page.locator('#cloudhero').evaluate((el) => {
+    const canvas = el as HTMLCanvasElement;
+    const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+    let digest = 0;
+    for (let i = 0; i < data.length; i += 1) digest = (Math.imul(digest, 31) + data[i]) | 0;
+    return digest;
+  });
+}
+
+// The hero paints real pixels and keeps moving with no data change: the canvas is non-blank, and
+// its pixels differ across a 3 s window (the breathing scale and drift).
+test('mc6 hero canvas is non-blank and keeps changing while idle', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped words response only');
+  await mockFeeds(page);
+  await page.goto('/mc6/');
+  await expect(page.locator('[data-panel="lexicon"]')).toHaveAttribute('data-state', 'ok');
+  await expect.poll(async () => (await heroWordPixels(page)).count, { message: 'hero canvas stays blank' }).toBeGreaterThan(1000);
+  const before = await heroPixelDigest(page);
+  await page.waitForTimeout(3000);
+  expect(await heroPixelDigest(page), 'hero pixels unchanged over 3s').not.toBe(before);
+});
+
+// The hook's rank mapping for the operator's view: the top-ranked word ('deploy', n 412) is larger
+// and lighter than the bottom-ranked one ('certificate', n 55), and 'deploy', also held by codex,
+// reports a fill that runs across both sources.
+test('mc6 maps rank to size and lightness, and a shared word to a multi-source fill', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped words response only');
+  await page.clock.install();
+  await mockFeeds(page);
+  await page.goto('/mc6/');
+  await expect(page.locator('#herolabel')).toHaveText('OPERATOR');
+  await expect.poll(async () => (await drawnHero(page))?.words.map((w) => w.text) ?? [], { message: 'operator view never drew deploy and certificate' }).toEqual(expect.arrayContaining(['deploy', 'certificate']));
+  const words = (await drawnHero(page))?.words ?? [];
+  const top = words.find((w) => w.text === 'deploy')!;
+  const bottom = words.find((w) => w.text === 'certificate')!;
+  expect(top.size, 'top-ranked word size').toBeGreaterThan(bottom.size);
+  expect(top.lightness, 'top-ranked word lightness').toBeGreaterThan(bottom.lightness);
+  expect(top.sources).toEqual(expect.arrayContaining(['user', 'codex']));
+  expect(top.fill).toBe('gradient');
+});
+
+// A multi-source word turned 90 degrees: its gradient runs along the glyph, so the ink at the glyph's
+// start and at its end differ in hue. The operator's cloud holds twenty words; the seventeenth
+// ('shared90') is also held by codex, and every ninth tail word is set vertical, so this one is.
+const rotatedWords = [
+  ...Array.from({ length: 20 }, (_, i) => ({ source: 'user', word: i === 16 ? 'shared90' : `term${i}`, n: String(200 - i * 9) })),
+  { source: 'codex', word: 'shared90', n: '50' },
+];
+
+test('mc6 paints a rotated multi-source word with a gradient along its glyph', async ({ page }) => {
+  test.skip(!!wallUrl, 'forces the words feed against the fixture server only');
+  await page.emulateMedia({ reducedMotion: 'reduce' }); // no idle breathing, so the glyph holds still
+  await mockFeeds(page);
+  await page.route('**/api/words', (r: Route) => r.fulfill({ json: { meta: [], data: rotatedWords, rows: rotatedWords.length } }));
+  await page.goto('/mc6/');
+  await expect(page.locator('[data-panel="lexicon"]')).toHaveAttribute('data-state', 'ok');
+  const rotated = async () => {
+    const drawn = await drawnHero(page);
+    return drawn?.view === 'user' ? drawn.words.find((w) => w.text === 'shared90' && w.angle === 90) ?? null : null;
+  };
+  await expect.poll(async () => (await rotated()) !== null, { message: 'the operator view never drew the rotated shared word' }).toBe(true);
+  const word = (await rotated())!;
+  // Samples the canvas along the glyph's own axis, through its body at three heights, and keeps the
+  // hue of each ink pixel by side: the start third of the glyph and the end third.
+  const { startHue, endHue, startInks, endInks } = await page.evaluate(({ x, y, angle, width, size }) => {
+    const canvas = document.getElementById('cloudhero') as HTMLCanvasElement;
+    const box = document.getElementById('hero') as HTMLElement;
+    const ctx = canvas.getContext('2d')!;
+    const scale = canvas.width / box.clientWidth; // device pixels per CSS pixel
+    const theta = (angle * Math.PI) / 180;
+    const hueOf = (r: number, g: number, b: number) => {
+      const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+      if (d === 0) return 0;
+      const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      return (h * 60 + 360) % 360;
+    };
+    const start: number[] = [];
+    const end: number[] = [];
+    for (let i = 0; i <= 40; i += 1) {
+      const lx = (i / 40 - 0.5) * 0.9 * width; // along the glyph, from its start to its end
+      for (const k of [-0.25, -0.35, -0.45]) {
+        const ly = k * size; // above the baseline, inside the glyph body
+        const dx = lx * Math.cos(theta) - ly * Math.sin(theta);
+        const dy = lx * Math.sin(theta) + ly * Math.cos(theta);
+        const px = Math.round(canvas.width / 2 + scale * (x + dx));
+        const py = Math.round(canvas.height / 2 + scale * (y + dy));
+        const [r, g, b, a] = ctx.getImageData(px, py, 1, 1).data;
+        if (a < 250 || Math.max(r, g, b) - Math.min(r, g, b) < 60) continue; // not glyph ink
+        if (lx < -0.15 * width) start.push(hueOf(r, g, b));
+        else if (lx > 0.15 * width) end.push(hueOf(r, g, b));
+      }
+    }
+    const mean = (xs: number[]) => (xs.length ? xs.reduce((sum, v) => sum + v, 0) / xs.length : -1);
+    return { startHue: mean(start), endHue: mean(end), startInks: start.length, endInks: end.length };
+  }, { x: word.x, y: word.y, angle: word.angle, width: word.width, size: word.size });
+  expect(Math.min(startInks, endInks), 'ink samples in each third of the glyph').toBeGreaterThanOrEqual(2);
+  expect(Math.abs(startHue - endHue), 'hue difference between the start and end thirds (degrees)').toBeGreaterThan(15);
+});
+
+// Maximum input: six known sources with 200 words each. Source s holds terms s*160 .. s*160+199
+// (mod 1000), so the union is 1,000 distinct terms and neighbouring sources share forty of them.
+const maxWords = ['user', 'claude', 'codex', 'antigravity', 'zcode', 'opencode'].flatMap((source, s) =>
+  Array.from({ length: 200 }, (_, i) => ({ source, word: `term${(s * 160 + i) % 1000}`, n: String(1000 - i) })));
+
+// One hook sample per animation frame: layouts and refreshes so far, gradients built so far, the
+// canvas width and the displayed view.
+type Frame = { t: number; L: number; R: number; fills: number; backdrops: number; cw: number; view: string | null };
+
+// Median frame interval bounds in ms, per environment and chromium project, for the steady window and
+// for the CONVERGENCE transition. Local (CI unset): 25ms everywhere, and 40ms for the transition at
+// 2560x1440. CI (GitHub-hosted runners, CI set): 60ms steady and 140ms transition at both sizes. The CI
+// bounds were set from measured CI medians of 66.6ms (transition, 1920x1080) and 33.3ms (steady,
+// 2560x1440), and catch regressions of roughly 2x or more on a shared CPU runner. The local bounds are
+// the kiosk target.
+const FRAME_MS = {
+  local: {
+    'chromium-1920x1080@1': { steady: 25, transition: 25 },
+    'chromium-2560x1440': { steady: 25, transition: 40 },
+  },
+  ci: {
+    'chromium-1920x1080@1': { steady: 60, transition: 140 },
+    'chromium-2560x1440': { steady: 60, transition: 140 },
+  },
+};
+
+// At maximum input a refresh lays the clouds out only when the words change. Refreshes run every
+// second here. Over a steady 3s window of identical refreshes no layout runs. A refresh that reads one
+// changed word lays out seven clouds: six strip tiles and the hero's current view. Layout counts and
+// gradient builds are hard assertions in every environment. The steady and transition medians are
+// checked last, against the FRAME_MS bounds for the environment and project.
+test('mc6 at maximum input relays out only on changed words; median frames stay under their FRAME_MS bounds (local 25ms, 40ms at 2560 transition; CI 60ms steady, 140ms transition)', async ({ page }) => {
+  test.skip(!!wallUrl, 'forces the words feed against the fixture server only');
+  test.skip(!(test.info().project.name in FRAME_MS.local), 'chromium at 1920x1080 and 2560x1440 only');
+  const bound = (process.env.CI ? FRAME_MS.ci : FRAME_MS.local)[test.info().project.name as keyof typeof FRAME_MS.local];
+  test.setTimeout(150_000);
+  await mockFeeds(page);
+  await page.route('**/config.json', (r: Route) => r.fulfill({ json: { ...config, refreshSeconds: 1 } }));
+  // The feed answers the maximum input until the changed-words step below, which adds one word.
+  let feed = maxWords;
+  await page.route('**/api/words', (r: Route) => r.fulfill({ json: { meta: [], data: feed, rows: feed.length } }));
+  await page.goto('/mc6/');
+  await expect(page.locator('[data-panel="lexicon"]')).toHaveAttribute('data-state', 'ok');
+  // Opens the window just after a slot change, once the transition has settled, so no slot change
+  // or transition falls inside the 3s measured below.
+  await expect.poll(async () => (await drawnHero(page))?.view ?? null, { message: 'hero never drew' }).not.toBeNull();
+  const first = (await drawnHero(page))?.view;
+  await expect.poll(async () => (await drawnHero(page))?.view ?? null, { timeout: 15_000, message: 'hero never changed slot' }).not.toBe(first);
+  await page.waitForTimeout(1500);
+
+  // One sample per animation frame, from now until the hero has shown CONVERGENCE for 1.6s. The first
+  // 3s are the steady window; the glide, disperse and condense transition runs for FADE_MS (1.4s)
+  // from the switch to CONVERGENCE.
+  const frames = await page.evaluate(() => new Promise<Frame[]>((resolve) => {
+    const w = window as unknown as { __mc6: { stats(): { refreshes: number; layouts: number; fills: number; backdrops: number; view: string | null } } };
+    const canvas = document.getElementById('cloudhero') as HTMLCanvasElement;
+    const samples: Frame[] = [];
+    let switchAt: number | null = null;
+    const tick = (t: number) => {
+      const s = w.__mc6.stats();
+      samples.push({ t, L: s.layouts, R: s.refreshes, fills: s.fills, backdrops: s.backdrops, cw: canvas.width, view: s.view });
+      if (switchAt === null && s.view === 'CONVERGENCE') switchAt = t;
+      if (switchAt !== null && t - switchAt >= 1600) resolve(samples);
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }));
+
+  const steady = frames.filter((f) => f.t - frames[0].t <= 3000);
+  const m = frames.findIndex((f) => f.view === 'CONVERGENCE');
+  expect(m, 'the hero switched to CONVERGENCE').toBeGreaterThan(0);
+  const transition = frames.slice(m).filter((f) => f.t - frames[m].t <= 1400);
+  expect(transition.length, 'frames inside the transition window').toBeGreaterThanOrEqual(10);
+
+  const refreshes = steady[steady.length - 1].R - steady[0].R;
+  const layouts = steady[steady.length - 1].L - steady[0].L;
+  const medianOf = (xs: Frame[]) => {
+    const gaps = xs.slice(1).map((f, i) => f.t - xs[i].t).sort((a, b) => a - b);
+    return gaps[Math.floor(gaps.length / 2)];
+  };
+  // A word fill is built only on a frame that lays out; a backdrop only on one that lays out or resizes
+  // the canvas. Frames that lay out are excluded: their gradients are the layout's own.
+  const createdWithoutLayout = (xs: Frame[]) => xs.slice(1).filter((f, i) => {
+    const p = xs[i];
+    return (f.fills > p.fills && f.L === p.L) || (f.backdrops > p.backdrops && f.L === p.L && f.cw === p.cw);
+  }).length;
+  const steadyMedian = medianOf(steady);
+  const transitionMedian = medianOf(transition);
+  const laidOut = transition.slice(1).filter((f, i) => f.L !== transition[i].L).length;
+  const built = transition.slice(1).filter((f, i) => f.fills > transition[i].fills || f.backdrops > transition[i].backdrops).length;
+  // Both medians are recorded before any assertion, so every run prints them, whichever check fails.
+  const medians = `steady ${steadyMedian.toFixed(1)}ms (bound ${bound.steady}ms), transition ${transitionMedian.toFixed(1)}ms (bound ${bound.transition}ms)`;
+  test.info().annotations.push({ type: 'measured', description: `steady median ${steadyMedian}ms; transition median ${transitionMedian}ms over ${transition.length} frames, ${laidOut} of them laid out, ${built} built a gradient` });
+  test.info().annotations.push({ type: 'frame-median', description: medians });
+  console.log(`frame-median ${test.info().project.name}: ${medians}`);
+
+  expect(refreshes, 'refreshes during the 3s window').toBeGreaterThanOrEqual(2);
+  expect(layouts, 'layouts during identical-words refreshes in the 3s window').toBe(0);
+  expect(createdWithoutLayout(steady), 'steady frames that create a gradient without a layout').toBe(0);
+  expect(createdWithoutLayout(transition), 'transition frames that create a gradient without a layout').toBe(0);
+
+  // The feed gains one word as the sampler starts. The sampler runs for 2.5s, which covers the refresh
+  // that reads the new words and at least one more that reads the same words again.
+  const changedFrames = page.evaluate(() => new Promise<Frame[]>((resolve) => {
+    const w = window as unknown as { __mc6: { stats(): { refreshes: number; layouts: number; fills: number; backdrops: number; view: string | null } } };
+    const canvas = document.getElementById('cloudhero') as HTMLCanvasElement;
+    const samples: Frame[] = [];
+    const start = performance.now();
+    const tick = (t: number) => {
+      const s = w.__mc6.stats();
+      samples.push({ t, L: s.layouts, R: s.refreshes, fills: s.fills, backdrops: s.backdrops, cw: canvas.width, view: s.view });
+      if (t - start < 2500) requestAnimationFrame(tick);
+      else resolve(samples);
+    };
+    requestAnimationFrame(tick);
+  }));
+  feed = [...maxWords, { source: 'user', word: 'fresh', n: '999' }];
+  const changed = await changedFrames;
+  const changedRefreshes = changed.slice(1).flatMap((f, i) => (f.R !== changed[i].R
+    ? [{ layouts: f.L - changed[i].L, sameView: f.view === changed[i].view }]
+    : []));
+  expect(changedRefreshes.length, 'refreshes in the 2.5s window after the change').toBeGreaterThanOrEqual(2);
+  expect(changedRefreshes.filter((r) => r.layouts > 0).map((r) => r.layouts), 'layouts per refresh that reads changed words').toEqual([7]);
+  expect(changedRefreshes.filter((r) => r.layouts === 0).length, 'refreshes that lay out nothing').toBeGreaterThanOrEqual(1);
+  expect(changedRefreshes.every((r) => r.sameView), 'the displayed view held across those refreshes').toBe(true);
+
+  // Timing last, and soft, so a steady failure still reports the transition median.
+  expect.soft(steadyMedian, 'median steady frame interval (ms)').toBeLessThan(bound.steady);
+  expect.soft(transitionMedian, 'median transition frame interval (ms)').toBeLessThan(bound.transition);
 });
