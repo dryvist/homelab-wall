@@ -498,7 +498,7 @@ function drawReactor(now) {
   c.globalAlpha = 0.9; c.strokeStyle = '#fff'; c.lineWidth = 1.5 * dpr; c.stroke(); c.globalAlpha = 1;
   c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.font = `600 ${R * 0.24}px "Chakra Petch",sans-serif`;
-  c.fillText(list.length ? `${Math.round(upFrac * 100)}%` : '67%', cx, cy);
+  c.fillText(list.length ? `${Math.round(upFrac * 100)}%` : '—', cx, cy);
 
   // Models orbit the anchor they are attached to. streams counts the models whose stream is drawn.
   let streams = 0;
