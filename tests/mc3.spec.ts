@@ -247,6 +247,30 @@ for (const mode of ['2d', '3d'] as const) {
     expect(faults).toEqual([]);
   });
 
+  // The second gpu-secondary host (gpu-host-c) gets a serving URL and a local server, written in upper case.
+  // Both models map to gpu-secondary, and its request count adds up across both hosts.
+  test(`mc3 ${mode}: a device's models and requests aggregate every host that reports it`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+    if (mode === '3d') test.slow();
+    const faults = watchFaults(page);
+    await mockFeeds(page, {
+      inflight: 10,
+      llamaRunning: 3,
+      extraLocal: [['GPU-HOST-C.example.test:8001', 2]],
+      extraApiBase: [{ litellm_model_name: 'model-small', api_base: 'http://gpu-host-c.example.test:8001/v1', api_provider: 'local' }],
+    });
+    await page.goto(`/mc3/?gl=${mode}`);
+    const gpuSecondary = page.locator('#anchors [data-accel="gpu-secondary"]');
+    await expect(gpuSecondary.locator('.an')).toHaveText(ANCHOR_NAMES['gpu-secondary']);
+    await expect(gpuSecondary).toHaveAttribute('data-models', '2');
+    await expect(gpuSecondary).toHaveAttribute('data-active', '5');
+    await expect(gpuSecondary).toHaveAttribute('data-beads', '5');
+    await expect(page.locator('#anchors [data-accel="gpu-primary"]')).toHaveAttribute('data-models', '1');
+    await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveAttribute('data-models', '1');
+    await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveAttribute('data-active', '5');
+    expect(faults).toEqual([]);
+  });
+
   // Bracketed IPv6 hosts (documentation-range 2001:db8::/32) are read whole: a local server on one IPv6
   // device and a serving URL on the other each attach to their own device.
   test(`mc3 ${mode}: bracketed IPv6 hosts stay distinct for requests and serving URLs`, async ({ page }) => {
