@@ -774,3 +774,30 @@ test('mc6 hero draws the active source words around the middle of its canvas', a
     return cx > 0.3 && cx < 0.7 && cy > 0.3 && cy < 0.7 ? 'centred' : `off-centre (${cx.toFixed(2)}, ${cy.toFixed(2)})`;
   }, { message: 'hero words drawn around the canvas middle' }).toBe('centred');
 });
+
+// A poll that changes the words of the source the hero is showing reaches the hero on the next
+// frame, not at the next 8s slot change. The first poll answers one word; the later polls are
+// held until the test has measured the hero, then answer forty.
+test('mc6 hero redraws the displayed source when a poll changes its words', async ({ page }) => {
+  test.skip(!!wallUrl, 'forces the words feed against the fixture server only');
+  await mockFeeds(page);
+  await page.route('**/config.json', (r: Route) => r.fulfill({ json: { ...config, refreshSeconds: 1 } }));
+  let releaseLaterPolls!: () => void;
+  const laterPollsReleased = new Promise<void>((resolve) => { releaseLaterPolls = resolve; });
+  const firstWords = [{ source: 'user', word: 'alpha', n: '10' }];
+  let wordsCalls = 0;
+  await page.route('**/api/words', async (r: Route) => {
+    wordsCalls += 1;
+    const call = wordsCalls;
+    if (call > 1) await laterPollsReleased;
+    const data = call === 1 ? firstWords : heroWords;
+    return r.fulfill({ json: { meta: [], data, rows: data.length } });
+  });
+  await page.goto('/mc6/');
+  await expect(page.locator('[data-panel="lexicon"]')).toHaveAttribute('data-state', 'ok');
+  await expect.poll(async () => (await heroWordPixels(page)).count, { message: 'hero never drew the first poll' }).toBeGreaterThan(200);
+  const before = (await heroWordPixels(page)).count;
+
+  releaseLaterPolls();
+  await expect.poll(async () => (await heroWordPixels(page)).count, { message: 'hero kept the first poll words' }).toBeGreaterThan(before * 2);
+});
