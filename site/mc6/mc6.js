@@ -255,12 +255,21 @@ function heroPlaced(source) {
   return placed;
 }
 
-// Recompute the in-flight hero pair in place (words changed under them). The cycle timer is
-// untouched, so a refresh mid-transition keeps gliding — just between the new placements.
+// Recompute the in-flight hero pair in place (words changed under them) from the sources
+// apply() has just rebuilt, matched by name. The cycle timer is untouched, so a refresh
+// mid-transition keeps gliding — just between the new placements. A source that no longer has
+// words is dropped, and when that is the displayed one the next frame picks a slot afresh.
 function refreshHeroLayouts() {
   heroLayouts.clear();
-  if (current) current = { source: current.source, placed: heroPlaced(current.source) };
-  if (previous) previous = { source: previous.source, placed: heroPlaced(previous.source) };
+  const fresh = (held) => {
+    const source = sources.find((s) => s.name === held.source.name);
+    return source?.words.length ? { source, placed: heroPlaced(source) } : null;
+  };
+  if (current) {
+    current = fresh(current);
+    if (!current) lastSlot = -1;
+  }
+  if (previous) previous = fresh(previous);
 }
 
 const liveSources = () => sources.filter((s) => s.words.length);
