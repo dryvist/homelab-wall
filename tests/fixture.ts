@@ -12,7 +12,8 @@ export const config = {
   extraNodes: [{ name: 'studio', role: 'inference · not PVE' }],
   groups: [
     { name: 'apps', apps: ['alpha', 'bravo', 'charlie', 'delta', 'echo'] },
-    { name: 'media', apps: ['foxtrot', 'golf', 'hotel'] },
+    // autobrr is a catalog service outside the AI category: mc3's fleet list must leave it out.
+    { name: 'media', apps: ['foxtrot', 'golf', 'hotel', 'autobrr'] },
     { name: 'observ', apps: ['india', 'juliet'] },
     { name: 'ai', apps: ['kilo', 'lima', 'mike'] },
   ],
@@ -77,9 +78,22 @@ const inst = (n: string) => ({ instance: `${n}.example.test:9100`, job: 'pve_nod
 const vec = (rows: Array<[Record<string, string>, number]>) =>
   rows.map(([metric, v]) => ({ metric, value: [Date.now() / 1000, String(v)] }));
 
+// mc3's per-answer state. inflight is the router-wide count of requests in flight; vllmRunning and
+// llamaRunning are the two local inference servers' counts (both default to zero).
+export interface AnswerOpts { inflight?: number; vllmRunning?: number; llamaRunning?: number }
+
+// The AI-category services (group "AI · UI" / "AI · API" in Gatus). Q.aiAppScore keeps only these.
+const AI_APPS = ['kilo', 'lima', 'mike'];
+
 // Exported so tests/snapshot.spec.ts can build a snapshot.json fixture from the same answers
 // instead of a second hand-maintained copy of every query's expected shape.
-export function answer(q: string): unknown[] {
+export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
+  // mc3 fleet list: the score restricted to AI-category Gatus groups. autobrr (a media service)
+  // is in the base score below but never here.
+  if (q.includes('AI · .+')) {
+    const flat = config.groups.flatMap((g) => g.apps);
+    return vec(AI_APPS.map((n): [Record<string, string>, number] => [{ name: n }, sampleAppScore(flat.indexOf(n))]));
+  }
   if (q.includes('gatus_results_total') && q.includes('by (name)')) {
     const rows = config.groups.flatMap((g) => g.apps).map((n, i): [Record<string, string>, number] => [{ name: n }, sampleAppScore(i)]);
     // D5 (ansible-side defect): 'juliet' has no Gatus series at all — must count as "no data", not a score.
@@ -93,9 +107,10 @@ export function answer(q: string): unknown[] {
   if (q.includes('node_load1')) return vec(NODES.map((n, i) => [inst(n), [9.4, 3.1, 14.2][i]]));
   if (q.includes('hwmon')) return vec(NODES.map((n, i) => [inst(n), [44, 57, 60][i]]));
   if (q.includes('boot_time')) return vec(NODES.map((n, i) => [inst(n), (i + 1) * 20 * 86400]));
-  // Two accelerators: mc1's GPU gauges must show the busier one (64), never the other or a blend;
-  // mc3's GPU tile shows their mean (36/64 -> 50%).
-  if (q.includes('accelerator:busy_percent')) return vec([[{ accelerator: 'accel-0' }, 36], [{ accelerator: 'accel-1' }, 64]]);
+  // Busy % per accelerator role. Two of the four answer, and mc1's GPU gauges must show the busier
+  // one (64), never the other or a blend. mc3's GPU tile shows their mean (36/64/20 -> 40%).
+  // mac-secondary has no busy series, so its anchor must render as no data.
+  if (q.includes('accelerator:busy_percent')) return vec([[{ accelerator: 'gpu-primary' }, 36], [{ accelerator: 'gpu-secondary' }, 64], [{ accelerator: 'mac-primary' }, 20]]);
   // D3: a shared NFS mount — same device + mountpoint reported by two nodes — must be shown
   // once, not once per node, and must not double-count in the RAW total.
   const SHARED_DEVICE = { device: 'nas:/export/shared', mountpoint: '/mnt/pve/shared-nfs', fstype: 'nfs4' };
@@ -114,6 +129,28 @@ export function answer(q: string): unknown[] {
     ] as Array<[Record<string, string>, number]>);
   }
   if (q.includes('unifi_vlan_fw_events_total')) return vec([[{ vlan: '10' }, 4.2], [{ vlan: '20' }, 1.1], [{ vlan: '30' }, 0.4]]);
+  // mc3 accelerator anchors. Hosts are placeholders and device names are example values. The GPU
+  // series without an accelerator label belongs to gpu-primary; a vendor word leads one model name.
+  if (q.includes('DCGM_FI_DEV_GPU_UTIL')) return vec([
+    [{ instance: 'gpu-host-a.example.test:9400', modelName: 'Example GPU 1' }, 1],
+    [{ accelerator: 'gpu-secondary', instance: 'gpu-host-b.example.test:9400', modelName: 'VENDOR Example GPU 2' }, 1],
+    [{ accelerator: 'gpu-secondary', instance: 'gpu-host-c.example.test:9400', modelName: 'VENDOR Example GPU 2' }, 1],
+  ]);
+  // Both Mac anchors read the same chip, so both labels carry their role tag.
+  if (q.includes('macmon_gpu_usage_ratio')) return vec([
+    [{ accelerator: 'mac-primary', chip: 'Example Chip 3', instance: 'mac-host-a.example.test:9100' }, 1],
+    [{ accelerator: 'mac-secondary', chip: 'Example Chip 3', instance: 'mac-host-b.example.test:9100' }, 1],
+  ]);
+  // Each model's serving URL. A URL names a device host; hosted rungs have no URL host at all.
+  if (q.includes('api_base')) return vec([
+    [{ litellm_model_name: 'model-large', api_base: 'http://gpu-host-a.example.test:8000/v1', api_provider: 'local' }, 1],
+    [{ litellm_model_name: 'model-coder', api_base: 'http://gpu-host-b.example.test:8080/v1', api_provider: 'local' }, 1],
+    [{ litellm_model_name: 'model-small', api_provider: 'openai' }, 1],
+    [{ litellm_model_name: 'model-mini', api_provider: 'openrouter' }, 1],
+  ]);
+  if (q.includes('vllm:num_requests_running')) return vec([[{ instance: 'gpu-host-a.example.test:8000' }, opts.vllmRunning ?? 0]]);
+  if (q.includes('llamacpp:requests_processing')) return vec([[{ instance: 'gpu-host-b.example.test:8080' }, opts.llamaRunning ?? 0]]);
+  if (q.includes('litellm_in_flight_requests')) return vec([[{}, opts.inflight ?? 3]]);
   if (q.includes('litellm_deployment_state')) return vec([[{ litellm_model_name: 'model-large' }, 0], [{ litellm_model_name: 'model-coder' }, 0], [{ litellm_model_name: 'model-small' }, 2], [{ litellm_model_name: 'model-mini' }, 0]]);
   if (q.includes('litellm_output_tokens')) return vec([[{ model: 'model-large' }, 38], [{ model: 'model-coder' }, 91]]);
   // mc3
@@ -131,7 +168,15 @@ export function answer(q: string): unknown[] {
 // proving a failed query renders an explicit error, never a silent zero/empty result.
 // opts.emptyQuery forces a query to succeed with zero rows instead — genuinely "no data yet",
 // distinct from a failure, for proving the panel falls back to sample data (site/lib/sampleData.js).
-export async function mockFeeds(page: Page, opts: { failQuery?: (q: string) => boolean; emptyQuery?: (q: string) => boolean; recent?: unknown[] | ((n: number) => unknown[]); failWords?: boolean; emptyWords?: boolean } = {}) {
+export interface FeedOpts extends AnswerOpts {
+  failQuery?: (q: string) => boolean;
+  emptyQuery?: (q: string) => boolean;
+  recent?: unknown[] | ((n: number) => unknown[]);
+  failWords?: boolean;
+  emptyWords?: boolean;
+}
+
+export async function mockFeeds(page: Page, opts: FeedOpts = {}) {
   await page.route('**/config.json', (r: Route) => r.fulfill({ json: config }));
   await mockGithub(page);
   await mockWords(page, opts);
@@ -139,7 +184,7 @@ export async function mockFeeds(page: Page, opts: { failQuery?: (q: string) => b
     const url = new URL(r.request().url());
     const q = url.searchParams.get('query') || '';
     if (opts.failQuery?.(q)) return r.fulfill({ status: 500, json: { status: 'error', error: 'forced failure' } });
-    const rows = opts.emptyQuery?.(q) ? [] : answer(q);
+    const rows = opts.emptyQuery?.(q) ? [] : answer(q, opts);
     const result = url.pathname.endsWith('query_range')
       ? rows.map((x: any) => ({ metric: x.metric, values: Array.from({ length: 60 }, (_, k) => [k, String(20 + ((k * 7) % 50))]) }))
       : rows;

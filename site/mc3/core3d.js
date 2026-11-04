@@ -8,6 +8,7 @@
 // frame time forces the budget down. A slice of each core's particles flows to the central hub
 // along an arc (only while that model is actually serving tokens); request-feed rows arrive as
 // CPU-driven comets. Post: bloom -> afterimage trails -> subtle chromatic aberration.
+// Each model's core sits on its accelerator anchor: a fixed node the active-request beads orbit.
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, PI, cross, float, hash, instanceIndex, instancedArray, mix, mx_noise_vec3, oneMinus, pass,
@@ -29,6 +30,18 @@ const COMET_MAX = 32;
 const TRAIL = 18;
 const SLOW_FRAME_MS = 20;
 const FAST_FRAME_MS = 17.5;
+// Accelerator anchors (mc3.js ANCHOR_DEFS order): fixed nodes on a flattened ellipse around the
+// hub. Each one is lit by its busy reading; its active requests orbit it as beads.
+const MAX_ANCHORS = 8;
+const ANCHOR_RX = 150;
+const ANCHOR_RY = 70;
+const ANCHOR_R = 9;
+const ANCHOR_COLOR = { gpu: '#3ee6ff', mac: '#38ff9c', cloud: '#ffb347' };
+// Mirrors mc3.js: beads are drawn one each up to BEAD_RING, then packed into rings up to BEAD_CAP.
+const BEAD_RING = 12;
+const BEAD_CAP = 36;
+// Model cores spread on a small ring around their anchor when several models share it.
+const ANCHOR_SPREAD = 24;
 
 const strHash = (s) => { let h = 2166136261; for (const ch of String(s)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; };
 const norm = (s) => String(s ?? '').toLowerCase().split('/').pop();
@@ -177,6 +190,37 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
   const comets = [];
   let cometsDirty = false;
 
+  /* ---------------- accelerator anchors ---------------- */
+  // Node i: a wireframe core, a glow lit by its busy reading and an orbit ring. The cloud node
+  // (the last anchor) gets an octahedron core instead of an icosahedron.
+  const icoGeom = new THREE.IcosahedronGeometry(1, 2);
+  const octGeom = new THREE.OctahedronGeometry(1, 0);
+  const anchorNodes = Array.from({ length: MAX_ANCHORS }, () => {
+    const grp = new THREE.Group();
+    const core = new THREE.Mesh(icoGeom, new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(), wireframe: true, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
+    core.scale.setScalar(ANCHOR_R);
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(6, 24, 24), new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(), transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(13, 0.5, 8, 96), new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(), transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+    ring.rotation.set(1.1, 0, 0.3);
+    grp.add(glow, core, ring);
+    grp.visible = false;
+    scene.add(grp);
+    return { grp, core, glow, ring };
+  });
+  // Request beads: one instanced mesh with BEAD_CAP slots per anchor.
+  const beadMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), MAX_ANCHORS * BEAD_CAP);
+  beadMesh.frustumCulled = false;
+  for (let j = 0; j < MAX_ANCHORS * BEAD_CAP; j++) { beadMesh.setMatrixAt(j, ZERO); beadMesh.setColorAt(j, BLACK); }
+  scene.add(beadMesh);
+  const anchorState = Array.from({ length: MAX_ANCHORS }, () => ({
+    kind: 'gpu', centre: new THREE.Vector3(), color: new THREE.Color(), active: 0, shown: 0, lit: 0.2, litTarget: 0.2,
+  }));
+  let anchorCount = 0;
+  const ORIGIN = new THREE.Vector3();
+  const tmpP = new THREE.Vector3();
+  // Anchor slot (-1..1 across and up) -> world position on the flattened ellipse; the left side sits nearer the camera.
+  const anchorWorld = (x, y) => new THREE.Vector3(x * ANCHOR_RX, y * ANCHOR_RY, -x * 34);
+
   /* ---------------- post-processing ---------------- */
   const pipeline = new THREE.RenderPipeline(renderer);
   const scenePass = pass(scene, cam);
@@ -205,18 +249,29 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
   let lastRender = 0;
   let hubPulse = 0;
 
-  function layout(i, n) {
-    if (n === 1) return new THREE.Vector3(-118, 24, 0);
-    const a = Math.PI / 2 + (i / n) * Math.PI * 2;
-    return new THREE.Vector3(Math.cos(a) * 150, Math.sin(a) * 66, -Math.cos(a) * 34);
-  }
-
-  // models: [{n, up, tok}] (any order; sorted by name here so a core keeps its slot, position
-  // and colour while the model tab re-sorts by load); tokensToday: real 24h total or null.
-  function sync(models, tokensToday) {
+  // models: [{n, up, tok, anchor}] (any order; sorted by name here so a core keeps its slot, position
+  // and colour while the model tab re-sorts by load). anchors: [{x, y, kind, busy, active}] in the
+  // order mc3.js lists them. A model's anchor index picks its node; a missing or invalid index
+  // puts it on the last anchor, the cloud node. tokensToday: real 24h total or null.
+  function sync(models, tokensToday, anchors = []) {
+    anchorCount = Math.min(MAX_ANCHORS, anchors.length);
+    anchors.slice(0, anchorCount).forEach((a, i) => {
+      const s = anchorState[i];
+      s.kind = a.kind;
+      s.centre.copy(anchorWorld(a.x, a.y));
+      s.active = Math.max(0, Math.round(a.active || 0));
+      s.litTarget = Number.isFinite(a.busy) ? 0.35 + 0.65 * (a.busy / 100) : 0.2;
+      s.color.set(ANCHOR_COLOR[a.kind] ?? ANCHOR_COLOR.gpu);
+      anchorNodes[i].core.geometry = a.kind === 'cloud' ? octGeom : icoGeom;
+      anchorNodes[i].grp.position.copy(s.centre);
+    });
     const list = [...models].sort((x, y) => x.n.localeCompare(y.n)).slice(0, MAX_CORES);
     const g = Number.isFinite(tokensToday) ? clamp(Math.log10(1 + tokensToday) / 8, 0.12, 1) : 0.3;
     const maxTok = Math.max(0, ...list.map((m) => (m.up ? m.tok || 0 : 0)));
+    const at = list.map((m) => (Number.isInteger(m.anchor) && m.anchor >= 0 && m.anchor < anchorCount ? m.anchor : anchorCount - 1));
+    const perAnchor = new Array(anchorCount).fill(0);
+    for (const a of at) if (a >= 0) perAnchor[a] += 1;
+    const seenAt = new Array(anchorCount).fill(0);
     coreCount = list.length;
     uCount.value = Math.max(1, coreCount);
     list.forEach((m, i) => {
@@ -225,7 +280,15 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
       const share = maxTok > 0 && m.up ? (m.tok || 0) / maxTok : 0;
       s.name = m.n;
       s.up = !!m.up;
-      s.target.copy(layout(i, list.length));
+      // A core sits on its anchor; models sharing one spread on a small ring around it.
+      const a = at[i];
+      const k = a >= 0 ? seenAt[a]++ : 0;
+      const n = a >= 0 ? perAnchor[a] : 1;
+      s.target.copy(a >= 0 ? anchorState[a].centre : ORIGIN);
+      if (n > 1) {
+        const ang = (k / n) * Math.PI * 2 + a * 0.7;
+        s.target.add(new THREE.Vector3(Math.cos(ang) * ANCHOR_SPREAD, Math.sin(ang) * ANCHOR_SPREAD * 0.5, 0));
+      }
       if (!s.radius) s.centre.copy(s.target);
       s.targetRadius = (12 + 20 * g) * (0.75 + 0.5 * share);
       s.flow = m.up ? 0.3 + 1.7 * tn : 0.06;
@@ -306,6 +369,55 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
     if (cometMesh.instanceColor) cometMesh.instanceColor.needsUpdate = true;
   }
 
+  // Anchor nodes and their request beads. Up to BEAD_RING beads sit on one orbit; past that they
+  // pack into rings, BEAD_CAP drawn at most. The count eases toward its reading, so beads grow in
+  // and fade out rather than snapping.
+  function drawAnchors(dt, t, ease) {
+    for (let i = 0; i < MAX_ANCHORS; i++) {
+      const a = anchorState[i];
+      const node = anchorNodes[i];
+      const live = i < anchorCount;
+      node.grp.visible = live;
+      a.lit += (a.litTarget - a.lit) * ease;
+      a.shown += ((live ? Math.min(a.active, BEAD_CAP) : 0) - a.shown) * ease;
+      if (live) {
+        node.core.material.color.copy(a.color).multiplyScalar(0.6 + a.lit);
+        node.ring.material.color.copy(a.color).multiplyScalar(0.8 + a.lit);
+        node.glow.material.color.copy(a.color);
+        node.glow.material.opacity = 0.25 + 0.35 * a.lit;
+        node.glow.scale.setScalar(6 * (1 + 0.2 * a.lit));
+        if (!RM) { node.core.rotation.y += dt * 0.4; node.core.rotation.x += dt * 0.15; node.ring.rotation.z += dt * 0.5; }
+      }
+      const drawn = live ? Math.min(a.active, BEAD_CAP) : 0;
+      const n = Math.min(BEAD_CAP, Math.max(drawn, Math.ceil(a.shown - 1e-3)));
+      const rings = n > BEAD_RING ? Math.ceil(n / BEAD_RING) : 1;
+      for (let k = 0; k < BEAD_CAP; k++) {
+        const idx = i * BEAD_CAP + k;
+        const fade = k < n ? clamp(a.shown - k, 0, 1) : 0;
+        if (fade <= 0) { beadMesh.setMatrixAt(idx, ZERO); continue; }
+        const ring = k % rings;
+        const j = Math.floor(k / rings);
+        const inRing = Math.ceil((n - ring) / rings);
+        const phi = (j / inRing) * Math.PI * 2 + ring * 0.9 + (ring % 2 ? -1 : 1) * (RM ? 0 : t) * (0.9 / (1 + ring * 0.35));
+        const R = 17 + ring * 4.5;
+        tmpV.set(Math.cos(phi) * R, Math.sin(phi) * R * 0.4, Math.sin(phi) * R * 0.4).add(a.centre);
+        const size = (rings > 1 ? 1.1 : 1.5) * fade;
+        m4.makeScale(size, size, size).setPosition(tmpV);
+        beadMesh.setMatrixAt(idx, m4);
+        beadMesh.setColorAt(idx, tmpC.copy(a.color).multiplyScalar(3 * fade));
+      }
+    }
+    beadMesh.instanceMatrix.needsUpdate = true;
+    if (beadMesh.instanceColor) beadMesh.instanceColor.needsUpdate = true;
+  }
+
+  // CSS-px position of anchor i over the canvas, from the scene's own camera (mc3.js places labels there).
+  function screenOf(i) {
+    cam.updateMatrixWorld();
+    tmpP.copy(anchorState[i].centre).project(cam);
+    return { x: ((tmpP.x + 1) / 2) * canvas.clientWidth, y: ((1 - tmpP.y) / 2) * canvas.clientHeight };
+  }
+
   function render(now) {
     // Reduced motion: no camera drift, no trails/aberration, a slowed flow and a ~8 fps redraw.
     if (RM && now - lastRender < 125) return;
@@ -354,6 +466,7 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
     hubGlow.scale.setScalar(1 + hubPulse * 0.8 + (RM ? 0 : Math.sin(t * 1.8) * 0.08));
     hubGlowMat.opacity = 0.45 + Math.min(0.5, hubPulse * 0.4);
     drawComets(now);
+    drawAnchors(dt, t, ease);
 
     const wantBloom = adaptiveBloomOn();
     if (wantBloom !== bloomOn) { bloomOn = wantBloom; pipeline.outputNode = bloomOn ? fullOut : liteOut; pipeline.needsUpdate = true; }
@@ -371,5 +484,5 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
     renderer.dispose();
   }
 
-  return { render, sync, comet, dispose, backend: renderer.backend?.isWebGPUBackend ? 'webgpu' : 'webgl2' };
+  return { render, sync, comet, screenOf, dispose, backend: renderer.backend?.isWebGPUBackend ? 'webgpu' : 'webgl2' };
 }

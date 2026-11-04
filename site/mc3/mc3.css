@@ -12,6 +12,23 @@
    child of #stage, before every panel. */
 #reactor{position:fixed;inset:0;width:100vw;height:100vh;z-index:0;display:block}
 
+/* Accelerator anchor labels: one per anchor, laid over the hero canvas and under the panels.
+   mc3.js moves each .anchor to its node's projected position every frame. No pointer events, so
+   the layer never takes input meant for the panels. */
+#anchors{position:fixed;inset:0;z-index:1;pointer-events:none}
+.anchor{position:absolute;left:0;top:0;width:0;height:0;--ac:#3ee6ff;transition:opacity .4s}
+.anchor.kind-mac{--ac:#38ff9c}
+.anchor.kind-cloud{--ac:#ffb347}
+.anchor.dim{opacity:.45}
+.alab{position:absolute;left:0;top:clamp(26px,3.6vmin,40px);transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:3px;white-space:nowrap;text-align:center;text-shadow:0 0 10px #000}
+.an{font:600 clamp(11px,1.2vmin,15px)/1.1 var(--disp);letter-spacing:.08em;text-transform:uppercase;color:#fff;max-width:28vw;overflow:hidden;text-overflow:ellipsis}
+.ab{font:700 clamp(12px,1.4vmin,16px)/1 var(--disp);color:var(--ac);text-shadow:0 0 10px var(--ac)}
+.as{font:400 clamp(9px,.95vmin,11px)/1.2 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+/* Request count past the bead ring: a compact badge above the node. */
+.badge{position:absolute;left:50%;top:calc(-1 * clamp(26px,3.6vmin,40px) - clamp(30px,3.6vmin,44px));transform:translateX(-50%);
+  font:700 clamp(11px,1.2vmin,14px)/1 var(--mono);font-style:normal;color:#000;background:var(--ac);padding:3px 7px;box-shadow:0 0 14px var(--ac)}
+
 .panel{position:relative;min-width:0;min-height:0;
   clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
 /* Dark-glass side panel: the hero scene shows through, text stays legible. `contain` is
@@ -101,6 +118,9 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
   clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
 .mch{display:flex;justify-content:space-between;gap:8px;font:600 clamp(11px,1.1vmin,13px) var(--disp)}
 .mch b{color:#fff;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:600}
+/* The device a model is attached to, small under the model name. */
+.mcat{font:400 clamp(8px,.75vmin,10px)/1.2 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 /* Big, bold tok/s readout is the card's hero number — everything else stays secondary. */
 .mctok{font:700 clamp(22px,3vmin,34px)/1 var(--disp);color:#fff;margin-top:6px;text-shadow:0 0 12px currentColor}
 .mctok i{font-style:normal;font-size:.4em;color:var(--dim);margin-left:4px;text-shadow:none}

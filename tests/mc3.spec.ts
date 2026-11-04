@@ -51,9 +51,9 @@ for (const mode of ['2d', '3d'] as const) {
     await expect(page.locator('#reqfeed')).toContainText('2.5k ch');
     await expect(page.locator('#reqfeed')).not.toContainText('tok');
 
-    // The GPU tile shows the fixture's accelerator:busy_percent:avg5m mean (36/64 -> 50%), not a
+    // The GPU tile shows the fixture's accelerator:busy_percent:avg5m mean (36/64/20 -> 40%), not a
     // stand-in derivation, and carries no stand-in marker.
-    await expect(page.locator('#cxGpu')).toHaveText('50%');
+    await expect(page.locator('#cxGpu')).toHaveText('40%');
     await expect(page.locator('#cxGpu')).not.toHaveAttribute('data-source', 'stand-in');
 
     expect(faults).toEqual([]);
@@ -93,3 +93,95 @@ test('mc3: a missing /api/llm/recent renders an explicit NO FEED state with no i
   // Chromium also logs the 404 as a generic console resource error.
   expect(faults.filter((f) => !(f.startsWith('404 ') && f.includes('/api/llm/recent')) && !f.includes('status of 404'))).toEqual([]);
 });
+
+// The fleet list shows only AI-category services, and the accelerator anchors are always drawn:
+// four device roles plus the cloud node, each named from its device labels (the vendor word
+// dropped, the role tag added where two anchors read alike). A model sits on the anchor whose host
+// its serving URL names. Each anchor's request beads are counted on its label, on both render paths.
+const ANCHOR_NAMES = {
+  'gpu-primary': 'Example GPU 1',
+  'gpu-secondary': 'Example GPU 2',
+  'mac-primary': 'Example Chip 3 · PRIMARY',
+  'mac-secondary': 'Example Chip 3 · SECONDARY',
+  cloud: 'cloud',
+} as const;
+
+for (const mode of ['2d', '3d'] as const) {
+  test(`mc3 ${mode}: the fleet list is AI-only and all five anchors draw with their names`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+    if (mode === '3d') test.slow();
+    const faults = watchFaults(page);
+    await mockFeeds(page);
+    await page.goto(`/mc3/?gl=${mode}`);
+    await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
+    // autobrr is a catalog service outside the AI category: the list holds the three AI services only.
+    await expect(page.locator('#applist .ar')).toHaveCount(3);
+    await expect(page.locator('#applist')).toContainText('kilo');
+    await expect(page.locator('#applist')).not.toContainText('autobrr');
+    await expect(page.locator('#subtitle')).toContainText('3 SERVICES');
+
+    await expect(page.locator('#anchors .anchor')).toHaveCount(5);
+    for (const [id, name] of Object.entries(ANCHOR_NAMES)) {
+      await expect(page.locator(`#anchors [data-accel="${id}"] .an`)).toHaveText(name);
+    }
+    // gpu-secondary reads 64% busy. mac-secondary has no busy series: no data, and it dims.
+    await expect(page.locator('#anchors [data-accel="gpu-secondary"] .ab')).toHaveText('64% busy');
+    await expect(page.locator('#anchors [data-accel="mac-secondary"] .ab')).toHaveText('no data');
+    await expect(page.locator('#anchors [data-accel="mac-secondary"]')).toHaveClass(/dim/);
+    // Models attach to the device their serving URL names. Hosted rungs have no URL host: cloud.
+    await expect(page.locator('#anchors [data-accel="gpu-primary"]')).toHaveAttribute('data-models', '1');
+    await expect(page.locator('#anchors [data-accel="gpu-secondary"]')).toHaveAttribute('data-models', '1');
+    await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveAttribute('data-models', '2');
+    await expect(page.locator('#modeltab .mc').filter({ hasText: 'model-large' }).locator('.mcat')).toHaveText(ANCHOR_NAMES['gpu-primary']);
+    await expect(page.locator('.kpi', { hasText: 'active' }).locator('b')).toContainText('3');
+    expect(faults).toEqual([]);
+  });
+
+  test(`mc3 ${mode}: a scene with no models still draws all five anchors`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+    if (mode === '3d') test.slow();
+    const faults = watchFaults(page);
+    await mockFeeds(page, { emptyQuery: (q) => q.includes('litellm_deployment_state') });
+    await page.goto(`/mc3/?gl=${mode}`);
+    await expect(page.locator('#subtitle')).toContainText('0 MODELS');
+    await expect(page.locator('#anchors .anchor')).toHaveCount(5);
+    for (const [id, name] of Object.entries(ANCHOR_NAMES)) {
+      await expect(page.locator(`#anchors [data-accel="${id}"] .an`)).toHaveText(name);
+    }
+    await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveAttribute('data-models', '0');
+    await expect(page.locator('#anchors [data-accel="cloud"] .as')).toHaveText('no models');
+    expect(faults).toEqual([]);
+  });
+
+  // 1 vs 8 vs 25 active: beads are drawn one each up to 12, then packed into rings with a ×N badge.
+  for (const inflight of [0, 3, 25]) {
+    test(`mc3 ${mode}: ${inflight} in flight draws ${inflight} beads on the cloud node`, async ({ page }) => {
+      test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+      if (mode === '3d') test.slow();
+      const faults = watchFaults(page);
+      await mockFeeds(page, { inflight });
+      await page.goto(`/mc3/?gl=${mode}`);
+      const cloud = page.locator('#anchors [data-accel="cloud"]');
+      await expect(cloud).toHaveAttribute('data-active', String(inflight));
+      await expect(cloud).toHaveAttribute('data-beads', String(inflight));
+      if (inflight > 12) await expect(cloud.locator('.badge')).toHaveText(`×${inflight}`);
+      else await expect(cloud.locator('.badge')).toHaveCount(0);
+      await expect(page.locator('.kpi', { hasText: 'active' }).locator('b')).toContainText(String(inflight));
+      expect(faults).toEqual([]);
+    });
+  }
+
+  test(`mc3 ${mode}: a local server's requests count against its device anchor, not the cloud node`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+    if (mode === '3d') test.slow();
+    const faults = watchFaults(page);
+    await mockFeeds(page, { inflight: 8, vllmRunning: 8 });
+    await page.goto(`/mc3/?gl=${mode}`);
+    const gpu = page.locator('#anchors [data-accel="gpu-primary"]');
+    await expect(gpu).toHaveAttribute('data-active', '8');
+    await expect(gpu).toHaveAttribute('data-beads', '8');
+    await expect(gpu.locator('.badge')).toHaveCount(0);
+    await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveAttribute('data-active', '0');
+    expect(faults).toEqual([]);
+  });
+}
