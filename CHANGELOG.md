@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.3](https://github.com/dryvist/homelab-wall/compare/v0.13.2...v0.13.3) (2026-11-04)
+
+
+### Bug Fixes
+
+* **queries:** select Gatus catalog probes by their "Category · UI/API" groups ([#120](https://github.com/dryvist/homelab-wall/issues/120)) ([e50be98](https://github.com/dryvist/homelab-wall/commit/e50be98159c5ab171c69dcbb008958d52b0ee2a5))
+* **rotator:** pass the wall's ?gl= on to same-origin slides ([#121](https://github.com/dryvist/homelab-wall/issues/121)) ([27f333d](https://github.com/dryvist/homelab-wall/commit/27f333d20e0677988591272841ea1956c3c846d5))
+
 ## [0.13.2](https://github.com/dryvist/homelab-wall/compare/v0.13.1...v0.13.2) (2026-11-04)
 
 
