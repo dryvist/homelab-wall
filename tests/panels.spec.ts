@@ -680,15 +680,23 @@ test('mc6 keeps the last good clouds and shows the stale state when the words fe
   test.skip(!!wallUrl, 'forces the words feed against the fixture server only');
   await mockFeeds(page);
   await page.route('**/config.json', (r: Route) => r.fulfill({ json: { ...config, refreshSeconds: 0.2 } }));
+  // The first poll answers at once; every later poll is held until the test has seen the
+  // panel reach 'ok', then fails — so the 'ok' state lasts as long as the test needs it to.
+  let releaseFailures!: () => void;
+  const failuresReleased = new Promise<void>((resolve) => { releaseFailures = resolve; });
   let wordsCalls = 0;
-  await page.route('**/api/words', (r: Route) => {
+  let failedPolls = 0;
+  await page.route('**/api/words', async (r: Route) => {
     wordsCalls += 1;
     if (wordsCalls === 1) return r.fulfill({ json: { meta: [], data: words, rows: words.length } });
+    await failuresReleased;
+    failedPolls += 1;
     return r.fulfill({ status: 500, json: { error: 'forced failure' } });
   });
   await page.goto('/mc6/');
   await expect(page.locator('[data-panel="lexicon"]')).toHaveAttribute('data-state', 'ok');
-  await expect.poll(() => wordsCalls, { message: 'waiting for a second words poll to fail' }).toBeGreaterThan(1);
+  releaseFailures();
+  await expect.poll(() => failedPolls, { message: 'waiting for a second words poll to fail' }).toBeGreaterThan(0);
 
   const panel = page.locator('[data-panel="lexicon"]');
   await expect(panel).toHaveAttribute('data-state', 'stale');
