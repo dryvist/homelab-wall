@@ -58,7 +58,7 @@ export const Q = {
   llmQueueSeconds: 'sum by (model) (increase(litellm_request_queue_time_seconds_sum[5m])) / sum by (model) (increase(litellm_request_queue_time_seconds_count[5m]))',
   llmLatencySeconds: 'sum by (model) (increase(litellm_llm_api_latency_metric_sum[5m])) / sum by (model) (increase(litellm_llm_api_latency_metric_count[5m]))',
   // mc3 accelerator anchors. The per-device exporters label each device's product name and host;
-  // a DCGM series with no `accelerator` label belongs to gpu-primary (the recording rule's convention).
+  // a DCGM series with no `accelerator` label belongs to gpu-primary, matching accelerator:busy_percent:avg5m.
   gpuModel: 'group by (accelerator, modelName, instance) (DCGM_FI_DEV_GPU_UTIL)',
   macChip: 'group by (accelerator, chip, instance) (macmon_gpu_usage_ratio)',
   // Each model's serving URL. mc3 matches the URL's host against the host of the device series above.

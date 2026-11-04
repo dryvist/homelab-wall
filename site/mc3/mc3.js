@@ -131,7 +131,7 @@ function deriveAccelerators(r) {
   const hostRole = new Map();
   const names = ANCHOR_DEFS.slice(0, CLOUD).map(() => new Set());
   for (const row of r.gpuModel || []) {
-    // A series with no accelerator label is gpu-primary, the same convention as the busy recording rule.
+    // A series with no accelerator label is gpu-primary, matching accelerator:busy_percent:avg5m.
     const role = row.labels.accelerator || 'gpu-primary';
     if (!ROLE.has(role)) continue;
     const host = hostOf(row.labels.instance);
