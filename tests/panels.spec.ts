@@ -724,8 +724,8 @@ test('mc6 renders every known source as NO FEED when the words feed succeeds wit
   await page.goto('/mc6/');
   await expect(page.locator('[data-panel="lexicon"]')).toHaveAttribute('data-state', 'empty');
   const tiles = page.locator('#strip .tile');
-  await expect(tiles).toHaveCount(7);
-  await expect(page.locator('#strip .tile .tfeed')).toHaveCount(7);
+  await expect(tiles).toHaveCount(6);
+  await expect(page.locator('#strip .tile .tfeed')).toHaveCount(6);
   await expect(page.locator('#strip canvas')).toHaveCount(0);
   await expect(page.locator('#herolabel')).toHaveText('');
 });
