@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/dryvist/homelab-wall/compare/v0.12.0...v0.13.0) (2026-11-04)
+
+
+### Features
+
+* **mc6:** LEXICON word-cloud slide ([#111](https://github.com/dryvist/homelab-wall/issues/111)) ([ddc12e1](https://github.com/dryvist/homelab-wall/commit/ddc12e16c2452104e3ee14636338cca9548df647))
+
 ## [0.12.0](https://github.com/dryvist/homelab-wall/compare/v0.11.0...v0.12.0) (2026-11-03)
 
 
