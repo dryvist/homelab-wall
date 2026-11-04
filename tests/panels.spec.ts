@@ -845,11 +845,12 @@ test('mc6 hero rotation ends on a CONVERGENCE view of every source', async ({ pa
   await expect(label).toHaveText('CONVERGENCE');
   await expect(page.locator('#herosub')).toContainText('SHARED VOCAB');
   await expect(page.locator('#herosub')).toContainText('deploy');
-  // The merged view paints ink, and the words it draws come from at least two of the fixture's sources.
+  // The merged view paints ink, and every fixture source with rows shows up among the drawn words.
   await expect.poll(async () => (await heroWordPixels(page)).count, { message: 'CONVERGENCE canvas stays blank' }).toBeGreaterThan(1000);
   const drawn = await drawnHero(page);
   expect(drawn?.view).toBe('CONVERGENCE');
-  expect(new Set(drawn?.words.flatMap((w) => w.sources)).size, 'distinct sources among the drawn words').toBeGreaterThanOrEqual(2);
+  const withRows = [...new Set(words.map((w) => w.source))].sort();
+  expect([...new Set(drawn?.words.flatMap((w) => w.sources))].sort(), 'sources among the drawn words').toEqual(withRows);
   // Asserts the merged view draws without a page error.
   expect(pageErrors).toEqual([]);
 });
