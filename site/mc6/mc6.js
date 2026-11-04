@@ -624,8 +624,10 @@ function drawHero(now) {
   c.setTransform(heroDpr, 0, 0, heroDpr, 0, 0);
   const [w, h] = heroSize;
   const list = liveViews();
-  paintBackdrop(c, w, h, current?.view.color || '#3ee6ff', heroDpr);
-  if (!list.length) return;
+  if (!list.length) {
+    paintBackdrop(c, w, h, '#3ee6ff', heroDpr);
+    return;
+  }
   epoch ??= now;
 
   const slot = Math.floor((now - epoch) / CYCLE_MS);
@@ -636,6 +638,8 @@ function drawHero(now) {
     current = { view: next, placed: heroPlaced(next) };
     markActive(next);
   }
+  // The haze takes the displayed view's colour in the same frame that view is laid out.
+  paintBackdrop(c, w, h, current?.view.color || '#3ee6ff', heroDpr);
 
   // d3-cloud places words around 0,0 inside the layout box, so draw from the canvas midpoint
   // (paintTile does the same for the strip tiles).
