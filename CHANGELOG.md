@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/dryvist/homelab-wall/compare/v0.13.0...v0.13.1) (2026-11-04)
+
+
+### Bug Fixes
+
+* **rotator:** raise the layer ceiling to 10 ([#115](https://github.com/dryvist/homelab-wall/issues/115)) ([42049c1](https://github.com/dryvist/homelab-wall/commit/42049c1debcdb2d24312aba1fbcba605157baf63))
+
 ## [0.13.0](https://github.com/dryvist/homelab-wall/compare/v0.12.0...v0.13.0) (2026-11-04)
 
 
