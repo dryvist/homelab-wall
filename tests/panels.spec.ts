@@ -961,14 +961,19 @@ test('mc6 paints a rotated multi-source word with a gradient along its glyph', a
 const maxWords = ['user', 'claude', 'codex', 'antigravity', 'zcode', 'opencode'].flatMap((source, s) =>
   Array.from({ length: 200 }, (_, i) => ({ source, word: `term${(s * 160 + i) % 1000}`, n: String(1000 - i) })));
 
+// One hook sample per animation frame: layouts and refreshes so far, gradients built so far, the
+// canvas width and the displayed view.
+type Frame = { t: number; L: number; R: number; fills: number; backdrops: number; cw: number; view: string | null };
+
 // At maximum input, a data refresh lays the layouts out again and the idle frames do not: each
-// refresh re-lays the six strip tiles and the hero's current view, seven layouts in all. The median
-// frame interval over 3s stays under 25ms (chromium at 1920x1080 and 2560x1440). Refreshes run every second.
-test('mc6 at maximum input lays out once per refresh and keeps a median frame under 25ms', async ({ page }) => {
+// refresh re-lays the six strip tiles and the hero's current view, seven layouts in all. Refreshes run
+// every second. Over a steady 3s window the median frame interval stays under 25ms, and so does the
+// median through one CONVERGENCE switch and its 1.4s glide, disperse and condense transition
+// (chromium at 1920x1080 and 2560x1440).
+test('mc6 at maximum input lays out once per refresh and keeps median frames under 25ms through a CONVERGENCE switch', async ({ page }) => {
   test.skip(!!wallUrl, 'forces the words feed against the fixture server only');
   test.skip(!['chromium-1920x1080@1', 'chromium-2560x1440'].includes(test.info().project.name), 'chromium at 1920x1080 and 2560x1440 only');
-  test.setTimeout(90_000);
-  const hookStats = () => page.evaluate(() => (window as unknown as { __mc6: { stats(): { refreshes: number; layouts: number } } }).__mc6.stats());
+  test.setTimeout(150_000);
   await mockFeeds(page);
   await page.route('**/config.json', (r: Route) => r.fulfill({ json: { ...config, refreshSeconds: 1 } }));
   await page.route('**/api/words', (r: Route) => r.fulfill({ json: { meta: [], data: maxWords, rows: maxWords.length } }));
@@ -981,32 +986,52 @@ test('mc6 at maximum input lays out once per refresh and keeps a median frame un
   await expect.poll(async () => (await drawnHero(page))?.view ?? null, { timeout: 15_000, message: 'hero never changed slot' }).not.toBe(first);
   await page.waitForTimeout(1500);
 
-  const before = await hookStats();
-  const frames = await page.evaluate(() => new Promise<{ t: number; L: number; fills: number; backdrops: number; cw: number }[]>((resolve) => {
-    const w = window as unknown as { __mc6: { stats(): { layouts: number; fills: number; backdrops: number } } };
+  // One sample per animation frame, from now until the hero has shown CONVERGENCE for 1.6s. The first
+  // 3s are the steady window; the glide, disperse and condense transition runs for FADE_MS (1.4s)
+  // from the switch to CONVERGENCE.
+  const frames = await page.evaluate(() => new Promise<Frame[]>((resolve) => {
+    const w = window as unknown as { __mc6: { stats(): { refreshes: number; layouts: number; fills: number; backdrops: number; view: string | null } } };
     const canvas = document.getElementById('cloudhero') as HTMLCanvasElement;
-    const samples: { t: number; L: number; fills: number; backdrops: number; cw: number }[] = [];
-    const start = performance.now();
+    const samples: Frame[] = [];
+    let switchAt: number | null = null;
     const tick = (t: number) => {
       const s = w.__mc6.stats();
-      samples.push({ t, L: s.layouts, fills: s.fills, backdrops: s.backdrops, cw: canvas.width });
-      if (t - start < 3000) requestAnimationFrame(tick);
-      else resolve(samples);
+      samples.push({ t, L: s.layouts, R: s.refreshes, fills: s.fills, backdrops: s.backdrops, cw: canvas.width, view: s.view });
+      if (switchAt === null && s.view === 'CONVERGENCE') switchAt = t;
+      if (switchAt !== null && t - switchAt >= 1600) resolve(samples);
+      else requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
   }));
-  const after = await hookStats();
 
-  const refreshes = after.refreshes - before.refreshes;
-  const gaps = frames.slice(1).map((f, i) => f.t - frames[i].t).sort((a, b) => a - b);
-  const median = gaps[Math.floor(gaps.length / 2)];
-  const steps = frames.slice(1).map((f, i) => ({ f, p: frames[i] }));
-  // A word fill is built only on a frame that lays out; a backdrop only on one that lays out or resizes the canvas.
-  const fillsWithoutLayout = steps.filter(({ f, p }) => f.fills > p.fills && f.L === p.L).length;
-  const backdropsWithoutLayout = steps.filter(({ f, p }) => f.backdrops > p.backdrops && f.L === p.L && f.cw === p.cw).length;
+  const steady = frames.filter((f) => f.t - frames[0].t <= 3000);
+  const m = frames.findIndex((f) => f.view === 'CONVERGENCE');
+  expect(m, 'the hero switched to CONVERGENCE').toBeGreaterThan(0);
+  const transition = frames.slice(m).filter((f) => f.t - frames[m].t <= 1400);
+  expect(transition.length, 'frames inside the transition window').toBeGreaterThanOrEqual(10);
+
+  const refreshes = steady[steady.length - 1].R - steady[0].R;
+  const layouts = steady[steady.length - 1].L - steady[0].L;
+  const medianOf = (xs: Frame[]) => {
+    const gaps = xs.slice(1).map((f, i) => f.t - xs[i].t).sort((a, b) => a - b);
+    return gaps[Math.floor(gaps.length / 2)];
+  };
+  // A word fill is built only on a frame that lays out; a backdrop only on one that lays out or resizes
+  // the canvas. Frames that lay out are excluded: their gradients are the layout's own.
+  const createdWithoutLayout = (xs: Frame[]) => xs.slice(1).filter((f, i) => {
+    const p = xs[i];
+    return (f.fills > p.fills && f.L === p.L) || (f.backdrops > p.backdrops && f.L === p.L && f.cw === p.cw);
+  }).length;
+  const steadyMedian = medianOf(steady);
+  const transitionMedian = medianOf(transition);
+  const laidOut = transition.slice(1).filter((f, i) => f.L !== transition[i].L).length;
+  const built = transition.slice(1).filter((f, i) => f.fills > transition[i].fills || f.backdrops > transition[i].backdrops).length;
+  test.info().annotations.push({ type: 'measured', description: `steady median ${steadyMedian}ms; transition median ${transitionMedian}ms over ${transition.length} frames, ${laidOut} of them laid out, ${built} built a gradient` });
+
   expect(refreshes, 'data refreshes during the 3s window').toBeGreaterThanOrEqual(2);
-  expect(after.layouts - before.layouts, 'layouts during the 3s window').toBe(7 * refreshes);
-  expect(fillsWithoutLayout, 'frames that create a word fill without a layout').toBe(0);
-  expect(backdropsWithoutLayout, 'frames that create a backdrop without a layout or a resize').toBe(0);
-  expect(median, 'median frame interval over 3s (ms)').toBeLessThan(25);
+  expect(layouts, 'layouts during the 3s window').toBe(7 * refreshes);
+  expect(createdWithoutLayout(steady), 'steady frames that create a gradient without a layout').toBe(0);
+  expect(steadyMedian, 'median steady frame interval (ms)').toBeLessThan(25);
+  expect(createdWithoutLayout(transition), 'transition frames that create a gradient without a layout').toBe(0);
+  expect(transitionMedian, 'median transition frame interval (ms)').toBeLessThan(25);
 });
