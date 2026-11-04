@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.2](https://github.com/dryvist/homelab-wall/compare/v0.13.1...v0.13.2) (2026-11-04)
+
+
+### Bug Fixes
+
+* **test:** let the live wall spec settle and find the rotator layers ([#114](https://github.com/dryvist/homelab-wall/issues/114)) ([03e0137](https://github.com/dryvist/homelab-wall/commit/03e0137ca3768b7a843a6e0567574909a1044b1d))
+
 ## [0.13.1](https://github.com/dryvist/homelab-wall/compare/v0.13.0...v0.13.1) (2026-11-04)
 
 
