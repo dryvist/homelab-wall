@@ -981,28 +981,15 @@ test('mc6 at maximum input lays out once per refresh and keeps a median frame un
   await expect.poll(async () => (await drawnHero(page))?.view ?? null, { timeout: 15_000, message: 'hero never changed slot' }).not.toBe(first);
   await page.waitForTimeout(1500);
 
-  // Counts the gradients the page creates: a linear one is a word's fill, a radial one a backdrop.
-  await page.evaluate(() => {
-    const w = window as unknown as { __creates: { linear: number; radial: number } };
-    w.__creates = { linear: 0, radial: 0 };
-    const proto = CanvasRenderingContext2D.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
-    for (const [method, kind] of [['createLinearGradient', 'linear'], ['createRadialGradient', 'radial']] as const) {
-      const original = proto[method];
-      proto[method] = function (this: unknown, ...args: unknown[]) {
-        w.__creates[kind] += 1;
-        return original.apply(this, args);
-      };
-    }
-  });
-
   const before = await hookStats();
-  const frames = await page.evaluate(() => new Promise<{ t: number; L: number; lin: number; rad: number; cw: number }[]>((resolve) => {
-    const w = window as unknown as { __mc6: { stats(): { layouts: number } }; __creates: { linear: number; radial: number } };
+  const frames = await page.evaluate(() => new Promise<{ t: number; L: number; fills: number; backdrops: number; cw: number }[]>((resolve) => {
+    const w = window as unknown as { __mc6: { stats(): { layouts: number; fills: number; backdrops: number } } };
     const canvas = document.getElementById('cloudhero') as HTMLCanvasElement;
-    const samples: { t: number; L: number; lin: number; rad: number; cw: number }[] = [];
+    const samples: { t: number; L: number; fills: number; backdrops: number; cw: number }[] = [];
     const start = performance.now();
     const tick = (t: number) => {
-      samples.push({ t, L: w.__mc6.stats().layouts, lin: w.__creates.linear, rad: w.__creates.radial, cw: canvas.width });
+      const s = w.__mc6.stats();
+      samples.push({ t, L: s.layouts, fills: s.fills, backdrops: s.backdrops, cw: canvas.width });
       if (t - start < 3000) requestAnimationFrame(tick);
       else resolve(samples);
     };
@@ -1014,9 +1001,9 @@ test('mc6 at maximum input lays out once per refresh and keeps a median frame un
   const gaps = frames.slice(1).map((f, i) => f.t - frames[i].t).sort((a, b) => a - b);
   const median = gaps[Math.floor(gaps.length / 2)];
   const steps = frames.slice(1).map((f, i) => ({ f, p: frames[i] }));
-  // A word fill is created only on a frame that lays out; a backdrop only on one that lays out or resizes the canvas.
-  const fillsWithoutLayout = steps.filter(({ f, p }) => f.lin > p.lin && f.L === p.L).length;
-  const backdropsWithoutLayout = steps.filter(({ f, p }) => f.rad > p.rad && f.L === p.L && f.cw === p.cw).length;
+  // A word fill is built only on a frame that lays out; a backdrop only on one that lays out or resizes the canvas.
+  const fillsWithoutLayout = steps.filter(({ f, p }) => f.fills > p.fills && f.L === p.L).length;
+  const backdropsWithoutLayout = steps.filter(({ f, p }) => f.backdrops > p.backdrops && f.L === p.L && f.cw === p.cw).length;
   expect(refreshes, 'data refreshes during the 3s window').toBeGreaterThanOrEqual(2);
   expect(after.layouts - before.layouts, 'layouts during the 3s window').toBe(7 * refreshes);
   expect(fillsWithoutLayout, 'frames that create a word fill without a layout').toBe(0);
