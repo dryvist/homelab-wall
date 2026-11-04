@@ -680,14 +680,19 @@ async function refresh() {
   apply(rows, null);
 }
 
-// Read-only test hook: the hero's current words with their rank-derived lightness and source mix,
-// and counts of data refreshes and layouts. Returns copies; nothing in the page reads it.
+// Read-only test hook: the hero's current words with their position, angle, advance width,
+// rank-derived lightness, source mix and fill kind, and counts of data refreshes and layouts.
+// Returns copies; nothing in the page reads it.
 window.__mc6 = Object.freeze({
   drawn: () => (current ? {
     view: current.view.key === MERGED ? 'CONVERGENCE' : current.view.key,
     words: current.placed.map((w) => ({
       text: w.text,
       size: w.size,
+      x: w.x,
+      y: w.y,
+      angle: w.rotate,
+      width: w.tw,
       lightness: w.lightness,
       sources: [...w.sources],
       fill: w.paint.segments ? 'segments' : w.paint.stops ? 'gradient' : 'solid',
