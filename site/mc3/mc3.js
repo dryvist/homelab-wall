@@ -185,12 +185,15 @@ function deriveAccelerators(r) {
 }
 
 /* ---------------- header ---------------- */
+// The anchors as the 3D scene takes them: the busy and request readings, and whether the node is dim.
+const sceneAnchors = () => accel.map((d) => ({ kind: d.kind, busy: d.busy, active: d.active, dim: isDim(d) }));
+
 function render() {
   renderApps();
   renderCore();
   renderKpis();
   renderAnchors();
-  core3d?.sync(model.models, model.tokensToday, accel);
+  core3d?.sync(model.models, model.tokensToday, sceneAnchors());
 }
 
 function renderKpis() {
@@ -610,7 +613,7 @@ async function startGpuCore() {
     if (core3d && core3d !== core) core3d.dispose();
     core3d = core;
     core.layout(slots);
-    core.sync(model.models.length ? model.models : reactorList, model.tokensToday, accel);
+    core.sync(model.models.length ? model.models : reactorList, model.tokensToday, sceneAnchors());
     drawScene = (now) => core.render(now);
   } catch (e) {
     use2D(e);
