@@ -809,3 +809,57 @@ test('mc6 hero redraws the displayed source when a poll changes its words', asyn
   releaseLaterPolls();
   await expect.poll(async () => (await heroWordPixels(page)).count, { message: 'hero kept the first poll words' }).toBeGreaterThan(before * 2);
 });
+
+// A word two sources both hold ('deploy': the operator and codex in the fixture) is marked as
+// shared in the panel header, the same list the shared-vocabulary line draws from.
+test('mc6 marks a word held by two sources as shared', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped words response only');
+  await mockFeeds(page);
+  await page.goto('/mc6/');
+  await expect(page.locator('[data-panel="lexicon"]')).toHaveAttribute('data-state', 'ok');
+  await expect(page.locator('#shared')).toContainText('deploy');
+});
+
+// The hero rotation ends on a CONVERGENCE view after the last source with rows. The fake clock
+// advances past the five sources' 8s slots instead of waiting them out; its line under the label
+// names the operator-and-agent vocabulary ('deploy' in the fixture).
+test('mc6 hero rotation ends on a CONVERGENCE view of every source', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped words response only');
+  const pageErrors: string[] = [];
+  page.on('pageerror', (e) => pageErrors.push(e.message));
+  await page.clock.install();
+  await mockFeeds(page);
+  await page.goto('/mc6/');
+  const label = page.locator('#herolabel');
+  await expect(label).toHaveText('OPERATOR');
+  await page.clock.fastForward(5 * 8000 + 500);
+  await expect(label).toHaveText('CONVERGENCE');
+  await expect(page.locator('#herosub')).toContainText('SHARED VOCAB');
+  await expect(page.locator('#herosub')).toContainText('deploy');
+  // The merged view is drawn on the same frame loop; an exception there would stop the hero.
+  expect(pageErrors).toEqual([]);
+});
+
+// A digest of every pixel of the hero canvas: equal digests mean the canvas did not change.
+async function heroPixelDigest(page: Page) {
+  return page.locator('#cloudhero').evaluate((el) => {
+    const canvas = el as HTMLCanvasElement;
+    const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+    let digest = 0;
+    for (let i = 0; i < data.length; i += 1) digest = (Math.imul(digest, 31) + data[i]) | 0;
+    return digest;
+  });
+}
+
+// The hero paints real pixels and keeps moving with no data change: the canvas is non-blank, and
+// its pixels differ across a 3 s window (the breathing scale and drift).
+test('mc6 hero canvas is non-blank and keeps changing while idle', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped words response only');
+  await mockFeeds(page);
+  await page.goto('/mc6/');
+  await expect(page.locator('[data-panel="lexicon"]')).toHaveAttribute('data-state', 'ok');
+  await expect.poll(async () => (await heroWordPixels(page)).count, { message: 'hero canvas stays blank' }).toBeGreaterThan(1000);
+  const before = await heroPixelDigest(page);
+  await page.waitForTimeout(3000);
+  expect(await heroPixelDigest(page), 'hero pixels unchanged over 3s').not.toBe(before);
+});
