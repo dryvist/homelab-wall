@@ -192,11 +192,10 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
   let cometsDirty = false;
 
   /* ---------------- accelerator anchors ---------------- */
-  // A node is a compact glow, never a filled surface: an additive radial sprite that fades to
-  // nothing at its edge, a thin wireframe core sized by busy %, and a hairline halo ring. Every
-  // translucent layer stays at or below 0.25 opacity. A dim node (idle or no data) keeps only its
-  // outline, so the particles behind it stay dominant. The cloud node (the last anchor) gets an
-  // octahedron core instead of an icosahedron.
+  // A node draws an additive glow sprite that fades to nothing at its edge, a wireframe core sized by
+  // busy %, and a hairline halo ring. Every translucent layer is at most 0.25 opacity. A dim node (idle
+  // or no data) draws its outline only. The cloud node (the last anchor) gets an octahedron core
+  // instead of an icosahedron.
   const icoGeom = new THREE.IcosahedronGeometry(1, 2);
   const octGeom = new THREE.OctahedronGeometry(1, 0);
   const ringGeom = new THREE.TorusGeometry(1, 0.035, 6, 96);
