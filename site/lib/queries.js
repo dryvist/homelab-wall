@@ -23,8 +23,13 @@ export const APP_HEALTH_SCORE = `
  (${RATIO_30D} == bool 1) * 10
  + (${RATIO_30D} != bool 1) * clamp_max(round(9 * ${RATIO_24H}), 9)`;
 
+const APP_SCORE = `homelab:app_health_score or (${APP_HEALTH_SCORE})`;
+
 export const Q = {
-  appScore: `homelab:app_health_score or (${APP_HEALTH_SCORE})`,
+  appScore: APP_SCORE,
+  // mc3 fleet list: the same per-name score, kept only for names with a Gatus series in the AI
+  // catalog category (group "AI · UI" or "AI · API"). Q.appScore carries no group label to filter on.
+  aiAppScore: `(${APP_SCORE}) and on (name) group by (name) (gatus_results_total{group=~"AI · .+"})`,
   uptime24h: `100 * sum(increase(gatus_results_total{${CATALOG},success="true"}[24h])) / sum(increase(gatus_results_total{${CATALOG}}[24h]))`,
   nodeCpu: `100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{${NODE},mode="idle"}[2m])))`,
   nodeCores: `count by (instance) (node_cpu_seconds_total{${NODE},mode="idle"})`,
@@ -52,4 +57,14 @@ export const Q = {
   // true percentile isn't derivable from this feed.
   llmQueueSeconds: 'sum by (model) (increase(litellm_request_queue_time_seconds_sum[5m])) / sum by (model) (increase(litellm_request_queue_time_seconds_count[5m]))',
   llmLatencySeconds: 'sum by (model) (increase(litellm_llm_api_latency_metric_sum[5m])) / sum by (model) (increase(litellm_llm_api_latency_metric_count[5m]))',
+  // mc3 accelerator anchors. The per-device exporters label each device's product name and host;
+  // a DCGM series with no `accelerator` label belongs to gpu-primary, matching accelerator:busy_percent:avg5m.
+  gpuModel: 'group by (accelerator, modelName, instance) (DCGM_FI_DEV_GPU_UTIL)',
+  macChip: 'group by (accelerator, chip, instance) (macmon_gpu_usage_ratio)',
+  // Each model's serving URL. mc3 matches the URL's host against the host of the device series above.
+  llmApiBase: 'max by (litellm_model_name, api_base, api_provider) (litellm_deployment_state)',
+  // Requests in flight per local inference server, and across the whole router.
+  vllmRunning: 'sum by (instance) (vllm:num_requests_running)',
+  llamaRunning: 'sum by (instance) (llamacpp:requests_processing)',
+  routerInFlight: 'sum(litellm_in_flight_requests)',
 };

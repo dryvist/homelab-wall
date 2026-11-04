@@ -1,26 +1,69 @@
-// Mission Control 3: AI inference core, driven by live litellm_router + Gatus data, the
-// accelerator busy query (Q.acceleratorBusy) and the same-origin /api/llm/recent request feed.
+// Mission Control 3: AI inference core, driven by live litellm_router + Gatus data, the accelerator
+// busy and device queries (Q.acceleratorBusy, Q.gpuModel, Q.macChip), the router's request counts
+// and the same-origin /api/llm/recent request feed. Four device anchors and a cloud node are always
+// drawn; each model hangs off the anchor of the device that serves it.
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import {
   clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct,
   setSampleBadge, onDispose, hardwareGL, adaptiveDpr,
 } from '/lib/stage.js';
-import { sampleAppScore, SAMPLE_LLM } from '/lib/sampleData.js';
+import { SAMPLE_LLM } from '/lib/sampleData.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e', '#ff3b5c', '#e8f4ff', '#8ab8ff', '#ffd23e'];
 
 const cfg = await loadConfig();
-const groups = (cfg.groups || []).map((g, i) => ({ ...g, c: PALETTE[i % PALETTE.length] }));
-const apps = [...new Set(groups.flatMap((g) => g.apps))].sort().map((n) => ({ n, s: null }));
-const appIndex = Object.fromEntries(apps.map((a) => [a.n, a]));
-const model = { models: [], tokensToday: null, reqPerMin: null, gpuBusy: null };
+
+/* ---------------- accelerator anchors: layout, naming, attachment ---------------- */
+// Four device roles (the `accelerator` label of Q.acceleratorBusy) and the cloud node. `angle` is each
+// anchor's place on the ellipse around the hub, in screen degrees (0 = right, 90 = down). layoutAnchors
+// turns it into a CSS-px point, and the 3D scene and the 2D fallback both draw from those points.
+const ANCHOR_DEFS = [
+  { id: 'gpu-primary', kind: 'gpu', angle: 200 },
+  { id: 'gpu-secondary', kind: 'gpu', angle: 250 },
+  { id: 'mac-primary', kind: 'mac', angle: 290 },
+  { id: 'mac-secondary', kind: 'mac', angle: 340 },
+  { id: 'cloud', kind: 'cloud', angle: 90 },
+];
+// Label box under each node: LABEL_W wide, LABEL_TOP below the node's centre (.alab in mc3.css), LABEL_H tall.
+const LABEL_W = 320, LABEL_TOP = 40, LABEL_H = 84, EDGE = 16;
+let slots = ANCHOR_DEFS.map(() => ({ x: 0, y: 0 })); // CSS-px node points, set by layoutAnchors
+const CLOUD = ANCHOR_DEFS.length - 1;
+const ROLE = new Map(ANCHOR_DEFS.slice(0, CLOUD).map((d, i) => [d.id, i]));
+// Mirrors site/mc3/core3d.js: requests are drawn one bead each up to BEAD_RING, packed into rings
+// up to BEAD_CAP drawn beads past that, and the badge carries the true count.
+const BEAD_RING = 12;
+const BEAD_CAP = 36;
+const ANCHOR_COLOR = { gpu: '#3ee6ff', mac: '#38ff9c', cloud: '#ffb347' };
+// A device model name can lead with its vendor as one all-caps word; that word is dropped.
+const VENDOR_WORD = /^[A-Z]{4,}\s+/;
+// The host of a "host:port" instance label or a "scheme://host:port/path" serving URL. A bracketed IPv6
+// address ("[fd00::1]:8000") is read whole, so distinct IPv6 hosts stay distinct.
+const hostOf = (s) => {
+  const rest = String(s ?? '').replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+  const v6 = rest.match(/^\[([^\]]*)\]/);
+  return (v6 ? v6[1] : rest.split(/[/:]/)[0]).toLowerCase();
+};
+// Dim when nothing is attached or in flight; an accelerator without a busy series is always dim.
+const isDim = (d) => (d.kind === 'cloud' ? d.active === 0 && d.models === 0 : d.busy == null || (d.models === 0 && d.active === 0));
+// /config.json may override an anchor's display name; a missing or blank entry keeps the label.
+const overrides = cfg.accelerators && typeof cfg.accelerators === 'object' ? cfg.accelerators : {};
+
+const model = { models: [], tokensToday: null, reqPerMin: null, gpuBusy: null, inflight: null };
+// Fleet list: the AI-category services and their 0-10 scores (Q.aiAppScore), sorted by name.
+let aiApps = [];
+// Anchor state, rebuilt on every refresh: name, busy % (null when its busy series is absent),
+// active requests and attached model count.
+let accel = ANCHOR_DEFS.map((d) => ({ ...d, name: d.id, busy: null, active: 0, models: 0 }));
+
+// Sample models for the scene before any real model arrives; they sit on the cloud node.
+const sampleModels = () => SAMPLE_LLM.map((m) => ({ n: m.n, up: m.state < 2, tok: m.tok, anchor: CLOUD }));
 
 async function refresh() {
   const r = await settle({
-    score: () => query(Q.appScore),
+    score: () => query(Q.aiAppScore),
     state: () => query(Q.llmState),
     tok: () => query(Q.llmTokRate),
     tokensToday: () => query(Q.llmTokensToday),
@@ -28,31 +71,52 @@ async function refresh() {
     queue: () => query(Q.llmQueueSeconds),
     latency: () => query(Q.llmLatencySeconds),
     gpu: () => query(Q.acceleratorBusy),
+    gpuModel: () => query(Q.gpuModel),
+    macChip: () => query(Q.macChip),
+    apiBase: () => query(Q.llmApiBase),
+    vllm: () => query(Q.vllmRunning),
+    llama: () => query(Q.llamaRunning),
+    inflight: () => query(Q.routerInFlight),
   });
 
   if (r.score) {
-    const seen = new Set();
-    for (const row of r.score) {
-      const a = appIndex[row.labels.name];
-      if (a && Number.isFinite(row.value)) { a.s = clamp(row.value, 0, 10); seen.add(a.n); }
-    }
-    for (const a of apps) if (!seen.has(a.n)) a.s = null;
+    aiApps = r.score
+      .filter((row) => row.labels.name && Number.isFinite(row.value))
+      .map((row) => ({ n: row.labels.name, s: clamp(row.value, 0, 10) }))
+      .sort((a, b) => a.n.localeCompare(b.n));
   }
+
+  const hostRole = deriveAccelerators(r);
 
   if (r.state) {
     const tok = Object.fromEntries((r.tok || []).map((x) => [x.labels.model, x.value]));
     const queue = Object.fromEntries((r.queue || []).map((x) => [x.labels.model, x.value]));
     const latency = Object.fromEntries((r.latency || []).map((x) => [x.labels.model, x.value]));
+    // A model can have several serving-URL rows, so the URLs are grouped under their model name.
+    const apiBase = new Map();
+    for (const x of r.apiBase || []) {
+      const n = x.labels.litellm_model_name;
+      apiBase.set(n, [...(apiBase.get(n) ?? []), x.labels.api_base]);
+    }
     model.models = r.state.map((x) => {
       const n = x.labels.litellm_model_name;
+      // Attached to the first device, in anchor order, that one of its serving URLs names. A model
+      // whose URLs name no device (hosted rungs, an empty URL) belongs to the cloud node.
+      let anchor = CLOUD;
+      for (const url of apiBase.get(n) ?? []) {
+        const role = hostRole.get(hostOf(url));
+        if (role != null) anchor = Math.min(anchor, ROLE.get(role));
+      }
       return {
         n, up: x.value < 2, tok: tok[n] ?? 0,
         // Both undefined for an idle model (no requests in the window -> no series) — real
         // absence, not a failed query, so it renders a quiet idle state, never a stand-in badge.
         queue: queue[n], latencyMs: Number.isFinite(latency[n]) ? latency[n] * 1000 : undefined,
+        anchor,
       };
     }).sort((a, b) => (b.up - a.up) || b.tok - a.tok || a.n.localeCompare(b.n)).slice(0, 8);
   }
+  for (const m of model.models) accel[m.anchor].models += 1;
 
   model.tokensToday = Number.isFinite(r.tokensToday?.[0]?.value) ? r.tokensToday[0].value : null;
   model.reqPerMin = Number.isFinite(r.reqPerMin?.[0]?.value) ? r.reqPerMin[0].value : null;
@@ -61,28 +125,95 @@ async function refresh() {
   render();
 }
 
+// Rebuilds accel from the device, busy and request queries. Returns the host -> device-role map
+// that models and request counts are matched through.
+function deriveAccelerators(r) {
+  const hostRole = new Map();
+  const names = ANCHOR_DEFS.slice(0, CLOUD).map(() => new Set());
+  for (const row of r.gpuModel || []) {
+    // A series with no accelerator label is gpu-primary, matching accelerator:busy_percent:avg5m.
+    const role = row.labels.accelerator || 'gpu-primary';
+    if (!ROLE.has(role)) continue;
+    const host = hostOf(row.labels.instance);
+    if (host) hostRole.set(host, role);
+    if (row.labels.modelName) names[ROLE.get(role)].add(String(row.labels.modelName).replace(VENDOR_WORD, ''));
+  }
+  for (const row of r.macChip || []) {
+    const role = row.labels.accelerator;
+    if (!ROLE.has(role)) continue;
+    const host = hostOf(row.labels.instance);
+    if (host) hostRole.set(host, role);
+    if (row.labels.chip) names[ROLE.get(role)].add(String(row.labels.chip));
+  }
+
+  const busy = ANCHOR_DEFS.map(() => null);
+  for (const row of r.gpu || []) {
+    if (ROLE.has(row.labels.accelerator) && Number.isFinite(row.value)) busy[ROLE.get(row.labels.accelerator)] = clamp(row.value, 0, 100);
+  }
+
+  // Requests: each local server's count lands on its device's anchor when its host is a known device.
+  const active = ANCHOR_DEFS.map(() => 0);
+  let onDevices = 0;
+  for (const row of [...(r.vllm || []), ...(r.llama || [])]) {
+    const role = Number.isFinite(row.value) ? hostRole.get(hostOf(row.labels.instance)) : undefined;
+    if (role == null) continue;
+    active[ROLE.get(role)] += row.value;
+    onDevices += row.value;
+  }
+  // Cloud = router-wide in flight minus the counts drawn on a device. A local server on an unmatched
+  // host is not subtracted, so its requests stay on cloud. Without both readings the share is unknown,
+  // so the node draws none.
+  const inflight = r.inflight?.[0]?.value;
+  const known = r.vllm != null && r.llama != null && Number.isFinite(inflight);
+  active[CLOUD] = known ? Math.max(0, Math.round(inflight - onDevices)) : 0;
+  model.inflight = Number.isFinite(inflight) ? inflight : null;
+
+  const plain = ANCHOR_DEFS.map((d, i) => {
+    const o = overrides[d.id];
+    if (typeof o === 'string' && o.trim()) return o.trim();
+    return i < CLOUD ? ([...names[i]].sort().join(' + ') || d.id) : d.id;
+  });
+  // Two anchors that would read the same get their role tag, so each one stays distinguishable.
+  const copies = new Map();
+  for (const n of plain) copies.set(n, (copies.get(n) ?? 0) + 1);
+  accel = ANCHOR_DEFS.map((d, i) => ({
+    ...d,
+    name: d.kind !== 'cloud' && copies.get(plain[i]) > 1 ? `${plain[i]} · ${d.id.split('-')[1].toUpperCase()}` : plain[i],
+    busy: busy[i], active: active[i], models: 0,
+  }));
+  return hostRole;
+}
+
+/* ---------------- header ---------------- */
+// The anchors as the 3D scene takes them: the busy and request readings, and whether the node is dim.
+const sceneAnchors = () => accel.map((d) => ({ id: d.id, kind: d.kind, busy: d.busy, active: d.active, dim: isDim(d) }));
+
 function render() {
   renderApps();
   renderCore();
   renderKpis();
-  core3d?.sync(model.models, model.tokensToday);
+  renderAnchors();
+  core3d?.sync(model.models, model.tokensToday, sceneAnchors());
 }
 
-/* ---------------- header ---------------- */
 function renderKpis() {
   const up = model.models.filter((m) => m.up).length;
   // Each KPI has its own query and can fail/return nothing independently of the others — a
   // plausible stand-in value per KPI, never the literal "—", marked on that KPI's own element.
   const tokensStandIn = model.tokensToday == null;
   const reqStandIn = model.reqPerMin == null;
+  const activeStandIn = model.inflight == null;
   const modelsStandIn = !model.models.length;
+  // ACTIVE is router-wide requests in flight. Without that reading it shows the local servers' sum, marked as a stand-in.
+  const localActive = accel.reduce((s, d) => s + d.active, 0);
   const k = [
     ['tokens today', tokensStandIn ? '4.81' : (model.tokensToday / 1e6).toFixed(2), 'M', tokensStandIn],
     ['requests/min', reqStandIn ? '142' : model.reqPerMin.toFixed(0), '', reqStandIn],
+    ['active', activeStandIn ? String(localActive) : String(Math.round(model.inflight)), '', activeStandIn],
     ['models up', modelsStandIn ? `${SAMPLE_LLM.filter((m) => m.state < 2).length}/${SAMPLE_LLM.length}` : `${up}/${model.models.length}`, '', modelsStandIn],
   ];
   $('kpis').innerHTML = k.map(([l, v, u, standIn]) => `<div class="kpi"><b class="num"${standIn ? ' data-source="stand-in"' : ''}>${v}<i>${u}</i></b><span>${l}</span></div>`).join('');
-  $('subtitle').textContent = `${apps.length} SERVICES · ${model.models.length} MODELS`;
+  $('subtitle').textContent = `${aiApps.length} SERVICES · ${model.models.length} MODELS`;
 }
 
 /* ---------------- fleet health (mandatory "apps" panel) ---------------- */
@@ -99,24 +230,17 @@ function drawRing(el, score) {
   c.fillStyle = '#8a5d90'; c.font = `${W * 0.055}px "JetBrains Mono",monospace`; c.fillText('HEALTH', cx, cy + H * 0.14);
 }
 
+// Only the AI-category services (Q.aiAppScore); a catalog service outside that category never shows here.
 function renderApps() {
-  const scored = apps.filter((a) => a.s != null);
-  // A query that succeeded with zero rows has genuinely nothing to show yet — every row falls
-  // back to the shared sample scores (badged). When it returns SOME real scores (the common case
-  // at scale: a handful of names with no Gatus series among many that do), only the individual
-  // apps still missing one fall back to a stand-in score — marked on that row alone (never a
-  // whole-panel badge over otherwise-real data), and never the literal "N/A" text.
-  const sample = !scored.length;
-  const display = apps.map((a, i) => (a.s != null ? { n: a.n, s: a.s, standIn: false } : { n: a.n, s: sampleAppScore(i), standIn: true }));
-  const scores = display.map((a) => a.s);
+  const scores = aiApps.map((a) => a.s);
   const ok = scores.filter((s) => s >= SCORE_OK_MIN).length;
   const warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
   const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
   $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> &middot; <span style="color:var(--amber)">${warn} DEG</span> &middot; <span style="color:var(--red)">${bad} DOWN</span>`;
-  $('applist').innerHTML = display.map((a) => `<div class="ar"><i style="background:${hue(scorePct(a.s))}"></i><span>${esc(a.n)}</span><b class="num"${a.standIn ? ' data-source="stand-in"' : ''}>${Math.round(a.s)}</b></div>`).join('');
+  $('applist').innerHTML = aiApps.map((a) => `<div class="ar"><i style="background:${hue(scorePct(a.s))}"></i><span>${esc(a.n)}</span><b class="num">${Math.round(a.s)}</b></div>`).join('');
   drawRing($('fleetRing'), scores.length ? scores.reduce((x, y) => x + y, 0) / scores.length : null);
-  setSampleBadge($('apps'), sample);
-  setState($('apps'), scored.length ? 'ok' : 'empty', scored.length ? '' : 'NO SERVICE DATA');
+  setSampleBadge($('apps'), false);
+  setState($('apps'), scores.length ? 'ok' : 'empty', scores.length ? '' : 'NO SERVICE DATA');
 }
 
 /* ---------------- AI core (models table + reactor) ---------------- */
@@ -124,7 +248,7 @@ function renderApps() {
 // shared LLM sample dataset (site/lib/sampleData.js), reshaped to this page's {n,up,tok}, stands
 // in instead of a blank/pending table. reactorList mirrors whichever list rendered last, so the
 // decorative reactor canvas (drawReactor below) always animates real or stand-in state, never "N/A".
-let reactorList = SAMPLE_LLM.map((m) => ({ n: m.n, up: m.state < 2, tok: m.tok }));
+let reactorList = sampleModels();
 // Queue time and API latency (Q.llmQueueSeconds/Q.llmLatencySeconds, site/lib/queries.js) are real
 // per-model averages from litellm's own sum/count metrics — litellm exposes no _bucket histogram,
 // so this is an average, not a true p50. A model with no requests in the 5m window (queue/latencyMs
@@ -175,7 +299,7 @@ function drawSpark(canvas, hist, color) {
 
 function renderCore() {
   const sample = !model.models.length;
-  const list = sample ? SAMPLE_LLM.map((m) => ({ n: m.n, up: m.state < 2, tok: m.tok })) : model.models;
+  const list = sample ? sampleModels() : model.models;
   reactorList = list;
   list.forEach((m) => pushHist(m.n, m.tok));
   const tab = $('modeltab');
@@ -188,7 +312,9 @@ function renderCore() {
     const col = m.up ? (m.tok > 0.05 ? 'var(--green)' : 'var(--cyan)') : 'var(--red)';
     const status = m.up ? 'tok/s' : 'health check failing';
     const { queue, avg } = modelStats(m);
+    const device = accel[m.anchor].name;
     return `<div class="mc"><div class="mch"><b title="${esc(m.n)}">${esc(m.n.split('/').pop())}</b><span style="color:${col}">${m.up ? 'UP' : 'DOWN'}</span></div>
+      <div class="mcat" title="${esc(device)}">${esc(device)}</div>
       <div class="mctok" style="color:${col}">${m.up ? m.tok.toFixed(0) : '0'}<i>${status}</i></div>
       <canvas class="mcspark" data-model="${esc(m.n)}"></canvas>
       <div class="mcbar"><div style="width:${m.up ? clamp(m.tok * 2, 6, 100) : 100}%;background:${col}"></div></div>
@@ -277,6 +403,66 @@ async function pollFeed() {
   feedSeen = new Set(rows.map(rowKey));
 }
 
+/* ---------------- accelerator anchors: DOM labels over the hero canvas ---------------- */
+// One label per anchor, always present. Its text comes from accel (the same readings the scene
+// draws); its position comes each frame from the renderer's own projection (placeAnchors).
+function renderAnchors() {
+  const host = $('anchors');
+  if (host.children.length !== accel.length) {
+    host.innerHTML = accel.map((d) => `<div class="anchor kind-${d.kind}" data-accel="${d.id}"><div class="alab"></div></div>`).join('');
+  }
+  accel.forEach((d, i) => {
+    const el = host.children[i];
+    el.dataset.active = String(d.active);
+    el.dataset.beads = String(Math.min(d.active, BEAD_CAP));
+    el.dataset.models = String(d.models);
+    el.dataset.busy = d.busy == null ? '' : String(Math.round(d.busy));
+    el.classList.toggle('dim', isDim(d));
+    const models = `${d.models} model${d.models === 1 ? '' : 's'}`;
+    let busyLine, statusLine;
+    if (d.kind === 'cloud') {
+      busyLine = d.active ? `${d.active} in flight` : 'idle';
+      statusLine = d.models ? models : 'no models';
+    } else {
+      busyLine = d.busy == null ? 'no data' : `${Math.round(d.busy)}% busy`;
+      statusLine = d.models || d.active
+        ? [d.models ? models : null, d.active ? `${d.active} active` : null].filter(Boolean).join(' · ')
+        : 'idle';
+    }
+    const badge = d.active > BEAD_RING ? `<em class="badge">×${d.active}</em>` : '';
+    el.querySelector('.alab').innerHTML = `<b class="an">${esc(d.name)}</b><span class="ab">${busyLine}</span><span class="as">${statusLine}</span>${badge}`;
+  });
+  layoutAnchors();
+}
+
+// The free area for the anchors, in CSS px: right of the fleet panel, under the header, above the model
+// tile strip. The ellipse keeps every node's label box inside that area, so nothing clips at an edge.
+// Both render paths read the same points (slots), and the 3D scene pins its nodes to them.
+function layoutAnchors() {
+  const fleet = $('apps').getBoundingClientRect();
+  const head = document.querySelector('header').getBoundingClientRect();
+  const strip = $('modeltab').getBoundingClientRect();
+  const x0 = fleet.right + EDGE, x1 = innerWidth - EDGE;
+  const y0 = head.bottom + EDGE, y1 = (strip.height ? strip.top : innerHeight) - EDGE;
+  const minX = x0 + LABEL_W / 2, maxX = x1 - LABEL_W / 2;
+  const minY = y0 + LABEL_TOP, maxY = y1 - LABEL_TOP - LABEL_H;
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, rx = (maxX - minX) / 2, ry = (maxY - minY) / 2;
+  slots = ANCHOR_DEFS.map((d) => {
+    const a = (d.angle * Math.PI) / 180;
+    return { x: clamp(cx + rx * Math.cos(a), minX, maxX), y: clamp(cy + ry * Math.sin(a), minY, maxY) };
+  });
+  core3d?.layout(slots);
+  // Labels move now, not on the next render frame: a 3D frame can take seconds, and a label left on
+  // an earlier layout would sit on the tile strip until then.
+  placeAnchors();
+}
+function placeAnchors() {
+  const host = $('anchors');
+  for (let i = 0; i < accel.length; i++) {
+    host.children[i].style.transform = `translate3d(${slots[i].x.toFixed(1)}px,${slots[i].y.toFixed(1)}px,0)`;
+  }
+}
+
 /* ---------------- reactor: WebGPU/TSL hero (core3d.js) or 2D fallback ---------------- */
 let reactor = $('reactor');
 function fitCanvas(cv) {
@@ -286,6 +472,9 @@ function fitCanvas(cv) {
   return dpr;
 }
 
+// Bead count per anchor as the 2D fallback eases it (the 3D scene keeps its own copy).
+const beadShown = ANCHOR_DEFS.map(() => 0);
+let lastDraw = 0;
 function drawReactor(now) {
   const dpr = fitCanvas(reactor);
   const c = reactor.getContext('2d'), W = reactor.width, H = reactor.height, cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.3;
@@ -298,6 +487,9 @@ function drawReactor(now) {
   const upFrac = list.length ? list.filter((m) => m.up).length / list.length : 0;
   const col = list.length ? hue(upFrac * 100) : '#3a2440';
   const t = RM ? 0 : now / 1000;
+  const dt = lastDraw ? Math.min((now - lastDraw) / 1000, 0.1) : 0;
+  lastDraw = now;
+  const at = (i) => ({ x: slots[i].x * dpr, y: slots[i].y * dpr });
 
   for (let i = 0; i < 6; i++) {
     const rr = R * (0.5 + i * 0.11), rot = t * (0.12 + i * 0.04) * (i % 2 ? -1 : 1);
@@ -312,15 +504,82 @@ function drawReactor(now) {
   c.globalAlpha = 0.9; c.strokeStyle = '#fff'; c.lineWidth = 1.5 * dpr; c.stroke(); c.globalAlpha = 1;
   c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.font = `600 ${R * 0.24}px "Chakra Petch",sans-serif`;
-  c.fillText(list.length ? `${Math.round(upFrac * 100)}%` : '67%', cx, cy);
+  c.fillText(list.length ? `${Math.round(upFrac * 100)}%` : '—', cx, cy);
 
-  list.forEach((m, i) => {
-    const a = (i / Math.max(list.length, 1)) * Math.PI * 2 + t * 0.25;
-    const x = cx + Math.cos(a) * R * 1.08, y = cy + Math.sin(a) * R * 1.08 * 0.36;
+  // Models orbit the anchor they are attached to. streams counts the models whose stream is drawn.
+  let streams = 0;
+  const perAnchor = ANCHOR_DEFS.map(() => 0);
+  for (const m of list) perAnchor[m.anchor] += 1;
+  const seenAt = ANCHOR_DEFS.map(() => 0);
+  for (const m of list) {
+    const k = seenAt[m.anchor]++, n = perAnchor[m.anchor];
+    const p = at(m.anchor);
+    const a = (k / n) * Math.PI * 2 + t * 0.25;
+    const x = p.x + Math.cos(a) * R * 0.42, y = p.y + Math.sin(a) * R * 0.21;
     c.beginPath(); c.arc(x, y, (m.up ? 4 : 3) * dpr, 0, Math.PI * 2);
     c.fillStyle = m.up ? (m.tok > 0.05 ? '#38ff9c' : '#3ee6ff') : '#ff3b5c';
     c.shadowColor = c.fillStyle; c.shadowBlur = 8 * dpr; c.fill(); c.shadowBlur = 0;
+    // An up model with tokens in flight streams from its dot into the hub: travelling sparks, the 2D
+    // stand-in for the 3D stream. The same gate as the 3D stream.
+    if (m.up && m.tok > 0.05) {
+      streams += 1;
+      for (let s = 0; s < 3; s++) {
+        const f = (t * 0.3 + s / 3 + k * 0.21) % 1;
+        c.beginPath(); c.arc(x + (cx - x) * f, y + (cy - y) * f, 1.6 * dpr, 0, Math.PI * 2);
+        c.globalAlpha = Math.sin(f * Math.PI) * 0.9;
+        c.fillStyle = m.tok > 0.05 ? '#38ff9c' : '#3ee6ff'; c.fill();
+      }
+      c.globalAlpha = 1;
+    }
+  }
+  // Read by the render-path checks: the count of streams drawn this frame (3D records the same on its canvas).
+  reactor.dataset.streams = String(streams);
+
+  // Anchor nodes (labelled by the DOM layer): a compact glow, an outline core sized by busy %, a
+  // hairline halo and the busy arc, then the request beads. Nothing fills the node, so the particles
+  // behind it stay visible; an idle or no-data node is an outline only.
+  const dimmedIds = []; // the anchors drawn dim this frame, read by the render-path checks
+  accel.forEach((d, i) => {
+    const p = at(i), color = ANCHOR_COLOR[d.kind], dimmed = isDim(d);
+    if (dimmed) dimmedIds.push(d.id);
+    const lit = d.busy == null ? 0 : clamp(d.busy / 100, 0, 1);
+    // Core radius 20-35 CSS px (a 40-70 px node at 1920x1080), scaled with the viewport height.
+    const r0 = (20 + 15 * lit) * (Math.min(reactor.clientWidth, reactor.clientHeight) / 1080) * dpr;
+    if (!dimmed) {
+      const halo = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, r0 * 2.2);
+      halo.addColorStop(0, `${color}40`); halo.addColorStop(1, `${color}00`);
+      c.fillStyle = halo; c.beginPath(); c.arc(p.x, p.y, r0 * 2.2, 0, Math.PI * 2); c.fill();
+    }
+    c.beginPath(); c.arc(p.x, p.y, r0 * 1.9, 0, Math.PI * 2);
+    c.strokeStyle = `${color}${dimmed ? '1a' : '38'}`; c.lineWidth = dpr; c.stroke();
+    c.beginPath();
+    if (d.kind === 'cloud') {
+      c.moveTo(p.x, p.y - r0); c.lineTo(p.x + r0, p.y); c.lineTo(p.x, p.y + r0); c.lineTo(p.x - r0, p.y); c.closePath();
+    } else {
+      c.arc(p.x, p.y, r0, 0, Math.PI * 2);
+    }
+    c.strokeStyle = dimmed ? `${color}80` : color; c.lineWidth = (dimmed ? 1.5 : 2.5) * dpr; c.stroke();
+    if (d.busy != null) {
+      c.beginPath(); c.arc(p.x, p.y, r0 + 6 * dpr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * lit);
+      c.strokeStyle = color; c.lineWidth = 3 * dpr; c.stroke();
+    }
+
+    const target = Math.min(d.active, BEAD_CAP);
+    beadShown[i] += (target - beadShown[i]) * (1 - Math.exp(-dt * 3));
+    const n = Math.min(BEAD_CAP, Math.max(target, Math.ceil(beadShown[i] - 1e-3)));
+    const rings = n > BEAD_RING ? Math.ceil(n / BEAD_RING) : 1;
+    for (let k = 0; k < n; k++) {
+      const fade = clamp(beadShown[i] - k, 0, 1);
+      if (fade <= 0) continue;
+      const ring = k % rings, j = Math.floor(k / rings), inRing = Math.ceil((n - ring) / rings);
+      const phi = (j / inRing) * Math.PI * 2 + ring * 0.9 + (ring % 2 ? -1 : 1) * t * (0.9 / (1 + ring * 0.35));
+      const rr = R * (0.2 + ring * 0.05);
+      const x = p.x + Math.cos(phi) * rr, y = p.y + Math.sin(phi) * rr * 0.4;
+      c.beginPath(); c.arc(x, y, (rings > 1 ? 2.2 : 3.2) * dpr * fade, 0, Math.PI * 2);
+      c.fillStyle = color; c.shadowColor = color; c.shadowBlur = 10 * dpr; c.fill(); c.shadowBlur = 0;
+    }
   });
+  reactor.dataset.dimAnchors = dimmedIds.join(',');
 }
 
 /* ---------------- boot ---------------- */
@@ -359,7 +618,8 @@ async function startGpuCore() {
     });
     if (core3d && core3d !== core) core3d.dispose();
     core3d = core;
-    core.sync(model.models.length ? model.models : reactorList, model.tokensToday);
+    core.layout(slots);
+    core.sync(model.models.length ? model.models : reactorList, model.tokensToday, sceneAnchors());
     drawScene = (now) => core.render(now);
   } catch (e) {
     use2D(e);
@@ -378,7 +638,15 @@ onDispose(() => clearInterval(clockId));
 // first data refresh resolves. Gating it behind `await refresh()` is what let a slow/failing
 // litellm query on this very page delay 'ready' past the rotator's probe window and get MC3
 // skipped as broken on the live wall.
-loop(0, (now) => drawScene(now)); // uncapped: native refresh rate, the display has headroom to spare
+renderAnchors();
+addEventListener('resize', layoutAnchors);
+onDispose(() => removeEventListener('resize', layoutAnchors));
+// The label layout also follows the header, fleet panel and tile strip: a font load or a change in the
+// model count can resize them after the last layout, and the labels must not sit on the strip.
+const layoutObserver = new ResizeObserver(layoutAnchors);
+for (const el of [document.querySelector('header'), $('apps'), $('modeltab')]) layoutObserver.observe(el);
+onDispose(() => layoutObserver.disconnect());
+loop(0, (now) => { drawScene(now); placeAnchors(); }); // uncapped: native refresh rate, the display has headroom to spare
 // The first feed poll runs alongside the first refresh, never after it: a slow refresh must not
 // hold the request feed on its empty placeholder (pollFeed handles its own failures).
 await Promise.all([refresh().catch((e) => console.warn('refresh', e)), pollFeed()]);
