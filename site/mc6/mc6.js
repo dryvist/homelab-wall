@@ -102,8 +102,10 @@ let sources = [];          // [{name, label, color, base, words}] in strip order
 let shareMap = new Map();  // word -> [{source, base, n}] for every source holding the word, strip order
 let staleAt = null;
 let totalWords = 0;
+let refreshRuns = 0;       // data refreshes applied, for the test hook
 
 function apply(rows, heldOver) {
+  refreshRuns += 1;
   const by = groupRows(rows);
   for (const name of by.keys()) slotOf(name); // fix unknowns' slots before ordering
   const names = [...new Set([...KNOWN_SOURCES, ...by.keys()])].sort((a, b) => slotOf(a) - slotOf(b));
@@ -182,10 +184,13 @@ function faceOf(tier, i, n) {
   return { family: familyOf(MONO, weight), weight, rotate: i % 9 === 7 ? 90 : i % 7 === 2 ? -6 : 0 };
 }
 
+// A word's lightness in percent: 82 at the top of the cloud (t = 0), 40 at the tail (t = 1).
+const lightOf = (t) => 82 - 42 * t;
+
 // A word's colour: the source's hue, moving from -8° at the top of the cloud to +8° at the tail,
 // with saturation and lightness falling as t goes from 0 (top word) to 1 (tail).
 function shade([hue, sat], t) {
-  return `hsl(${(hue + 16 * t - 8).toFixed(1)} ${(sat * (1 - 0.45 * t)).toFixed(1)}% ${(82 - 42 * t).toFixed(1)}%)`;
+  return `hsl(${(hue + 16 * t - 8).toFixed(1)} ${(sat * (1 - 0.45 * t)).toFixed(1)}% ${lightOf(t).toFixed(1)}%)`;
 }
 
 // A word's fill inside one source's cloud: its own shade, or a gradient across the shade of every
@@ -259,7 +264,11 @@ function hardStops(segments) {
 // One d3-cloud layout for `items`, sorted by n descending. Font size scales with sqrt(n) between
 // the two box fractions. Each word is rasterised and placed once; the result keeps the word's
 // paint, its advance width and its sheen phase next to d3-cloud's own fields.
+// Layouts made so far, for the test hook.
+let layoutRuns = 0;
+
 function layoutCloud(items, [w, h], [minFrac, maxFrac], paintFor, hero) {
+  layoutRuns += 1;
   const max = items.reduce((m, x) => Math.max(m, x.n), 1);
   const fmin = Math.max(6, Math.round(h * minFrac)), fmax = Math.max(fmin + 1, Math.round(h * maxFrac));
   const layout = new CloudLayout().size([w, h]).overflow(false);
@@ -267,6 +276,7 @@ function layoutCloud(items, [w, h], [minFrac, maxFrac], paintFor, hero) {
   items.forEach((it, i) => {
     const tier = tierOf(i, items.length);
     const face = faceOf(tier, i, items.length);
+    const t = items.length > 1 ? i / (items.length - 1) : 0;
     const size = Math.round(fmin + (fmax - fmin) * Math.sqrt(it.n / max));
     const sprite = layout.getSprite(it.word, {
       font: face.family, weight: face.weight, size, rotate: face.rotate,
@@ -274,7 +284,7 @@ function layoutCloud(items, [w, h], [minFrac, maxFrac], paintFor, hero) {
     });
     const word = sprite && layout.place(sprite);
     if (!word) return;
-    const paint = paintFor(it, items.length > 1 ? i / (items.length - 1) : 0, hero);
+    const paint = paintFor(it, t, hero);
     placed.push({
       ...word,
       paint,
@@ -284,6 +294,8 @@ function layoutCloud(items, [w, h], [minFrac, maxFrac], paintFor, hero) {
       vocab: hero && !!it.vocab,
       phase: hashOf(it.word) * TAU,
       dots: hero ? dotsOf(it.word) : [],
+      lightness: lightOf(t),
+      sources: it.mix.map((m) => m.source),
     });
   });
   return placed;
@@ -642,6 +654,22 @@ async function refresh() {
   lastGoodSet(WORDS_KEY, rows);
   apply(rows, null);
 }
+
+// Read-only test hook: the hero's current words with their rank-derived lightness and source mix,
+// and counts of data refreshes and layouts. Returns copies; nothing in the page reads it.
+window.__mc6 = Object.freeze({
+  drawn: () => (current ? {
+    view: current.view.key === MERGED ? 'CONVERGENCE' : current.view.key,
+    words: current.placed.map((w) => ({
+      text: w.text,
+      size: w.size,
+      lightness: w.lightness,
+      sources: [...w.sources],
+      fill: w.paint.segments ? 'segments' : w.paint.stops ? 'gradient' : 'solid',
+    })),
+  } : null),
+  stats: () => ({ refreshes: refreshRuns, layouts: layoutRuns }),
+});
 
 // Probes every face and waits for all probes to settle before the first refresh. A rejected probe
 // leaves its face out of loadedFaces; the other faces are still recorded.
