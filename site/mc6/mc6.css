@@ -17,6 +17,7 @@
   font:600 clamp(11px,1.1vmin,13px)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);
   display:flex;justify-content:space-between;border-bottom:1px solid var(--grid)}
 .panel>h2 span{color:var(--dim);letter-spacing:.1em}
+#shared{color:var(--amber)}
 .panel [data-panel-message]{color:var(--amber);font:600 9px/1 var(--mono);letter-spacing:.1em;white-space:nowrap}
 
 header{grid-row:1;display:flex;align-items:center;gap:clamp(16px,2.4vmin,30px)}
