@@ -642,7 +642,7 @@ test('mc5 hero canvas renders non-blank and the org-activity ticker shows rows',
 // mc6's strip keeps a tile for EVERY source the page knows about: rows per source come and
 // go, but a source absent from this poll renders an explicit NO FEED tile — never omitted,
 // never filled with stand-in words. The fixture answers five sources (user, claude, codex,
-// zcode and the never-heard-of 'minion'), so gemini, antigravity and opencode show NO FEED.
+// zcode and the never-heard-of 'minion'), so antigravity and opencode show NO FEED.
 test('mc6 renders a tile for every known source, NO FEED where the feed has no rows', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises the fixture-shaped words response only');
   await mockFeeds(page);
@@ -651,14 +651,14 @@ test('mc6 renders a tile for every known source, NO FEED where the feed has no r
   await expect(panel).toHaveAttribute('data-state', 'ok');
 
   const tiles = page.locator('#strip .tile');
-  await expect(tiles).toHaveCount(8); // 7 known sources + the fixture's unknown 'minion'
+  await expect(tiles).toHaveCount(7); // 6 known sources + the fixture's unknown 'minion'
   for (const [source, label] of [
-    ['user', 'OPERATOR'], ['claude', 'CLAUDE'], ['codex', 'CODEX'], ['gemini', 'GEMINI'],
+    ['user', 'OPERATOR'], ['claude', 'CLAUDE'], ['codex', 'CODEX'],
     ['antigravity', 'AGY'], ['zcode', 'ZCODE'], ['opencode', 'OPENCODE'], ['minion', 'MINION'],
   ] as const) {
     const tile = page.locator(`#strip .tile[data-word-source="${source}"]`);
     await expect(tile.locator('.tlabel')).toHaveText(label);
-    if (['gemini', 'antigravity', 'opencode'].includes(source)) {
+    if (['antigravity', 'opencode'].includes(source)) {
       await expect(tile, `${source} has no rows this poll`).toHaveClass(/nofeed/);
       await expect(tile.locator('.tfeed')).toHaveText('NO FEED');
       await expect(tile.locator('canvas')).toHaveCount(0);

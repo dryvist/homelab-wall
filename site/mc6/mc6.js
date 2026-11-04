@@ -20,8 +20,9 @@ const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e
 // feed has no rows for it yet — an explicit NO FEED state, never stand-in words. Sources that
 // only show up later (opencode will; anything else ever) are handled generically: same tile
 // treatment, label upper-cased, first-seen slot after the known ones, kept stable across polls.
-const KNOWN_SOURCES = ['user', 'claude', 'codex', 'gemini', 'antigravity', 'zcode', 'opencode'];
-const LABELS = { user: 'OPERATOR', claude: 'CLAUDE', codex: 'CODEX', gemini: 'GEMINI', antigravity: 'AGY', zcode: 'ZCODE', opencode: 'OPENCODE' };
+// Gemini CLI is now AGY (Antigravity): its rows arrive as the antigravity source.
+const KNOWN_SOURCES = ['user', 'claude', 'codex', 'antigravity', 'zcode', 'opencode'];
+const LABELS = { user: 'OPERATOR', claude: 'CLAUDE', codex: 'CODEX', antigravity: 'AGY', zcode: 'ZCODE', opencode: 'OPENCODE' };
 const LABEL = (source) => LABELS[source] || `${source}`.toUpperCase();
 
 const FONT = '"Chakra Petch",sans-serif';
