@@ -1,6 +1,7 @@
 // Mission Control 6: LEXICON — one word cloud per source (the operator and every AI agent),
 // driven by the same-origin /api/words feed (ClickHouse FORMAT JSON). A hero cloud cycles the
-// sources every 8s and a strip below keeps one small cloud per source on screen, active one
+// sources and a merged CONVERGENCE view every 8s, with words morphing, dispersing and condensing
+// between them, and a strip below keeps one small cloud per source on screen, active one
 // highlighted. Each cloud is laid out with d3-cloud 2.0.0 once per data refresh: every word is
 // rasterised with getSprite() (family, weight, size and angle chosen per word) and then placed
 // with place() (coordinates centred at 0, rotate in degrees); see
@@ -33,7 +34,8 @@ const MONO = '"JetBrains Mono",monospace';
 const FACES = [`700 16px ${DISPLAY}`, `600 16px ${DISPLAY}`, `400 16px ${DISPLAY}`, `600 16px ${MONO}`, `400 16px ${MONO}`];
 
 const CYCLE_MS = 8000;     // how long the hero holds one source
-const FADE_MS = 1000;      // glide/crossfade window at the start of each cycle
+const FADE_MS = 1400;      // transition window at the start of each cycle
+const DRIFT = 0.22;        // share of the hero's shorter side a leaving or entering word travels
 const STALE_MS = 5 * 60 * 1000; // matches mc1's stale label: age, then "since <time>"
 const HERO_WORDS = 80;     // top words per source in the hero cloud
 const TILE_WORDS = 30;     // top words per source in a strip tile
@@ -189,12 +191,18 @@ function sourcePaint(item, t, hero) {
 }
 
 // A stable pseudo-random fraction in [0, 1) for a string (FNV-1a): a word always gets the same
-// sheen phase.
+// sheen phase and particle pattern.
 function hashOf(text) {
   let h = 2166136261;
   for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
   return (h >>> 0) / 4294967296;
 }
+
+// Five particle anchors per word: horizontal offsets as fractions of its width (centred on 0) and
+// vertical offsets as fractions of its size (above the baseline).
+const dotsOf = (text) => Array.from({ length: 5 }, (_, k) => [hashOf(`${text}#${k}`) - 0.5, -0.8 * hashOf(`${text}@${k}`)]);
+
+const easeOut = (t) => 1 - (1 - t) ** 3;
 
 const measurer = document.createElement('canvas').getContext('2d');
 function widthOf(text, face, size) {
@@ -268,6 +276,7 @@ function layoutCloud(items, [w, h], [minFrac, maxFrac], paintFor, hero) {
       halo: hero && (tier === 0 || !!it.vocab),
       vocab: hero && !!it.vocab,
       phase: hashOf(it.word) * TAU,
+      dots: hero ? dotsOf(it.word) : [],
     });
   });
   return placed;
@@ -289,6 +298,7 @@ function fillOf(c, word, hw, now) {
 // Paints one placed word at geo = {x, y, rot, size, alpha}. The glyphs are scaled from the word's
 // own width, so a size lerp during a transition keeps the advance width consistent.
 function drawWord(c, word, geo, now) {
+  if (geo.alpha <= 0.001) return;
   const hw = (word.tw * geo.size / word.size) / 2;
   c.save();
   c.globalAlpha = geo.alpha;
@@ -500,16 +510,61 @@ function morph(c, a, b, e, now) {
   drawWord(c, b, { ...geo, alpha: e }, now);
 }
 
-function drawTransition(c, from, to, ease, now) {
-  const before = new Map(from.map((p) => [p.text, p]));
-  const after = new Set(to.map((p) => p.text));
-  for (const p of to) {
-    const src = before.get(p.text);
-    if (src) morph(c, src, p, ease, now);
-    else drawWord(c, p, at(p, ease), now);
+// A word's particles: small squares at its anchors, spread outward from its centre by `spread`.
+function drawDots(c, word, cx, cy, spread, alpha) {
+  if (alpha <= 0.01 || !word.dots.length) return;
+  const s = Math.max(1.2, word.size * 0.06);
+  c.save();
+  c.globalAlpha = alpha;
+  c.fillStyle = word.primary;
+  for (const [u, v] of word.dots) c.fillRect(cx + u * word.tw * spread - s / 2, cy + v * word.size * spread - s / 2, s, s);
+  c.restore();
+}
+
+// A word leaving the cloud drifts outward from the centre. Its glyphs fade first while its
+// particles drift on past them.
+function disperse(c, word, t, span, now) {
+  if (RM) {
+    drawWord(c, word, at(word, 1 - t), now);
+    return;
   }
-  for (const p of from) {
-    if (!after.has(p.text)) drawWord(c, p, at(p, 1 - ease), now);
+  const k = easeOut(t);
+  const ang = Math.atan2(word.y, word.x) + (word.phase / TAU - 0.5) * 1.6;
+  const x = word.x + Math.cos(ang) * span * DRIFT * k;
+  const y = word.y + Math.sin(ang) * span * DRIFT * k;
+  drawWord(c, word, { x, y, rot: word.rotate, size: word.size * (1 + 0.2 * k), alpha: 1 - Math.min(1, t * 1.6) }, now);
+  drawDots(c, word, x, y, 1 + 1.2 * k, 0.85 * 4 * t * (1 - t));
+}
+
+// A word entering the cloud condenses from the rim: its particles gather from outside its place,
+// and the glyphs firm up as they arrive.
+function condense(c, word, t, span, now) {
+  if (RM) {
+    drawWord(c, word, at(word, t), now);
+    return;
+  }
+  const k = easeOut(t);
+  const ang = Math.atan2(word.y, word.x) + (word.phase / TAU - 0.5) * 1.6;
+  const r = span * DRIFT * (1 - k);
+  const x = word.x + Math.cos(ang) * r;
+  const y = word.y + Math.sin(ang) * r;
+  drawWord(c, word, { x, y, rot: word.rotate, size: word.size * (0.6 + 0.4 * k), alpha: k }, now);
+  drawDots(c, word, x, y, 1 + 1.2 * (1 - k), 0.85 * 4 * k * (1 - k));
+}
+
+// `t` is the linear progress through the transition window, 0 at the slot change and 1 once it
+// has settled. Words in both layouts morph, new words condense, and departed words disperse.
+function drawTransition(c, from, to, t, now, span) {
+  const before = new Map(from.map((w) => [w.text, w]));
+  const after = new Set(to.map((w) => w.text));
+  const e = easeOut(t);
+  for (const w of to) {
+    const src = before.get(w.text);
+    if (src) morph(c, src, w, e, now);
+    else condense(c, w, t, span, now);
+  }
+  for (const w of from) {
+    if (!after.has(w.text)) disperse(c, w, t, span, now);
   }
 }
 
@@ -546,7 +601,7 @@ function drawHero(now) {
   c.translate(w / 2 + idle.x, h / 2 + idle.y);
   c.scale(idle.s, idle.s);
   if (previous && t < 1) {
-    drawTransition(c, previous.placed, current.placed, 1 - (1 - t) ** 3, now);
+    drawTransition(c, previous.placed, current.placed, t, now, Math.min(w, h));
   } else {
     previous = null;
     drawSteady(c, current.placed, now);
