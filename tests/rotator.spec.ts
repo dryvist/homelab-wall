@@ -224,6 +224,27 @@ test('a slide whose data takes longer than its own hold interval is still shown 
   await expect(page.locator('#dots')).not.toHaveAttribute('data-skipped', 'Slide B');
 });
 
+// The MC6 slide posts 'ready' after its first painted frame (site/lib/stage.js loop/signalReady),
+// and that frame does not wait on its font probes or its words feed. The font files are held
+// pending for the whole test, so the probes never settle and /api/words is never requested; the
+// rotator must still show the slide and never mark it skipped.
+test('mc6 posts ready on its first frame while its font files are held pending', async ({ page }) => {
+  let fontsHeld = 0;
+  await page.route('**/config.json', (r) => r.fulfill({
+    json: { slides: [{ name: 'Slide A', url: '/slide-a', seconds: 2 }, { name: 'LEXICON', url: '/mc6/', seconds: 10 }], holdSeconds: 30 },
+  }));
+  await page.route('**/slide-a', (r) => r.fulfill({
+    contentType: 'text/html',
+    body: `<!doctype html><title>Slide A</title><script>parent.postMessage({wall:'ready'},'*')</script>`,
+  }));
+  await page.route('**/api/words', () => { /* registered, never answered */ });
+  await page.route('**/fonts/**', () => { fontsHeld += 1; });
+  await page.goto('/');
+  await expect.poll(() => activeSlideUrl(page), { timeout: 15_000, message: 'LEXICON never became the active slide' }).toContain('/mc6/');
+  expect(await page.locator('#dots').getAttribute('data-skipped'), 'skip marker').toBeNull();
+  expect(fontsHeld, 'font requests held pending').toBeGreaterThan(0);
+});
+
 // Track: a layer whose readyPromise settled false must not be skipped forever — every
 // REPROBE_MS (rotator.js) it reloads and re-arms. `?reprobe=<ms>` is a test-only override
 // (mirrors the existing `?fast=` pattern), never read by real config.
