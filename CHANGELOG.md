@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/dryvist/homelab-wall/compare/v0.14.0...v0.15.0) (2026-11-04)
+
+
+### Features
+
+* **mc3:** AI-only fleet, accelerator anchors and live concurrency ([#124](https://github.com/dryvist/homelab-wall/issues/124)) ([c6ec72b](https://github.com/dryvist/homelab-wall/commit/c6ec72b6429968489d916df34ff236b9e4e928e9))
+
 ## [0.14.0](https://github.com/dryvist/homelab-wall/compare/v0.13.3...v0.14.0) (2026-11-04)
 
 
