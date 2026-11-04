@@ -226,23 +226,34 @@ test('a slide whose data takes longer than its own hold interval is still shown 
 
 // The MC6 slide posts 'ready' after its first painted frame (site/lib/stage.js loop/signalReady),
 // and that frame does not wait on its font probes or its words feed. The font files are held
-// pending for the whole test, so the probes never settle and /api/words is never requested; the
-// rotator must still show the slide and never mark it skipped.
+// pending for the whole test. Each font probe has a 3s deadline, so the first refresh still runs
+// and the words render while the fonts stay pending; the rotator must show the slide throughout
+// and never mark it skipped.
 test('mc6 posts ready on its first frame while its font files are held pending', async ({ page }) => {
+  // Context-level routes: the LEXICON iframe's first requests race a page-level route, so its
+  // config.json has been seen to reach the server unrouted (404) and stop the slide before its probes.
   let fontsHeld = 0;
-  await page.route('**/config.json', (r) => r.fulfill({
+  const context = page.context();
+  await context.route('**/config.json', (r) => r.fulfill({
     json: { slides: [{ name: 'Slide A', url: '/slide-a', seconds: 2 }, { name: 'LEXICON', url: '/mc6/', seconds: 10 }], holdSeconds: 30 },
   }));
-  await page.route('**/slide-a', (r) => r.fulfill({
+  await context.route('**/slide-a', (r) => r.fulfill({
     contentType: 'text/html',
     body: `<!doctype html><title>Slide A</title><script>parent.postMessage({wall:'ready'},'*')</script>`,
   }));
-  await page.route('**/api/words', () => { /* registered, never answered */ });
-  await page.route('**/fonts/**', () => { fontsHeld += 1; });
+  await context.route('**/api/words', (r) => r.fulfill({ json: { meta: [], data: [{ source: 'user', word: 'deadline', n: '5' }], rows: 1 } }));
+  await context.route('**/fonts/**', () => { fontsHeld += 1; });
   await page.goto('/');
   await expect.poll(() => activeSlideUrl(page), { timeout: 15_000, message: 'LEXICON never became the active slide' }).toContain('/mc6/');
   expect(await page.locator('#dots').getAttribute('data-skipped'), 'skip marker').toBeNull();
   expect(fontsHeld, 'font requests held pending').toBeGreaterThan(0);
+  // The words render after the font deadline, with every font request still pending.
+  const drawnWords = async () => {
+    const frame = page.frames().find((f) => f.url().endsWith('/mc6/'));
+    if (!frame) return [];
+    return frame.evaluate(() => (window as unknown as { __mc6?: { drawn(): { words: { text: string }[] } | null } }).__mc6?.drawn()?.words.map((w) => w.text) ?? []);
+  };
+  await expect.poll(drawnWords, { timeout: 15_000, message: 'words never rendered while the fonts stayed pending' }).toContain('deadline');
 });
 
 // Track: a layer whose readyPromise settled false must not be skipped forever — every

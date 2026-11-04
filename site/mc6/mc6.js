@@ -696,9 +696,17 @@ window.__mc6 = Object.freeze({
   stats: () => ({ refreshes: refreshRuns, layouts: layoutRuns }),
 });
 
-// Probes every face and waits for all probes to settle before the first refresh. A rejected probe
-// leaves its face out of loadedFaces; the other faces are still recorded.
-const probes = await Promise.allSettled(FACES.map(([face, weight]) => document.fonts?.load(`${weight} 16px "${face.name}"`)));
+// Probes every face against a deadline, and waits for all of them before the first refresh. A probe
+// that rejects or has not loaded by the deadline leaves its face out of loadedFaces, so the face is
+// measured and drawn with its fallback and initialisation goes on. A face that loads after its
+// deadline stays on its fallback until the page reloads.
+const FONT_DEADLINE_MS = 3000;
+const probeFace = (face, weight) => {
+  let timer;
+  const deadline = new Promise((resolve) => { timer = setTimeout(() => resolve(null), FONT_DEADLINE_MS); });
+  return Promise.race([document.fonts?.load(`${weight} 16px "${face.name}"`), deadline]).finally(() => clearTimeout(timer));
+};
+const probes = await Promise.allSettled(FACES.map(([face, weight]) => probeFace(face, weight)));
 probes.forEach((probe, k) => {
   if (probe.status === 'fulfilled' && probe.value?.length) loadedFaces.add(`${FACES[k][1]}|${FACES[k][0].name}`);
 });
