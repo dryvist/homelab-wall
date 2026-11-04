@@ -291,8 +291,9 @@ for (const mode of ['2d', '3d'] as const) {
     const faults = watchFaults(page);
     await mockFeeds(page);
     await page.goto(`/mc3/?gl=${mode}`);
-    // mac-primary reads 20% busy with nothing on it; mac-secondary has no busy series.
-    await expect(page.locator('#reactor')).toHaveAttribute('data-dim-anchors', 'mac-primary,mac-secondary');
+    // mac-primary reads 20% busy with nothing on it; mac-secondary has no busy series. The 3D hook is
+    // written by a rendered frame, and the first software-GL frame can outlast the default wait under load.
+    await expect(page.locator('#reactor')).toHaveAttribute('data-dim-anchors', 'mac-primary,mac-secondary', { timeout: 20_000 });
     await expect(page.locator('#anchors [data-accel="mac-primary"]')).toHaveClass(/dim/);
     await expect(page.locator('#anchors [data-accel="mac-secondary"]')).toHaveClass(/dim/);
     await expect(page.locator('#anchors [data-accel="gpu-primary"]')).not.toHaveClass(/dim/);
@@ -312,7 +313,7 @@ for (const mode of ['2d', '3d'] as const) {
       ],
     });
     await page.goto(`/mc3/?gl=${mode}`);
-    await expect(page.locator('#reactor')).toHaveAttribute('data-dim-anchors', 'mac-primary,mac-secondary,cloud');
+    await expect(page.locator('#reactor')).toHaveAttribute('data-dim-anchors', 'mac-primary,mac-secondary,cloud', { timeout: 20_000 });
     await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveClass(/dim/);
     await expect(page.locator('#anchors [data-accel="gpu-primary"]')).not.toHaveClass(/dim/);
     expect(faults).toEqual([]);
