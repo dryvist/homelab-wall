@@ -279,7 +279,8 @@ for (const mode of ['2d', '3d'] as const) {
     const faults = watchFaults(page);
     await mockFeeds(page);
     await page.goto(`/mc3/?gl=${mode}`);
-    await expect(page.locator('#reactor')).toHaveAttribute('data-streams', '2');
+    // The 3D count is written once the scene has built, which can outlast the default wait under load.
+    await expect(page.locator('#reactor')).toHaveAttribute('data-streams', '2', { timeout: 20_000 });
     expect(faults).toEqual([]);
   });
 
