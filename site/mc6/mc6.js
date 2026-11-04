@@ -27,11 +27,17 @@ const KNOWN_SOURCES = ['user', 'claude', 'codex', 'antigravity', 'zcode', 'openc
 const LABELS = { user: 'OPERATOR', claude: 'CLAUDE', codex: 'CODEX', antigravity: 'AGY', zcode: 'ZCODE', opencode: 'OPENCODE' };
 const LABEL = (source) => LABELS[source] || `${source}`.toUpperCase();
 
-// Chakra Petch carries the display tiers and JetBrains Mono the tail. wall.css declares the faces;
-// FACES lists each face the layouts use, for document.fonts.load.
-const DISPLAY = '"Chakra Petch",sans-serif';
-const MONO = '"JetBrains Mono",monospace';
-const FACES = [`700 16px ${DISPLAY}`, `600 16px ${DISPLAY}`, `400 16px ${DISPLAY}`, `600 16px ${MONO}`, `400 16px ${MONO}`];
+// Chakra Petch carries the display tiers and JetBrains Mono the tail. wall.css declares the faces.
+// Each face is probed before the first refresh. A face whose file did not load is measured and drawn
+// with its generic fallback, so layout and paint use the same family.
+const DISPLAY = { name: 'Chakra Petch', fallback: 'sans-serif' };
+const MONO = { name: 'JetBrains Mono', fallback: 'monospace' };
+// The faces the layouts use, as [face, weight].
+const FACES = [[DISPLAY, 700], [DISPLAY, 600], [DISPLAY, 400], [MONO, 600], [MONO, 400]];
+// "weight|name" for each face whose file loaded.
+const loadedFaces = new Set();
+// The CSS family stack for a face at a weight: the family when it loaded, else its fallback alone.
+const familyOf = (face, weight) => (loadedFaces.has(`${weight}|${face.name}`) ? `"${face.name}",${face.fallback}` : face.fallback);
 
 const CYCLE_MS = 8000;     // how long the hero holds one source
 const FADE_MS = 1400;      // transition window at the start of each cycle
@@ -169,10 +175,11 @@ function tierOf(i, n) {
 // 600 then 400 in the tail. Angles are 0 except for a few slightly tilted words and one tail word
 // in nine set vertical (90°).
 function faceOf(tier, i, n) {
-  if (tier === 0) return { family: DISPLAY, weight: 700, rotate: 0 };
-  if (tier === 1) return { family: DISPLAY, weight: 600, rotate: i % 5 === 3 ? -4 : 0 };
-  if (tier === 2) return { family: DISPLAY, weight: 400, rotate: i % 6 === 4 ? 3 : 0 };
-  return { family: MONO, weight: i < n * 0.8 ? 600 : 400, rotate: i % 9 === 7 ? 90 : i % 7 === 2 ? -6 : 0 };
+  if (tier === 0) return { family: familyOf(DISPLAY, 700), weight: 700, rotate: 0 };
+  if (tier === 1) return { family: familyOf(DISPLAY, 600), weight: 600, rotate: i % 5 === 3 ? -4 : 0 };
+  if (tier === 2) return { family: familyOf(DISPLAY, 400), weight: 400, rotate: i % 6 === 4 ? 3 : 0 };
+  const weight = i < n * 0.8 ? 600 : 400;
+  return { family: familyOf(MONO, weight), weight, rotate: i % 9 === 7 ? 90 : i % 7 === 2 ? -6 : 0 };
 }
 
 // A word's colour: the source's hue, moving from -8° at the top of the cloud to +8° at the tail,
@@ -636,8 +643,12 @@ async function refresh() {
   apply(rows, null);
 }
 
-// Loads every face in FACES, then runs the first refresh and its layouts.
-await Promise.all(FACES.map((face) => document.fonts?.load(face))).catch(() => {});
+// Probes every face and waits for all probes to settle before the first refresh. A rejected probe
+// leaves its face out of loadedFaces; the other faces are still recorded.
+const probes = await Promise.allSettled(FACES.map(([face, weight]) => document.fonts?.load(`${weight} 16px "${face.name}"`)));
+probes.forEach((probe, k) => {
+  if (probe.status === 'fulfilled' && probe.value?.length) loadedFaces.add(`${FACES[k][1]}|${FACES[k][0].name}`);
+});
 await refresh().catch((e) => console.warn('refresh', e));
 const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
 onDispose(() => clearInterval(refreshId));
