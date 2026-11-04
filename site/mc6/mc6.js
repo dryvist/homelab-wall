@@ -194,16 +194,16 @@ function shade([hue, sat], t) {
 }
 
 // A word's fill inside one source's cloud: its own shade, or a gradient across the shade of every
-// source holding that word. Only the hero's gradients sheen.
-function sourcePaint(item, t, hero) {
+// source holding that word.
+function sourcePaint(item, t) {
   const mix = item.mix;
   if (mix.length === 1) return { color: shade(mix[0].base, t) };
   const last = mix.length - 1;
-  return { color: shade(mix[0].base, t), stops: mix.map((m, j) => [j / last, shade(m.base, t)]), sheen: hero };
+  return { color: shade(mix[0].base, t), stops: mix.map((m, j) => [j / last, shade(m.base, t)]) };
 }
 
 // A stable pseudo-random fraction in [0, 1) for a string (FNV-1a): a word always gets the same
-// sheen phase and particle pattern.
+// phase and particle pattern.
 function hashOf(text) {
   let h = 2166136261;
   for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
@@ -263,7 +263,7 @@ function hardStops(segments) {
 
 // One d3-cloud layout for `items`, sorted by n descending. Font size scales with sqrt(n) between
 // the two box fractions. Each word is rasterised and placed once; the result keeps the word's
-// paint, its advance width and its sheen phase next to d3-cloud's own fields.
+// paint, its advance width and its phase next to d3-cloud's own fields.
 // Layouts made so far, for the test hook.
 let layoutRuns = 0;
 
@@ -284,13 +284,13 @@ function layoutCloud(items, [w, h], [minFrac, maxFrac], paintFor, hero) {
     });
     const word = sprite && layout.place(sprite);
     if (!word) return;
-    const paint = paintFor(it, t, hero);
+    const paint = paintFor(it, t);
     placed.push({
       ...word,
       paint,
       primary: paint.color,
       tw: widthOf(it.word, face, size),
-      halo: hero && (tier === 0 || !!it.vocab),
+      halo: hero && tier === 0,
       vocab: hero && !!it.vocab,
       phase: hashOf(it.word) * TAU,
       dots: hero ? dotsOf(it.word) : [],
@@ -304,19 +304,18 @@ function layoutCloud(items, [w, h], [minFrac, maxFrac], paintFor, hero) {
 // Where a placed word is drawn: its own position, angle, size and alpha.
 const at = (word, alpha = 1) => ({ x: word.x, y: word.y, rot: word.rotate, size: word.size, alpha });
 
-// A gradient fill spans the word's advance width; a sheening one slides back and forth over time.
-function fillOf(c, word, hw, now) {
-  const paint = word.paint;
+// A gradient fill spans the word's advance width: hw is half that width, in the word's own units.
+function fillFor(c, paint, hw) {
   if (!paint.stops) return paint.color;
-  const shift = paint.sheen && now ? hw * 0.8 * Math.sin(now / 1900 + word.phase) : 0;
-  const g = c.createLinearGradient(-hw + shift, 0, hw + shift, 0);
+  const g = c.createLinearGradient(-hw, 0, hw, 0);
   for (const [offset, color] of paint.stops) g.addColorStop(offset, color);
   return g;
 }
 
 // Paints one placed word at geo = {x, y, rot, size, alpha}. The advance width scales with geo.size
-// relative to the word's own size.
-function drawWord(c, word, geo, now) {
+// relative to the word's own size. A word drawn at its laid-out size reuses the fill built on its
+// first draw; a resized word during a transition builds a fill for its current width.
+function drawWord(c, word, geo) {
   if (geo.alpha <= 0.001) return;
   const hw = (word.tw * geo.size / word.size) / 2;
   c.save();
@@ -330,7 +329,7 @@ function drawWord(c, word, geo, now) {
     c.shadowColor = word.primary;
     c.shadowBlur = Math.max(4, geo.size * 0.35);
   }
-  c.fillStyle = fillOf(c, word, hw, now);
+  c.fillStyle = geo.size === word.size ? (word.fill ??= fillFor(c, word.paint, word.tw / 2)) : fillFor(c, word.paint, hw);
   c.fillText(word.text, 0, 0);
   c.shadowBlur = 0;
   if (word.vocab) {
@@ -408,7 +407,7 @@ function paintTile(tile) {
   }
   c.save();
   c.translate(w / 2, h / 2 + Math.round(h * 0.09));
-  for (const word of placed) drawWord(c, word, at(word), 0);
+  for (const word of placed) drawWord(c, word, at(word));
   c.restore();
 }
 
@@ -513,10 +512,10 @@ function idleMotion(now) {
 // A word in both layouts: its glyphs glide from the old spot to the new one, resizing and turning
 // on the way, while its old paint fades out and its new paint fades in. Reduced motion keeps each
 // word in its own spot and only crossfades.
-function morph(c, a, b, e, now) {
+function morph(c, a, b, e) {
   if (RM) {
-    drawWord(c, a, at(a, 1 - e), now);
-    drawWord(c, b, at(b, e), now);
+    drawWord(c, a, at(a, 1 - e));
+    drawWord(c, b, at(b, e));
     return;
   }
   const geo = {
@@ -525,8 +524,8 @@ function morph(c, a, b, e, now) {
     rot: a.rotate + (b.rotate - a.rotate) * e,
     size: a.size + (b.size - a.size) * e,
   };
-  drawWord(c, a, { ...geo, alpha: 1 - e }, now);
-  drawWord(c, b, { ...geo, alpha: e }, now);
+  drawWord(c, a, { ...geo, alpha: 1 - e });
+  drawWord(c, b, { ...geo, alpha: e });
 }
 
 // A word's particles: small squares at its anchors, spread outward from its centre by `spread`.
@@ -542,24 +541,24 @@ function drawDots(c, word, cx, cy, spread, alpha) {
 
 // A word leaving the cloud drifts outward from the centre. Its glyphs fade first while its
 // particles drift on past them.
-function disperse(c, word, t, span, now) {
+function disperse(c, word, t, span) {
   if (RM) {
-    drawWord(c, word, at(word, 1 - t), now);
+    drawWord(c, word, at(word, 1 - t));
     return;
   }
   const k = easeOut(t);
   const ang = Math.atan2(word.y, word.x) + (word.phase / TAU - 0.5) * 1.6;
   const x = word.x + Math.cos(ang) * span * DRIFT * k;
   const y = word.y + Math.sin(ang) * span * DRIFT * k;
-  drawWord(c, word, { x, y, rot: word.rotate, size: word.size * (1 + 0.2 * k), alpha: 1 - Math.min(1, t * 1.6) }, now);
+  drawWord(c, word, { x, y, rot: word.rotate, size: word.size * (1 + 0.2 * k), alpha: 1 - Math.min(1, t * 1.6) });
   drawDots(c, word, x, y, 1 + 1.2 * k, 0.85 * 4 * t * (1 - t));
 }
 
 // A word entering the cloud condenses from the rim: its particles gather from outside its place,
 // and the glyphs firm up as they arrive.
-function condense(c, word, t, span, now) {
+function condense(c, word, t, span) {
   if (RM) {
-    drawWord(c, word, at(word, t), now);
+    drawWord(c, word, at(word, t));
     return;
   }
   const k = easeOut(t);
@@ -567,30 +566,30 @@ function condense(c, word, t, span, now) {
   const r = span * DRIFT * (1 - k);
   const x = word.x + Math.cos(ang) * r;
   const y = word.y + Math.sin(ang) * r;
-  drawWord(c, word, { x, y, rot: word.rotate, size: word.size * (0.6 + 0.4 * k), alpha: k }, now);
+  drawWord(c, word, { x, y, rot: word.rotate, size: word.size * (0.6 + 0.4 * k), alpha: k });
   drawDots(c, word, x, y, 1 + 1.2 * (1 - k), 0.85 * 4 * k * (1 - k));
 }
 
 // `t` is the linear progress through the transition window, 0 at the slot change and 1 once it
 // has settled. Words in both layouts morph, new words condense, and departed words disperse.
-function drawTransition(c, from, to, t, now, span) {
+function drawTransition(c, from, to, t, span) {
   const before = new Map(from.map((w) => [w.text, w]));
   const after = new Set(to.map((w) => w.text));
   const e = easeOut(t);
   for (const w of to) {
     const src = before.get(w.text);
-    if (src) morph(c, src, w, e, now);
-    else condense(c, w, t, span, now);
+    if (src) morph(c, src, w, e);
+    else condense(c, w, t, span);
   }
   for (const w of from) {
-    if (!after.has(w.text)) disperse(c, w, t, span, now);
+    if (!after.has(w.text)) disperse(c, w, t, span);
   }
 }
 
 function drawSteady(c, placed, now) {
   for (const word of placed) {
     const pulse = RM || !word.halo ? 1 : 0.92 + 0.08 * Math.sin(now / 900 + word.phase);
-    drawWord(c, word, at(word, pulse), now);
+    drawWord(c, word, at(word, pulse));
   }
 }
 
@@ -620,7 +619,7 @@ function drawHero(now) {
   c.translate(w / 2 + idle.x, h / 2 + idle.y);
   c.scale(idle.s, idle.s);
   if (previous && t < 1) {
-    drawTransition(c, previous.placed, current.placed, t, now, Math.min(w, h));
+    drawTransition(c, previous.placed, current.placed, t, Math.min(w, h));
   } else {
     previous = null;
     drawSteady(c, current.placed, now);
