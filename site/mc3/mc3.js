@@ -599,6 +599,7 @@ function use2D(reason) {
   core3d?.dispose();
   core3d = null;
   freshReactor();
+  reactor.dataset.scene = '2d';
   drawScene = drawReactor;
 }
 async function startGpuCore() {
@@ -620,7 +621,13 @@ async function startGpuCore() {
     core3d = core;
     core.layout(slots);
     core.sync(model.models.length ? model.models : reactorList, model.tokensToday, sceneAnchors());
-    drawScene = (now) => core.render(now);
+    // The 3D readiness signal: the first drawn frame writes the scene's state (stream count, dim
+    // anchors) and places the labels, so data-scene="ready" follows that frame.
+    let frames = 0;
+    drawScene = (now) => {
+      core.render(now);
+      if (!frames++) reactor.dataset.scene = 'ready';
+    };
   } catch (e) {
     use2D(e);
   }
@@ -628,6 +635,8 @@ async function startGpuCore() {
 if (forced === '3d' || (forced !== '2d' && hardwareGL())) {
   startGpuCore();
   onDispose(() => core3d?.dispose());
+} else {
+  reactor.dataset.scene = '2d';
 }
 
 const tickClock = () => { const d = new Date(); $('clock').innerHTML = `${d.toTimeString().slice(0, 8)}<small>${d.toDateString().toUpperCase()}</small>`; };
