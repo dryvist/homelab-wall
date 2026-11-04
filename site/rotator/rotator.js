@@ -97,6 +97,17 @@ function armLayer(layer) {
 // posting {wall:'ready'} once its own site/lib/stage.js render loop has painted a first frame; a
 // probe window with no 'ready' means it's broken (Track G3) — the same conclusion the cross-origin
 // probe below draws from a failed or stalled load.
+// The wall's own ?gl= (2d or 3d) is passed on to each same-origin wall slide (/mcN/), which reads
+// it from its own location; every other slide gets its configured URL untouched.
+const FORWARDED_GL = new URLSearchParams(location.search).get('gl');
+function slideUrl(url) {
+  if (!FORWARDED_GL || !sameOrigin(url)) return url;
+  const u = new URL(url, location.href);
+  if (!/^\/mc\d+\//.test(u.pathname)) return url;
+  u.searchParams.set('gl', FORWARDED_GL);
+  return u.pathname + u.search + u.hash;
+}
+
 function buildLayers() {
   layersEl.innerHTML = '';
   layers = slides.slice(0, MAX_LAYERS).map((slide) => {
@@ -104,7 +115,8 @@ function buildLayers() {
     el.className = 'layer';
     el.title = slide.name || 'slide';
     layersEl.appendChild(el);
-    const layer = { el, name: slide.name, url: slide.url, sameOrigin: sameOrigin(slide.url), hideTimer: null };
+    const url = slideUrl(slide.url);
+    const layer = { el, name: slide.name, url, sameOrigin: sameOrigin(url), hideTimer: null };
     if (!layer.sameOrigin) {
       // ponytail: cross-origin reachability is a load-vs-timeout race (no HTTP status and no
       // 'ready' handshake visible across origins) — a slow-but-healthy cross-origin slide can
@@ -114,7 +126,7 @@ function buildLayers() {
       el.addEventListener('error', () => layer.finish(false));
     }
     armLayer(layer);
-    el.src = slide.url;
+    el.src = url;
     return layer;
   });
 }

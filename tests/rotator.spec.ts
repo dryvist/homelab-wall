@@ -114,6 +114,26 @@ test('one persistent iframe exists per slide and all stay non-blank', async ({ p
   expect(srcs.every((s) => s && !s.endsWith('about:blank'))).toBe(true);
 });
 
+// The wall's ?gl= reaches same-origin wall slides (/mcN/) only; another same-origin path and a
+// cross-origin slide keep their URLs as configured.
+test('?gl=2d on the wall is passed to same-origin wall slides only', async ({ page }) => {
+  const slides = [
+    { name: 'Wall', url: '/mc3/', seconds: 10 },
+    { name: 'Board', url: '/boards/wall?x=1', seconds: 10 },
+    { name: 'Remote', url: 'https://remote.example.test/board', seconds: 10 },
+  ];
+  await page.route('**/config.json', (r) => r.fulfill({ json: { slides } }));
+  await page.route('**/mc3/**', (r) => r.abort());
+  await page.route('**/boards/**', (r) => r.abort());
+  await page.route('https://remote.example.test/**', (r) => r.abort());
+  await page.goto('/?gl=2d');
+  await expect(page.locator('iframe')).toHaveCount(3);
+  const srcs = await page.locator('iframe').evaluateAll((els) => els.map((el) => (el as HTMLIFrameElement).src));
+  expect(new URL(srcs[0]).searchParams.get('gl')).toBe('2d');
+  expect(new URL(srcs[1]).search).toBe('?x=1');
+  expect(srcs[2]).toBe('https://remote.example.test/board');
+});
+
 // mc6 (LEXICON) joins DEFAULT_SLIDES after MC5. With no `slides` in config.json the defaults
 // apply: one persistent iframe per default slide, titled by slide name (buildLayers). The
 // slide documents themselves are aborted — this asserts the rotator's own bookkeeping, not
