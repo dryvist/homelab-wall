@@ -271,6 +271,18 @@ for (const mode of ['2d', '3d'] as const) {
     expect(faults).toEqual([]);
   });
 
+  // The 2D stream gate matches the 3D one. Two up models have tokens in flight (model-large, model-coder);
+  // model-mini is up but idle, so neither render path draws its stream. The reactor canvas records the count.
+  test(`mc3 ${mode}: an up model with no tokens in flight draws no stream`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+    if (mode === '3d') test.slow();
+    const faults = watchFaults(page);
+    await mockFeeds(page);
+    await page.goto(`/mc3/?gl=${mode}`);
+    await expect(page.locator('#reactor')).toHaveAttribute('data-streams', '2');
+    expect(faults).toEqual([]);
+  });
+
   // Bracketed IPv6 hosts (documentation-range 2001:db8::/32) are read whole: a local server on one IPv6
   // device and a serving URL on the other each attach to their own device.
   test(`mc3 ${mode}: bracketed IPv6 hosts stay distinct for requests and serving URLs`, async ({ page }) => {

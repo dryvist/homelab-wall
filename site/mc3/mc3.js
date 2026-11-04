@@ -500,7 +500,8 @@ function drawReactor(now) {
   c.font = `600 ${R * 0.24}px "Chakra Petch",sans-serif`;
   c.fillText(list.length ? `${Math.round(upFrac * 100)}%` : '67%', cx, cy);
 
-  // Models orbit the anchor they are attached to.
+  // Models orbit the anchor they are attached to. streams counts the models whose stream is drawn.
+  let streams = 0;
   const perAnchor = ANCHOR_DEFS.map(() => 0);
   for (const m of list) perAnchor[m.anchor] += 1;
   const seenAt = ANCHOR_DEFS.map(() => 0);
@@ -512,8 +513,10 @@ function drawReactor(now) {
     c.beginPath(); c.arc(x, y, (m.up ? 4 : 3) * dpr, 0, Math.PI * 2);
     c.fillStyle = m.up ? (m.tok > 0.05 ? '#38ff9c' : '#3ee6ff') : '#ff3b5c';
     c.shadowColor = c.fillStyle; c.shadowBlur = 8 * dpr; c.fill(); c.shadowBlur = 0;
-    // An up model streams from its dot into the hub: travelling sparks, the 2D stand-in for the 3D stream.
-    if (m.up) {
+    // An up model with tokens in flight streams from its dot into the hub: travelling sparks, the 2D
+    // stand-in for the 3D stream. The same gate as the 3D stream.
+    if (m.up && m.tok > 0.05) {
+      streams += 1;
       for (let s = 0; s < 3; s++) {
         const f = (t * 0.3 + s / 3 + k * 0.21) % 1;
         c.beginPath(); c.arc(x + (cx - x) * f, y + (cy - y) * f, 1.6 * dpr, 0, Math.PI * 2);
@@ -523,6 +526,8 @@ function drawReactor(now) {
       c.globalAlpha = 1;
     }
   }
+  // Read by the render-path checks: the count of streams drawn this frame (3D records the same on its canvas).
+  reactor.dataset.streams = String(streams);
 
   // Anchor nodes (labelled by the DOM layer): a compact glow, an outline core sized by busy %, a
   // hairline halo and the busy arc, then the request beads. Nothing fills the node, so the particles
