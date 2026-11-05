@@ -21,14 +21,16 @@ function watchFaults(page: Page) {
   return faults;
 }
 
-// Readiness gates. The page writes its refresh state (anchor counts, labels) in render(), and the 3D scene
-// writes its own state (stream count, dim anchors, label positions) from its first drawn frame, which sets
-// data-scene="ready". A build or a first frame can take many seconds on a loaded runner, so every test waits
-// for these signals here, with one bound, and then asserts with the default timeout.
+// Readiness gates. The page writes its refresh state (anchor counts, labels) in render(), which also marks the
+// scene signal pending. The next drawn frame, in either renderer, takes the new inputs in and sets
+// data-scene="ready"; data-renderer names the path that drew it. A build or a first frame can take many seconds
+// on a loaded runner, so every test waits for these signals here, with one bound, and then asserts with the
+// default timeout.
 const READY_TIMEOUT = 60_000;
 async function awaitReady(page: Page, mode: '2d' | '3d') {
   await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok', { timeout: READY_TIMEOUT });
-  if (mode === '3d') await expect(page.locator('#reactor')).toHaveAttribute('data-scene', 'ready', { timeout: READY_TIMEOUT });
+  await expect(page.locator('#reactor')).toHaveAttribute('data-renderer', mode, { timeout: READY_TIMEOUT });
+  await expect(page.locator('#reactor')).toHaveAttribute('data-scene', 'ready', { timeout: READY_TIMEOUT });
 }
 
 for (const mode of ['2d', '3d'] as const) {
