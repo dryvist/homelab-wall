@@ -88,6 +88,8 @@ export interface AnswerOpts {
   llamaRunning?: number;
   extraLocal?: Array<[string, number]>;
   extraApiBase?: Array<Record<string, string>>;
+  // Services from the shared fixture config that count as AI-category for this test only.
+  extraAiApps?: string[];
 }
 
 // The AI-category services (group "AI · UI" / "AI · API" in Gatus). Q.aiAppScore keeps only these.
@@ -100,7 +102,8 @@ export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
   // is in the base score below but never here.
   if (q.includes('AI · .+')) {
     const flat = config.groups.flatMap((g) => g.apps);
-    return vec(AI_APPS.map((n): [Record<string, string>, number] => [{ name: n }, sampleAppScore(flat.indexOf(n))]));
+    const apps = [...AI_APPS, ...(opts.extraAiApps ?? [])];
+    return vec(apps.map((n): [Record<string, string>, number] => [{ name: n }, sampleAppScore(flat.indexOf(n))]));
   }
   if (q.includes('gatus_results_total') && q.includes('by (name)')) {
     const rows = config.groups.flatMap((g) => g.apps).map((n, i): [Record<string, string>, number] => [{ name: n }, sampleAppScore(i)]);

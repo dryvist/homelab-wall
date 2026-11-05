@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
-import { mockFeeds, recentRows, type FeedOpts } from './fixture';
+import { config, mockFeeds, recentRows, type FeedOpts } from './fixture';
+import { sampleAppScore } from '../site/lib/sampleData.js';
 
 // mc3-specific contract: the request feed is real metadata rows from GET /api/llm/recent (never
 // message content, never fabricated rows), the GPU tile reads Q.acceleratorBusy, and the hero
@@ -114,9 +115,9 @@ test('mc3: a missing /api/llm/recent renders an explicit NO FEED state with no i
 const PHONE = { width: 390, height: 844 };
 type BoxRect = { name: string; left: number; top: number; right: number; bottom: number };
 
-async function openPhone(page: Page, mode: '2d' | '3d') {
+async function openPhone(page: Page, mode: '2d' | '3d', opts: FeedOpts = {}) {
   await page.setViewportSize(PHONE);
-  await mockFeeds(page);
+  await mockFeeds(page, opts);
   await page.goto(`/mc3/?gl=${mode}`);
   await awaitReady(page, mode);
   await expect(page.locator('#anchors .anchor')).toHaveCount(5);
@@ -207,6 +208,31 @@ for (const mode of ['2d', '3d'] as const) {
     expect(m.ring.left >= 0 && m.ring.right <= m.vw, 'fleet donut inside the viewport width').toBe(true);
     expect(m.ring.right - m.ring.left).toBeCloseTo(m.ring.bottom - m.ring.top, 0);
     expect(m.ringRows, 'fleet rows shown').toBeLessThanOrEqual(4);
+    expect(faults).toEqual([]);
+  });
+
+  test(`mc3 ${mode} portrait: the fleet list shows the four most severe services, then a count of the rest`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+    if (mode === '3d') test.slow();
+    const faults = watchFaults(page);
+    const extra = ['delta', 'golf', 'alpha', 'bravo'];
+    await openPhone(page, mode, { extraAiApps: extra });
+    // Seven AI services in all. The fixture scores tie, so the expected set is the four lowest
+    // scores, valid only when the cut falls between two different scores.
+    const flat = config.groups.flatMap((g) => g.apps);
+    const scored = ['kilo', 'lima', 'mike', ...extra]
+      .map((name) => ({ name, score: sampleAppScore(flat.indexOf(name)) }))
+      .sort((a, b) => a.score - b.score);
+    expect(scored[3].score, 'the cut falls between two scores').toBeLessThan(scored[4].score);
+    const shown = scored.slice(0, 4);
+    const rows = page.locator('#applist .ar');
+    await expect(rows).toHaveCount(4);
+    expect((await rows.locator('span').allTextContents()).sort()).toEqual(shown.map((s) => s.name).sort());
+    // Rows read lowest score first, so the shown values are ascending.
+    expect((await rows.locator('b.num').allTextContents()).map(Number)).toEqual(
+      shown.map((s) => Math.round(s.score)),
+    );
+    await expect(page.locator('#applist .armore')).toHaveText(`+${scored.length - shown.length} more`);
     expect(faults).toEqual([]);
   });
 }
