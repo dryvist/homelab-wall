@@ -107,6 +107,113 @@ test('mc3: a missing /api/llm/recent renders an explicit NO FEED state with no i
   expect(faults.filter((f) => !(f.startsWith('404 ') && f.includes('/api/llm/recent')) && !f.includes('status of 404'))).toEqual([]);
 });
 
+// Phone portrait (390x844, aspect < 1): the stacked layout. The header stats, clock, fleet panel, AI
+// Core label and scene band are separate boxes; the page neither scrolls sideways nor down (the kiosk
+// autoScroll would slide the fixed anchor labels off the scene); every label sits in the viewport.
+// Measured on both render paths, after the page's one ready message.
+const PHONE = { width: 390, height: 844 };
+type BoxRect = { name: string; left: number; top: number; right: number; bottom: number };
+
+async function openPhone(page: Page, mode: '2d' | '3d') {
+  await page.setViewportSize(PHONE);
+  await page.addInitScript(() => {
+    (window as { wallReady?: number }).wallReady = 0;
+    window.addEventListener('message', (e: MessageEvent) => {
+      if (e.source === window && (e.data as { wall?: string })?.wall === 'ready') (window as { wallReady?: number }).wallReady! += 1;
+    });
+  });
+  await mockFeeds(page);
+  await page.goto(`/mc3/?gl=${mode}`);
+  await expect.poll(() => page.evaluate(() => (window as { wallReady?: number }).wallReady), { timeout: mode === '3d' ? 45_000 : 15_000 }).toBe(1);
+  await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
+  await expect(page.locator('#anchors .anchor')).toHaveCount(5);
+}
+
+async function phoneBoxes(page: Page) {
+  return page.evaluate(() => {
+    const rect = (name: string, el: Element | null): BoxRect => {
+      if (!el) throw new Error(`missing ${name}`);
+      const b = el.getBoundingClientRect();
+      return { name, left: b.left, top: b.top, right: b.right, bottom: b.bottom };
+    };
+    const strip = document.getElementById('modeltab')!;
+    return {
+      vw: innerWidth,
+      vh: innerHeight,
+      scrollW: document.documentElement.scrollWidth,
+      scrollH: document.documentElement.scrollHeight,
+      boxes: [
+        rect('brand', document.querySelector('.brand')),
+        ...[...document.querySelectorAll('.kpi')].map((el, i) => rect(`header stat ${i + 1}`, el)),
+        rect('clock', document.getElementById('clock')),
+        rect('fleet panel', document.getElementById('apps')),
+        rect('AI Core label', document.querySelector('#cores > h2')),
+        rect('scene band', document.getElementById('reactor')),
+      ],
+      labels: [...document.querySelectorAll('#anchors .anchor')].map((el) => rect(`${(el as HTMLElement).dataset.accel} label`, el.querySelector('.alab'))),
+      strip: rect('tile strip', strip),
+      stripOverflowX: getComputedStyle(strip).overflowX,
+      stripScrolls: strip.scrollWidth > strip.clientWidth,
+      ring: rect('fleet donut', document.getElementById('fleetRing')),
+      ringRows: document.querySelectorAll('#applist .ar').length,
+    };
+  });
+}
+
+for (const mode of ['2d', '3d'] as const) {
+  test(`mc3 ${mode} portrait: header stats, clock, fleet panel, AI Core label and scene band never overlap`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+    if (mode === '3d') test.slow();
+    const faults = watchFaults(page);
+    await openPhone(page, mode);
+    const m = await phoneBoxes(page);
+    for (let i = 0; i < m.boxes.length; i++) {
+      for (let j = i + 1; j < m.boxes.length; j++) {
+        const a = m.boxes[i], b = m.boxes[j];
+        const overlaps = a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+        expect(overlaps, `${a.name} overlaps ${b.name}`).toBe(false);
+      }
+    }
+    expect(faults).toEqual([]);
+  });
+
+  test(`mc3 ${mode} portrait: no page-level sideways or downward scroll, and every box sits in the viewport`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+    if (mode === '3d') test.slow();
+    const faults = watchFaults(page);
+    await openPhone(page, mode);
+    const m = await phoneBoxes(page);
+    expect(m.scrollW, 'page scrollWidth').toBeLessThanOrEqual(m.vw);
+    expect(m.scrollH, 'page scrollHeight').toBeLessThanOrEqual(m.vh);
+    for (const b of [...m.boxes, ...m.labels]) {
+      expect(b.left, `${b.name} left edge`).toBeGreaterThanOrEqual(0);
+      expect(b.top, `${b.name} top edge`).toBeGreaterThanOrEqual(0);
+      expect(b.right, `${b.name} right edge`).toBeLessThanOrEqual(m.vw);
+      expect(b.bottom, `${b.name} bottom edge`).toBeLessThanOrEqual(m.vh);
+    }
+    expect(faults).toEqual([]);
+  });
+
+  test(`mc3 ${mode} portrait: the scene is a full-width band, anchor labels sit inside it, the tile strip scrolls sideways, and the donut is a circle`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+    if (mode === '3d') test.slow();
+    const faults = watchFaults(page);
+    await openPhone(page, mode);
+    const m = await phoneBoxes(page);
+    const band = m.boxes.find((b) => b.name === 'scene band')!;
+    expect(band.right - band.left, 'scene band width').toBeGreaterThanOrEqual(m.vw - 24);
+    for (const l of m.labels) {
+      expect(l.left >= band.left && l.right <= band.right && l.top >= band.top && l.bottom <= band.bottom, `${l.name} inside the scene band`).toBe(true);
+    }
+    expect(['auto', 'scroll']).toContain(m.stripOverflowX);
+    expect(m.stripScrolls, 'tile strip overflows its own box').toBe(true);
+    expect(m.strip.right).toBeLessThanOrEqual(m.vw);
+    expect(m.ring.right - m.ring.left).toBeCloseTo(m.ring.bottom - m.ring.top, 0);
+    expect(m.ringRows, 'fleet rows shown').toBeLessThanOrEqual(4);
+    expect(faults).toEqual([]);
+  });
+}
+
 // The fleet list shows only AI-category services, and the accelerator anchors are always drawn:
 // four device roles plus the cloud node, each named from its device labels (the vendor word
 // dropped, the role tag added where two anchors read alike). A model sits on the anchor whose host
