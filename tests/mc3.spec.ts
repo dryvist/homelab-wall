@@ -160,6 +160,7 @@ for (const mode of ['2d', '3d'] as const) {
     const faults = watchFaults(page);
     await openPhone(page, mode);
     const m = await phoneBoxes(page);
+    expect(m.boxes.filter((b) => b.name.startsWith('header stat')).length, 'header stats rendered').toBeGreaterThan(0);
     for (let i = 0; i < m.boxes.length; i++) {
       for (let j = i + 1; j < m.boxes.length; j++) {
         const a = m.boxes[i], b = m.boxes[j];
@@ -201,6 +202,9 @@ for (const mode of ['2d', '3d'] as const) {
     expect(['auto', 'scroll']).toContain(m.stripOverflowX);
     expect(m.stripScrolls, 'tile strip overflows its own box').toBe(true);
     expect(m.strip.right).toBeLessThanOrEqual(m.vw);
+    expect(m.ring.right - m.ring.left, 'fleet donut width').toBeGreaterThan(0);
+    expect(m.ring.bottom - m.ring.top, 'fleet donut height').toBeGreaterThan(0);
+    expect(m.ring.left >= 0 && m.ring.right <= m.vw, 'fleet donut inside the viewport width').toBe(true);
     expect(m.ring.right - m.ring.left).toBeCloseTo(m.ring.bottom - m.ring.top, 0);
     expect(m.ringRows, 'fleet rows shown').toBeLessThanOrEqual(4);
     expect(faults).toEqual([]);
