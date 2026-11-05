@@ -456,6 +456,7 @@ function layoutAnchors() {
   // Labels move now, not on the next render frame: a 3D frame can take seconds, and a label left on
   // an earlier layout would sit on the tile strip until then.
   placeAnchors();
+  markPending(); // the layout is a scene input: the next drawn frame takes the new slots in
 }
 function placeAnchors() {
   const host = $('anchors');
