@@ -147,7 +147,7 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
    auto-scrolls a taller page, which would slide the fixed anchor labels off the scene. The label
    numbers match labelBox() in mc3.js. */
 @media (orientation:portrait){
-  #stage{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(180px,1fr) auto auto}
+  #stage{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(clamp(96px,22dvh,180px),1fr) auto auto}
   header{grid-row:1;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 12px}
   .brand{grid-column:1;grid-row:1;min-width:0}
   .clock{grid-column:2;grid-row:1}

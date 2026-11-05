@@ -113,10 +113,12 @@ test('mc3: a missing /api/llm/recent renders an explicit NO FEED state with no i
 // autoScroll would slide the fixed anchor labels off the scene); every label sits in the viewport.
 // Measured on both render paths, after the page's one ready message.
 const PHONE = { width: 390, height: 844 };
+// A short phone: the scene row must shrink so the header, scene and panels still fit the height.
+const SHORT_PHONE = { width: 390, height: 667 };
 type BoxRect = { name: string; left: number; top: number; right: number; bottom: number };
 
-async function openPhone(page: Page, mode: '2d' | '3d', opts: FeedOpts = {}) {
-  await page.setViewportSize(PHONE);
+async function openPhone(page: Page, mode: '2d' | '3d', opts: FeedOpts = {}, viewport = PHONE) {
+  await page.setViewportSize(viewport);
   await mockFeeds(page, opts);
   await page.goto(`/mc3/?gl=${mode}`);
   await awaitReady(page, mode);
@@ -172,22 +174,24 @@ for (const mode of ['2d', '3d'] as const) {
     expect(faults).toEqual([]);
   });
 
-  test(`mc3 ${mode} portrait: no page-level sideways or downward scroll, and every box sits in the viewport`, async ({ page }) => {
-    test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
-    if (mode === '3d') test.slow();
-    const faults = watchFaults(page);
-    await openPhone(page, mode);
-    const m = await phoneBoxes(page);
-    expect(m.scrollW, 'page scrollWidth').toBeLessThanOrEqual(m.vw);
-    expect(m.scrollH, 'page scrollHeight').toBeLessThanOrEqual(m.vh);
-    for (const b of [...m.boxes, ...m.labels]) {
-      expect(b.left, `${b.name} left edge`).toBeGreaterThanOrEqual(0);
-      expect(b.top, `${b.name} top edge`).toBeGreaterThanOrEqual(0);
-      expect(b.right, `${b.name} right edge`).toBeLessThanOrEqual(m.vw);
-      expect(b.bottom, `${b.name} bottom edge`).toBeLessThanOrEqual(m.vh);
-    }
-    expect(faults).toEqual([]);
-  });
+  for (const viewport of [PHONE, SHORT_PHONE]) {
+    test(`mc3 ${mode} portrait ${viewport.height}px: no page-level sideways or downward scroll, and every box sits in the viewport`, async ({ page }) => {
+      test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+      if (mode === '3d') test.slow();
+      const faults = watchFaults(page);
+      await openPhone(page, mode, {}, viewport);
+      const m = await phoneBoxes(page);
+      expect(m.scrollW, 'page scrollWidth').toBeLessThanOrEqual(m.vw);
+      expect(m.scrollH, 'page scrollHeight').toBeLessThanOrEqual(m.vh);
+      for (const b of [...m.boxes, ...m.labels]) {
+        expect(b.left, `${b.name} left edge`).toBeGreaterThanOrEqual(0);
+        expect(b.top, `${b.name} top edge`).toBeGreaterThanOrEqual(0);
+        expect(b.right, `${b.name} right edge`).toBeLessThanOrEqual(m.vw);
+        expect(b.bottom, `${b.name} bottom edge`).toBeLessThanOrEqual(m.vh);
+      }
+      expect(faults).toEqual([]);
+    });
+  }
 
   test(`mc3 ${mode} portrait: the scene is a full-width band, anchor labels sit inside it, the tile strip scrolls sideways, and the donut is a circle`, async ({ page }) => {
     test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
