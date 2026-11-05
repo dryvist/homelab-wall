@@ -116,16 +116,9 @@ type BoxRect = { name: string; left: number; top: number; right: number; bottom:
 
 async function openPhone(page: Page, mode: '2d' | '3d') {
   await page.setViewportSize(PHONE);
-  await page.addInitScript(() => {
-    (window as { wallReady?: number }).wallReady = 0;
-    window.addEventListener('message', (e: MessageEvent) => {
-      if (e.source === window && (e.data as { wall?: string })?.wall === 'ready') (window as { wallReady?: number }).wallReady! += 1;
-    });
-  });
   await mockFeeds(page);
   await page.goto(`/mc3/?gl=${mode}`);
-  await expect.poll(() => page.evaluate(() => (window as { wallReady?: number }).wallReady), { timeout: mode === '3d' ? 45_000 : 15_000 }).toBe(1);
-  await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok');
+  await awaitReady(page, mode);
   await expect(page.locator('#anchors .anchor')).toHaveCount(5);
 }
 
