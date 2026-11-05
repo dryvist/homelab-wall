@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/dryvist/homelab-wall/compare/v0.15.0...v0.15.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* **mc3:** wait on a scene-ready signal before asserting 3D state ([#127](https://github.com/dryvist/homelab-wall/issues/127)) ([ad07d0a](https://github.com/dryvist/homelab-wall/commit/ad07d0ab778250bdae89c977e20ecb6d3b6852ae))
+
 ## [0.15.0](https://github.com/dryvist/homelab-wall/compare/v0.14.0...v0.15.0) (2026-11-04)
 
 
