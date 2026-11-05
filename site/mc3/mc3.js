@@ -194,6 +194,7 @@ function render() {
   renderKpis();
   renderAnchors();
   core3d?.sync(model.models, model.tokensToday, sceneAnchors());
+  markPending(); // the inputs changed: the next drawn frame takes them in and marks the signal ready
 }
 
 function renderKpis() {
@@ -455,6 +456,7 @@ function layoutAnchors() {
   // Labels move now, not on the next render frame: a 3D frame can take seconds, and a label left on
   // an earlier layout would sit on the tile strip until then.
   placeAnchors();
+  markPending(); // the layout is a scene input: the next drawn frame takes the new slots in
 }
 function placeAnchors() {
   const host = $('anchors');
@@ -585,7 +587,13 @@ function drawReactor(now) {
 /* ---------------- boot ---------------- */
 const forced = new URLSearchParams(location.search).get('gl');
 let core3d = null;
-let drawScene = drawReactor;
+// The readiness signal (data-scene) and the mode (data-renderer). markPending() runs on every change to the
+// scene's inputs; the frame that draws them calls markDrawn(), which turns 'pending' into 'ready'. A frame
+// runs to completion, so 'ready' means the latest inputs are on the canvas and in the labels.
+function markPending() { reactor.dataset.scene = 'pending'; }
+function markDrawn() { if (reactor.dataset.scene === 'pending') reactor.dataset.scene = 'ready'; }
+function draw2D(now) { drawReactor(now); markDrawn(); }
+let drawScene = draw2D;
 let gpuAttempts = 0;
 // A canvas that ever held a WebGPU/WebGL context can't hand out a 2D one, so every rebuild or
 // fallback starts from a fresh copy of the element.
@@ -599,11 +607,15 @@ function use2D(reason) {
   core3d?.dispose();
   core3d = null;
   freshReactor();
-  drawScene = drawReactor;
+  reactor.dataset.renderer = '2d';
+  markPending();
+  drawScene = draw2D;
 }
 async function startGpuCore() {
   gpuAttempts += 1;
   drawScene = () => {};
+  reactor.dataset.renderer = '3d';
+  markPending();
   try {
     const { buildGpuCore } = await import('/mc3/core3d.js');
     const core = await buildGpuCore(reactor, {
@@ -620,7 +632,11 @@ async function startGpuCore() {
     core3d = core;
     core.layout(slots);
     core.sync(model.models.length ? model.models : reactorList, model.tokensToday, sceneAnchors());
-    drawScene = (now) => core.render(now);
+    markPending();
+    drawScene = (now) => {
+      core.render(now);
+      markDrawn();
+    };
   } catch (e) {
     use2D(e);
   }
@@ -628,6 +644,9 @@ async function startGpuCore() {
 if (forced === '3d' || (forced !== '2d' && hardwareGL())) {
   startGpuCore();
   onDispose(() => core3d?.dispose());
+} else {
+  reactor.dataset.renderer = '2d';
+  markPending();
 }
 
 const tickClock = () => { const d = new Date(); $('clock').innerHTML = `${d.toTimeString().slice(0, 8)}<small>${d.toDateString().toUpperCase()}</small>`; };
