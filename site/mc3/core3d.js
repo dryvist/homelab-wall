@@ -361,8 +361,9 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
     cam.aspect = w / (h || 1);
     cam.updateProjectionMatrix();
   };
+  // The canvas itself: on a phone it is a band whose size follows the header and panels, not the stage's.
   const ro = new ResizeObserver(resize);
-  ro.observe(canvas.parentElement);
+  ro.observe(canvas);
   resize();
   renderer.compute(init);
 

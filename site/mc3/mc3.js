@@ -21,15 +21,21 @@ const cfg = await loadConfig();
 // anchor's place on the ellipse around the hub, in screen degrees (0 = right, 90 = down). layoutAnchors
 // turns it into a CSS-px point, and the 3D scene and the 2D fallback both draw from those points.
 const ANCHOR_DEFS = [
-  { id: 'gpu-primary', kind: 'gpu', angle: 200 },
-  { id: 'gpu-secondary', kind: 'gpu', angle: 250 },
-  { id: 'mac-primary', kind: 'mac', angle: 290 },
-  { id: 'mac-secondary', kind: 'mac', angle: 340 },
-  { id: 'cloud', kind: 'cloud', angle: 90 },
+  { id: 'gpu-primary', kind: 'gpu', angle: 200, portraitAngle: 0 },
+  { id: 'gpu-secondary', kind: 'gpu', angle: 250, portraitAngle: 160 },
+  { id: 'mac-primary', kind: 'mac', angle: 290, portraitAngle: 200 },
+  { id: 'mac-secondary', kind: 'mac', angle: 340, portraitAngle: 250 },
+  { id: 'cloud', kind: 'cloud', angle: 90, portraitAngle: 90 },
 ];
-// Label box under each node: LABEL_W wide, LABEL_TOP below the node's centre (.alab in mc3.css), LABEL_H tall.
+// Phone portrait (orientation: portrait, the same query mc3.css uses) places nodes by portraitAngle.
+const portraitMQ = matchMedia('(orientation: portrait)');
+const PORTRAIT_FLEET_ROWS = 4;
+// Label box under each node, in CSS px. The wall's box is LABEL_W wide, LABEL_TOP below the node's centre
+// (.alab in mc3.css), LABEL_H tall. Portrait uses a narrower box with the name and busy line only.
 const LABEL_W = 320, LABEL_TOP = 40, LABEL_H = 84, EDGE = 16;
-let slots = ANCHOR_DEFS.map(() => ({ x: 0, y: 0 })); // CSS-px node points, set by layoutAnchors
+const labelBox = (portrait) => (portrait ? { w: 150, top: 28, h: 34 } : { w: LABEL_W, top: LABEL_TOP, h: LABEL_H });
+let slots = ANCHOR_DEFS.map(() => ({ x: 0, y: 0 })); // CSS-px node points on the canvas, set by layoutAnchors
+let bandAt = { x: 0, y: 0 }; // the canvas origin in viewport px; a label sits at bandAt + its slot
 const CLOUD = ANCHOR_DEFS.length - 1;
 const ROLE = new Map(ANCHOR_DEFS.slice(0, CLOUD).map((d, i) => [d.id, i]));
 // Mirrors site/mc3/core3d.js: requests are drawn one bead each up to BEAD_RING, packed into rings
@@ -238,7 +244,12 @@ function renderApps() {
   const warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
   const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
   $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> &middot; <span style="color:var(--amber)">${warn} DEG</span> &middot; <span style="color:var(--red)">${bad} DOWN</span>`;
-  $('applist').innerHTML = aiApps.map((a) => `<div class="ar"><i style="background:${hue(scorePct(a.s))}"></i><span>${esc(a.n)}</span><b class="num">${Math.round(a.s)}</b></div>`).join('');
+  // Phone portrait lists the most severe services first, capped, then a count of the rest.
+  const rows = portraitMQ.matches ? [...aiApps].sort((a, b) => a.s - b.s) : aiApps;
+  const shown = portraitMQ.matches ? rows.slice(0, PORTRAIT_FLEET_ROWS) : rows;
+  const more = rows.length - shown.length;
+  $('applist').innerHTML = shown.map((a) => `<div class="ar"><i style="background:${hue(scorePct(a.s))}"></i><span>${esc(a.n)}</span><b class="num">${Math.round(a.s)}</b></div>`).join('')
+    + (more ? `<div class="armore">+${more} more</div>` : '');
   drawRing($('fleetRing'), scores.length ? scores.reduce((x, y) => x + y, 0) / scores.length : null);
   setSampleBadge($('apps'), false);
   setState($('apps'), scores.length ? 'ok' : 'empty', scores.length ? '' : 'NO SERVICE DATA');
@@ -307,7 +318,7 @@ function renderCore() {
   // One row, always: an explicit column count (not auto-fit's width-based wrap) so N models
   // never orphan a lone tile onto a second row. Compact type kicks in once the row is dense
   // enough that auto-fit's old 200px-min columns would have wrapped anyway.
-  tab.style.gridTemplateColumns = `repeat(${Math.max(list.length, 1)},minmax(0,1fr))`;
+  tab.style.setProperty('--cols', String(Math.max(list.length, 1)));
   tab.classList.toggle('dense', list.length > 5);
   tab.innerHTML = list.map((m) => {
     const col = m.up ? (m.tok > 0.05 ? 'var(--green)' : 'var(--cyan)') : 'var(--red)';
@@ -440,17 +451,27 @@ function renderAnchors() {
 // tile strip. The ellipse keeps every node's label box inside that area, so nothing clips at an edge.
 // Both render paths read the same points (slots), and the 3D scene pins its nodes to them.
 function layoutAnchors() {
-  const fleet = $('apps').getBoundingClientRect();
-  const head = document.querySelector('header').getBoundingClientRect();
-  const strip = $('modeltab').getBoundingClientRect();
-  const x0 = fleet.right + EDGE, x1 = innerWidth - EDGE;
-  const y0 = head.bottom + EDGE, y1 = (strip.height ? strip.top : innerHeight) - EDGE;
-  const minX = x0 + LABEL_W / 2, maxX = x1 - LABEL_W / 2;
-  const minY = y0 + LABEL_TOP, maxY = y1 - LABEL_TOP - LABEL_H;
+  const portrait = portraitMQ.matches;
+  const band = $('reactor').getBoundingClientRect();
+  let x0, x1, y0, y1;
+  if (portrait) {
+    // Phone portrait: the scene is its own full-width band, and the ellipse fills that band.
+    x0 = band.left + EDGE; x1 = band.right - EDGE; y0 = band.top + EDGE; y1 = band.bottom - EDGE;
+  } else {
+    const fleet = $('apps').getBoundingClientRect();
+    const head = document.querySelector('header').getBoundingClientRect();
+    const strip = $('modeltab').getBoundingClientRect();
+    x0 = fleet.right + EDGE; x1 = innerWidth - EDGE;
+    y0 = head.bottom + EDGE; y1 = (strip.height ? strip.top : innerHeight) - EDGE;
+  }
+  const { w, top, h } = labelBox(portrait);
+  const minX = x0 + w / 2, maxX = x1 - w / 2;
+  const minY = y0 + top, maxY = y1 - top - h;
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, rx = (maxX - minX) / 2, ry = (maxY - minY) / 2;
+  bandAt = { x: band.left, y: band.top };
   slots = ANCHOR_DEFS.map((d) => {
-    const a = (d.angle * Math.PI) / 180;
-    return { x: clamp(cx + rx * Math.cos(a), minX, maxX), y: clamp(cy + ry * Math.sin(a), minY, maxY) };
+    const a = ((portrait ? d.portraitAngle : d.angle) * Math.PI) / 180;
+    return { x: clamp(cx + rx * Math.cos(a), minX, maxX) - bandAt.x, y: clamp(cy + ry * Math.sin(a), minY, maxY) - bandAt.y };
   });
   core3d?.layout(slots);
   // Labels move now, not on the next render frame: a 3D frame can take seconds, and a label left on
@@ -461,7 +482,7 @@ function layoutAnchors() {
 function placeAnchors() {
   const host = $('anchors');
   for (let i = 0; i < accel.length; i++) {
-    host.children[i].style.transform = `translate3d(${slots[i].x.toFixed(1)}px,${slots[i].y.toFixed(1)}px,0)`;
+    host.children[i].style.transform = `translate3d(${(slots[i].x + bandAt.x).toFixed(1)}px,${(slots[i].y + bandAt.y).toFixed(1)}px,0)`;
   }
 }
 
@@ -660,10 +681,14 @@ onDispose(() => clearInterval(clockId));
 renderAnchors();
 addEventListener('resize', layoutAnchors);
 onDispose(() => removeEventListener('resize', layoutAnchors));
+// Rotating the phone switches the layout and the fleet list's rows.
+const onOrientation = () => { renderApps(); layoutAnchors(); };
+portraitMQ.addEventListener('change', onOrientation);
+onDispose(() => portraitMQ.removeEventListener('change', onOrientation));
 // The label layout also follows the header, fleet panel and tile strip: a font load or a change in the
 // model count can resize them after the last layout, and the labels must not sit on the strip.
 const layoutObserver = new ResizeObserver(layoutAnchors);
-for (const el of [document.querySelector('header'), $('apps'), $('modeltab')]) layoutObserver.observe(el);
+for (const el of [document.querySelector('header'), $('apps'), $('cores'), $('modeltab')]) layoutObserver.observe(el);
 onDispose(() => layoutObserver.disconnect());
 loop(0, (now) => { drawScene(now); placeAnchors(); }); // uncapped: native refresh rate, the display has headroom to spare
 // The first feed poll runs alongside the first refresh, never after it: a slow refresh must not

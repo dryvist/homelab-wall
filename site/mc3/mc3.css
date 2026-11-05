@@ -71,6 +71,8 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
 .ar i{width:7px;height:7px;border-radius:50%;box-shadow:0 0 6px currentColor}
 .ar span{color:var(--ink);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .ar b{color:var(--dim);font-weight:600}
+/* Count of the services not listed on a phone (mc3.js renderApps). */
+.armore{font:600 9px/1.2 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);padding-top:2px}
 
 /* Dense fill for the rest of the fleet-health column, below the 3 app rows: req/min, a GPU/VRAM
    stand-in gauge, per-model tok/s sparklines, and a scrolling stand-in request feed. No live
@@ -105,11 +107,11 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
 /* max-height as a viewport unit, not a %: a percentage here resolves against the grid row's
    auto-sized (content-dependent) height, which is circular and clipped the 4th (queue/latency)
    line silently — overflow:auto with no visible scrollbar, so the row just vanished. */
-/* Column count is set inline per-render (mc3.js) to an explicit repeat(N,1fr) — never
+/* Column count is set per-render (mc3.js, the --cols property) to an explicit repeat(N,1fr) — never
    auto-fit's width-based wrap, which orphaned a lone tile onto a second row at N=8. Always one
    row, so the band's height (and how much of the hero scene below it covers) stays fixed
    regardless of model count. */
-.modeltab{align-self:end;display:grid;gap:clamp(6px,.8vmin,10px);
+.modeltab{align-self:end;display:grid;grid-template-columns:repeat(var(--cols,1),minmax(0,1fr));gap:clamp(6px,.8vmin,10px);
   padding:clamp(8px,1.2vmin,14px);max-height:clamp(110px,16vh,160px);overflow:auto}
 /* Dense mode (>5 models sharing the one row): smaller type and padding so narrow columns stay
    legible instead of clipping/wrapping. */
@@ -138,3 +140,25 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
 .mcstats b{color:var(--ink);font-weight:600}
 
 @media (prefers-reduced-motion:reduce){.panel{animation:none}}
+
+/* Phone portrait (orientation: portrait; mc3.js reads the same query). One column, top to bottom: the
+   header, the AI scene as its own full-width band, the AI Core panel with its tile strip, then the fleet
+   panel. The band takes the height the other rows leave, so the page fits the viewport: stage.js
+   auto-scrolls a taller page, which would slide the fixed anchor labels off the scene. The label
+   numbers match labelBox() in mc3.js. */
+@media (orientation:portrait){
+  #stage{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(180px,1fr) auto auto}
+  header{grid-row:1;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 12px}
+  .brand{grid-column:1;grid-row:1;min-width:0}
+  .clock{grid-column:2;grid-row:1}
+  .kpis{grid-column:1/-1;grid-row:2;flex:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px}
+  #reactor{position:relative;inset:auto;grid-column:1;grid-row:2;width:100%;height:100%;min-width:0;min-height:0}
+  #cores{grid-column:1;grid-row:3;grid-template-rows:auto auto}
+  #cores>h2{white-space:nowrap}
+  .modeltab{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(164px,1fr);align-self:start;max-height:none;overflow-x:auto;overflow-y:hidden}
+  #apps{grid-column:1;grid-row:4}
+  #fleetRing{width:112px;max-height:none;align-self:center}
+  .coreextra{display:none}
+  .alab{top:28px;left:-75px;width:150px}
+  .as{display:none}
+}
