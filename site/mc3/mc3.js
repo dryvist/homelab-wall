@@ -194,6 +194,7 @@ function render() {
   renderKpis();
   renderAnchors();
   core3d?.sync(model.models, model.tokensToday, sceneAnchors());
+  markPending(); // the inputs changed: the next drawn frame takes them in and marks the signal ready
 }
 
 function renderKpis() {
@@ -613,6 +614,7 @@ async function startGpuCore() {
   gpuAttempts += 1;
   drawScene = () => {};
   reactor.dataset.renderer = '3d';
+  markPending();
   try {
     const { buildGpuCore } = await import('/mc3/core3d.js');
     const core = await buildGpuCore(reactor, {
@@ -629,12 +631,10 @@ async function startGpuCore() {
     core3d = core;
     core.layout(slots);
     core.sync(model.models.length ? model.models : reactorList, model.tokensToday, sceneAnchors());
-    // The 3D readiness signal: the first drawn frame writes the scene's state (stream count, dim
-    // anchors) and places the labels, so data-scene="ready" follows that frame.
-    let frames = 0;
+    markPending();
     drawScene = (now) => {
       core.render(now);
-      if (!frames++) reactor.dataset.scene = 'ready';
+      markDrawn();
     };
   } catch (e) {
     use2D(e);
