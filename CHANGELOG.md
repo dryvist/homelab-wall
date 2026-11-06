@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/dryvist/homelab-wall/compare/v0.16.0...v0.17.0) (2026-11-06)
+
+
+### Features
+
+* **lib:** optional source timestamps and aligned range queries ([#133](https://github.com/dryvist/homelab-wall/issues/133)) ([135d833](https://github.com/dryvist/homelab-wall/commit/135d83310e2ed153ac32e4bfbf4f36c4c498c19e))
+
 ## [0.16.0](https://github.com/dryvist/homelab-wall/compare/v0.15.1...v0.16.0) (2026-11-06)
 
 
