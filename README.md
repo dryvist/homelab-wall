@@ -31,6 +31,15 @@ MC5 also calls the public GitHub API (`https://api.github.com`) straight from
 the browser, with no token, for an organization's events, repositories and
 releases.
 
+The shared client keeps `query(expr)` rows as `{labels, value}` and
+`range(expr, minutes, stepSeconds)` rows as `{labels, values: [number]}`.
+Pass `{timestamps: true}` as the final argument to include `timestamp` in
+instant rows or `[timestamp, value]` pairs in range `values`. Timestamps are
+seconds from the source samples, including when replaying an old snapshot.
+Range also accepts `{align: true}` to floor the live request's end to a step
+boundary; it keeps the requested duration and leaves snapshot samples intact.
+Run the client tests offline with `node --test tests/*.test.js`.
+
 MC6 reads `GET /api/words` (same origin), ClickHouse `FORMAT JSON`:
 `{"meta": [...], "data": [{"source": "user", "word": "deploy", "n": "412"}, ...], "rows": N}`.
 `n` is a UInt64 serialized as a string. Every known source keeps a tile even

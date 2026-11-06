@@ -53,31 +53,40 @@ function fromSnapshot(entry, key) {
   return entry.result;
 }
 
-// Instant vector -> [{labels, value}]
-export async function query(expr) {
+// Instant vector -> [{labels, value}], optionally including the source timestamp in seconds.
+export async function query(expr, { timestamps = false } = {}) {
   const cfg = await getConfig();
+  let rows;
   if (cfg.snapshot) {
     const key = keyFor(expr);
     const snap = await getSnapshot(cfg.snapshot);
-    const rows = fromSnapshot(snap.instant?.[key], key);
-    return rows.map((r) => ({ labels: r.metric, value: Number(r.value[1]) }));
+    rows = fromSnapshot(snap.instant?.[key], key);
+  } else {
+    rows = await get('query', { query: expr });
   }
-  const rows = await get('query', { query: expr });
-  return rows.map((r) => ({ labels: r.metric, value: Number(r.value[1]) }));
+  return rows.map((r) => ({
+    labels: r.metric, value: Number(r.value[1]),
+    ...(timestamps ? { timestamp: Number(r.value[0]) } : {}),
+  }));
 }
 
-// Range vector -> [{labels, values:[number]}]
-export async function range(expr, minutes, stepSeconds) {
+// Range vector -> [{labels, values:[number]}]; timestamps opts into [seconds, value] pairs.
+export async function range(expr, minutes, stepSeconds, { timestamps = false, align = false } = {}) {
   const cfg = await getConfig();
+  let rows;
   if (cfg.snapshot) {
     const key = keyFor(expr);
     const snap = await getSnapshot(cfg.snapshot);
-    const rows = fromSnapshot(snap.range?.[key], key);
-    return rows.map((r) => ({ labels: r.metric, values: r.values.map((v) => Number(v[1])) }));
+    rows = fromSnapshot(snap.range?.[key], key);
+  } else {
+    const quantum = align ? stepSeconds : 1;
+    const end = Math.floor(Date.now() / 1000 / quantum) * quantum;
+    rows = await get('query_range', { query: expr, start: end - minutes * 60, end, step: stepSeconds });
   }
-  const end = Math.floor(Date.now() / 1000);
-  const rows = await get('query_range', { query: expr, start: end - minutes * 60, end, step: stepSeconds });
-  return rows.map((r) => ({ labels: r.metric, values: r.values.map((v) => Number(v[1])) }));
+  return rows.map((r) => ({
+    labels: r.metric,
+    values: r.values.map((v) => timestamps ? [Number(v[0]), Number(v[1])] : Number(v[1])),
+  }));
 }
 
 // Run every query; a failed one yields null so only its panel shows "pending".
@@ -87,5 +96,5 @@ export async function settle(named) {
   return Object.fromEntries(keys.map((k, i) => [k, out[i].status === 'fulfilled' ? out[i].value : null]));
 }
 
-// "pve-w1700.example.com:9100" -> "pve-w1700"
+// "node-a.example.test:9100" -> "node-a"
 export const shortHost = (instance = '') => instance.split(':')[0].split('.')[0];
