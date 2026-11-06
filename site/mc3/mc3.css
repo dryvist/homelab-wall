@@ -72,11 +72,7 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
 .ar span{color:var(--ink);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .ar b{color:var(--dim);font-weight:600}
 
-/* Dense fill for the rest of the fleet-health column, below the 3 app rows: req/min, a GPU/VRAM
-   stand-in gauge, per-model tok/s sparklines, and a scrolling stand-in request feed. No live
-   GPU/VRAM or per-request metric exists (see Q, site/lib/queries.js) — this whole block is
-   stand-in, marked via [data-source] on the elements that carry no real number at all
-   (cxGpu/gauge/feed); cxReqMin mirrors the real header KPI, so it stays unmarked. */
+/* Live rate, busy, and device energy readouts above the metadata feed. */
 .coreextra{flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;
   padding:6px clamp(8px,1.2vmin,12px) 8px;border-top:1px solid var(--grid);overflow:hidden}
 .cxrow{display:flex;justify-content:space-between;align-items:baseline;font-size:clamp(9px,.9vmin,11px);color:var(--dim);letter-spacing:.12em;text-transform:uppercase}
@@ -110,7 +106,7 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
    row, so the band's height (and how much of the hero scene below it covers) stays fixed
    regardless of model count. */
 .modeltab{align-self:end;display:grid;gap:clamp(6px,.8vmin,10px);
-  padding:clamp(8px,1.2vmin,14px);max-height:clamp(110px,16vh,160px);overflow:auto}
+  padding:clamp(8px,1.2vmin,14px);max-height:48vh;overflow:auto;scroll-snap-type:x mandatory}
 /* Dense mode (>5 models sharing the one row): smaller type and padding so narrow columns stay
    legible instead of clipping/wrapping. */
 .modeltab.dense .mc{padding:6px 8px 8px}
@@ -131,10 +127,22 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
 .mcbar{height:5px;background:#200a28;margin-top:8px}
 .mcbar div{height:100%}
 .mcspark{width:100%;height:22px;display:block;margin-top:6px}
-/* Dense per-model readout row: queue depth + p50 latency, surrounding the reactor scene
-   alongside tok/s and UP/DOWN status. No live litellm queue/latency metric exists yet (see
-   Q in site/lib/queries.js) — always stand-in, marked on .modeltab itself via setStandIn. */
+/* Router queue and API latency averages; engine metrics keep their own readouts. */
 .mcstats{display:flex;gap:10px;margin-top:6px;font-size:clamp(9px,.85vmin,10px);color:var(--dim)}
 .mcstats b{color:var(--ink);font-weight:600}
+
+.mc{scroll-snap-align:start;min-width:0}
+.mcspark{height:18px;margin-top:3px}
+.mcspark.prefill{height:14px}
+.bench-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:5px}
+.bench-readout{display:flex;justify-content:space-between;gap:6px;align-items:baseline;
+  font:400 clamp(9px,.85vmin,11px)/1.35 var(--mono);color:var(--dim)}
+.bench-readout b{color:var(--ink);font-weight:600;white-space:nowrap}
+.bench-grid .bench-readout{flex-direction:column;gap:0}
+.bench-grid .bench-readout b{white-space:normal}
+.mcstats{flex-wrap:wrap}
+.device-power{padding:4px 0;border-bottom:1px solid var(--grid)}
+.device-power>b{font:500 10px var(--mono);color:var(--cyan);text-transform:uppercase}
+.mcv{line-height:1.3}
 
 @media (prefers-reduced-motion:reduce){.panel{animation:none}}

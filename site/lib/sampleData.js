@@ -58,3 +58,33 @@ export const SAMPLE_ALLOWED = [
 // (Q.acceleratorBusy) and never uses it.
 export const sampleGpuBase = (i) => 18 + (i % 3) * 14;
 
+// MC3 test fixtures only. Never imported by the cockpit or used as runtime fallbacks.
+const engineRows = (vllm, llama) => [
+  { labels: { backend: 'vllm', model: 'engine-large' }, value: vllm },
+  ...(llama == null ? [] : [{ labels: { backend: 'llamacpp', model: 'engine-embed' }, value: llama }]),
+];
+const routerRows = (value) => [{ labels: { model: 'model-large' }, value }];
+export const SAMPLE_BENCHMARKS = {
+  engineDecode: engineRows(120, 25),
+  enginePrefill: engineRows(800, 300),
+  engineTtftP50: engineRows(0.1),
+  engineTtftP95: engineRows(0.25),
+  engineTtftP99: engineRows(0.5),
+  engineItlP50: engineRows(0.01),
+  engineItlP99: engineRows(0.05),
+  engineRunning: engineRows(3, 1),
+  engineWaiting: engineRows(2, 0),
+  engineKvPercent: engineRows(65),
+  enginePrefixPercent: engineRows(40),
+  engineSpecPercent: engineRows(75, 60),
+  routerInput: routerRows(450),
+  acceleratorWatts: [
+    { labels: { accelerator: 'gpu-primary' }, value: 240 },
+    { labels: { accelerator: 'mac-primary' }, value: 60 },
+  ],
+  acceleratorTokensPerJoule: [
+    { labels: { accelerator: 'gpu-primary' }, value: 0.5 },
+    { labels: { accelerator: 'mac-primary' }, value: 0.25 },
+  ],
+};
+

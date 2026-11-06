@@ -8,10 +8,11 @@ other dashboards.
 
 | Path | What |
 | --- | --- |
-| `site/mc1/` | Mission Control 1: nodes, storage, 3D topology, app health honeycomb, LLM status, firewall feeds |
-| `site/mc6/` | Mission Control 6 (LEXICON): a hero word cloud cycling the sources every 8 s plus a strip with one small cloud per source |
-| `site/lib/` | Shared Prometheus client, PromQL (including the app health score), stage/GL helpers |
-| `site/vendor/`, `site/fonts/` | three.js, d3-cloud and fonts, vendored so no page loads code or fonts from the internet |
+| `site/mc1/` | Nodes, storage, topology, health, LLM, and firewall feeds |
+| `site/mc3/` | AI Core: engine benchmarks, router averages, device energy |
+| `site/mc6/` | LEXICON: source word clouds, cycling every 8 s |
+| `site/lib/` | Shared Prometheus client, PromQL, stage/GL helpers |
+| `site/vendor/`, `site/fonts/` | Offline three.js, d3-cloud, and fonts |
 | `tests/` | Playwright at 1920×1080 against fixture data |
 
 ## Runtime contract
@@ -32,12 +33,20 @@ the browser, with no token, for an organization's events, repositories and
 releases.
 
 MC6 reads `GET /api/words` (same origin), ClickHouse `FORMAT JSON`:
-`{"meta": [...], "data": [{"source": "user", "word": "deploy", "n": "412"}, ...], "rows": N}`.
+
+```json
+{
+  "meta": [],
+  "data": [{"source": "user", "word": "deploy", "n": "412"}],
+  "rows": 1
+}
+```
+
 `n` is a UInt64 serialized as a string. Every known source keeps a tile even
 when the feed has no rows for it — an explicit NO FEED state; a feed that
 fails keeps its last good clouds and shows the stale indicator.
 
-A panel whose source is not wired yet, or whose query comes back empty or
+A panel outside MC3 whose source is not wired yet, or whose query is empty or
 fails, shows plausible stand-in content instead of a placeholder. Nothing on
 screen marks it: a `data-source="stand-in"` attribute (plus `data-state`
 `empty`, `pending` or `error` for an empty or failed query) records it for
@@ -52,6 +61,18 @@ itself always comes from `config.json` (`nodeRoles` + `extraNodes`), never
 from whichever series a poll happens to return.
 On a software WebGL renderer the topology drops to a 2D mode; `?gl=3d` or
 `?gl=2d` forces either.
+
+## MC3 benchmark beta
+
+MC3's benchmark beta reads engine counter rates and 10-minute range sparklines.
+vLLM percentiles use its base-name histograms. Router TTFT, output token latency,
+queue, and API averages show `NO DATA · router averages pending ingest fix` until
+summary ingestion is repaired. Token rates use counters; sparklines retain sample
+timestamps within the requested window and break across missing intervals.
+Missing engine, cache, or power measurements show `NO DATA`. Device watts are a
+5-minute mean; device tokens/joule divides the recorded hourly generation rate by
+hourly mean power. These device totals are not per-model power allocations.
+MC3 never substitutes sample models, KPI values, or seeded sparkline history.
 
 ## Health score
 

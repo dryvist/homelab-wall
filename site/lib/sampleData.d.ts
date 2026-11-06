@@ -1,4 +1,5 @@
 export declare const sampleAppScore: (i: number) => number;
+export declare const SAMPLE_BENCHMARKS: Readonly<Record<string, ReadonlyArray<{ labels: Record<string, string>; value: number }>>>;
 export declare const SAMPLE_STORAGE: ReadonlyArray<{ host: string; name: string; size: number; used: number }>;
 export declare const SAMPLE_LLM: ReadonlyArray<{ n: string; state: number; tok: number; hist: number[] }>;
 export declare const SAMPLE_WAN: ReadonlyArray<{ name: string; down: number; up: number; latency: number }>;

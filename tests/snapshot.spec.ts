@@ -13,6 +13,7 @@ const wallUrl = process.env.WALL_URL;
 // each `{result: [...]}` in Prometheus's own vector/matrix shape — reusing fixture.ts's `answer()`
 // so this fixture can't drift from the live-mode one.
 function buildSnapshot() {
+  const end = Math.floor(Date.now() / 1000);
   const instant: Record<string, { result: unknown[] }> = {};
   const range: Record<string, { result: unknown[] }> = {};
   for (const [key, expr] of Object.entries(Q)) {
@@ -21,7 +22,7 @@ function buildSnapshot() {
     range[key] = {
       result: rows.map((r) => ({
         metric: r.metric,
-        values: Array.from({ length: 60 }, (_, k) => [k, String(20 + ((k * 7) % 50))]),
+        values: Array.from({ length: 41 }, (_, k) => [end - 600 + k * 15, String(20 + ((k * 7) % 50))]),
       })),
     };
   }
