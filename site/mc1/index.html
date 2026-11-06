@@ -6,6 +6,7 @@
 <title>Mission Control</title>
 <link rel="stylesheet" href="/lib/wall.css">
 <link rel="stylesheet" href="/mc1/mc1.css">
+<link rel="stylesheet" href="/lib/ticker.css">
 </head>
 <body>
 <div id="stage" class="stage">
@@ -38,8 +39,13 @@
   </div></section>
 
   <section class="panel" id="llm" data-panel="llm" data-state="pending"><h2>LLM fabric <span id="llmsum">—</span><span data-panel-message></span></h2><div id="llmrows"></div></section>
+  <section id="activity-ribbon" data-state="pending">LLM ACTIVITY · pending</section>
 </div>
 <script type="importmap">{"imports": {"three": "/vendor/three/three.module.js", "three/addons/": "/vendor/three/addons/"}}</script>
 <script type="module" src="/mc1/mc1.js"></script>
+<script type="module">
+import { mountTicker } from '/lib/ticker.js';
+mountTicker(document.getElementById('activity-ribbon'));
+</script>
 </body>
 </html>

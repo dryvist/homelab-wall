@@ -1,0 +1,21 @@
+.llm-ticker{display:flex;align-items:center;gap:1rem;min-width:0;overflow:hidden;padding:0 14px;
+  border:1px solid var(--edge);background:rgba(6,12,20,.9);font:400 var(--fs-xs)/1.4 var(--mono);color:var(--ink)}
+.llm-ticker>strong{flex:none;color:var(--cyan);letter-spacing:.12em}
+.ticker-status{flex:none;color:var(--dim)}
+.llm-ticker[data-state="stale"] .ticker-status{color:var(--amber)}
+.ticker-viewport{flex:1;min-width:0;overflow:hidden}
+.ticker-track{display:flex;width:max-content;min-width:200%;animation:ticker-scroll 60s linear infinite}
+.ticker-items{display:flex;flex:1;align-items:center;gap:2rem;padding-right:2rem;box-sizing:border-box}
+.ticker-entry{display:flex;flex:none;align-items:center;gap:.7rem;white-space:nowrap}
+.ticker-entry>span{max-width:24ch;overflow:hidden;text-overflow:ellipsis}
+.ticker-entry>span:first-child{color:var(--cyan)}
+.ticker-entry>time{color:var(--dim)}
+.llm-ticker button{flex:none;border:1px solid var(--edge);background:transparent;color:var(--ink);font:inherit;cursor:pointer}
+.llm-ticker button:focus-visible{outline:2px solid var(--cyan)}
+.ticker-viewport:hover .ticker-track,.ticker-viewport:focus-within .ticker-track,.ticker-paused .ticker-track{animation-play-state:paused}
+@keyframes ticker-scroll{to{transform:translateX(-50%)}}
+@media(prefers-reduced-motion:reduce){
+  .ticker-track{animation:none;min-width:0}
+  .ticker-items[aria-hidden]{display:none}
+  .ticker-viewport{overflow-x:auto}
+}
