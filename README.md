@@ -50,6 +50,15 @@ disappearing: it keeps its last known values, dims, and is labeled "STALE
 &lt;age&gt;", then "STALE since &lt;time&gt;" after about 5 minutes. The node set
 itself always comes from `config.json` (`nodeRoles` + `extraNodes`), never
 from whichever series a poll happens to return.
+MC1's activity ribbon reads `/api/llm/recent` once per minute, using metadata
+only: `ts` (UTC), `source`, `model`, `role`, and `chars`. It accepts a row array
+or ClickHouse JSON's `data` array. Size means exact characters, never tokens.
+No rows or no successful response yet shows `pending`. Rows older than 2
+minutes, or retained after a failed refresh, show `STALE <age>`; after 5
+minutes this becomes `STALE since <time>`. Successful empty responses clear
+the ribbon. Pause stops its motion; reduced motion allows manual scrolling.
+The feed has no per-request token counts, generation rate, or time to first
+token, so the ribbon does not display those measurements.
 On a software WebGL renderer the topology drops to a 2D mode; `?gl=3d` or
 `?gl=2d` forces either.
 

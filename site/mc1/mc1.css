@@ -1,9 +1,10 @@
 /* Pure fr/minmax(0,1fr) tracks: the grid always sums to exactly the stage's box, so it can
    never overflow it regardless of what any cell's content does. Ratios approximate the
    original 430/886/540 and 78/682/260 px design at 1920x1080. */
-#stage{display:grid;grid-template-columns:minmax(0,23fr) minmax(0,48fr) minmax(0,29fr);grid-template-rows:minmax(0,8fr) minmax(0,67fr) minmax(0,25fr);
+#stage{display:grid;grid-template-columns:minmax(0,23fr) minmax(0,48fr) minmax(0,29fr);grid-template-rows:minmax(0,8fr) minmax(0,67fr) minmax(0,25fr) 36px;
   gap:var(--gap);padding:var(--pad-y) var(--pad-x);box-sizing:border-box;
   background:radial-gradient(1200px 700px at 50% 45%,#0a1a2a 0%,var(--void) 70%)}
+#activity-ribbon{grid-column:1/-1;grid-row:4;position:relative;z-index:1}
 #stage::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}
 /* Every grid cell gets an explicit, content-independent size (contain:size) and clips anything

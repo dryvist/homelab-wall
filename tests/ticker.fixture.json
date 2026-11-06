@@ -1,0 +1,4 @@
+[
+  { "ts": "2026-11-06 12:00:00", "source": "codex", "model": "model-coder", "role": "assistant", "chars": "2480" },
+  { "ts": "2026-11-06T11:59:50Z", "source": "user", "model": "model-large", "role": "user", "chars": 120 }
+]
