@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/dryvist/homelab-wall/compare/v0.15.1...v0.16.0) (2026-11-06)
+
+
+### Features
+
+* **mc1:** add live LLM activity ticker ([#130](https://github.com/dryvist/homelab-wall/issues/130)) ([2283732](https://github.com/dryvist/homelab-wall/commit/2283732f20814902dc490cd4204219c179af6112))
+
 ## [0.15.1](https://github.com/dryvist/homelab-wall/compare/v0.15.0...v0.15.1) (2026-11-05)
 
 
