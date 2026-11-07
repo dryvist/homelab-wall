@@ -25,23 +25,22 @@
        offsetLeft/Top (the overlap contract test's own metric) is measured from one shared
        frame instead of a per-column offsetParent. -->
   <section class="panel tiltL" id="ticker" data-panel="ticker" data-state="pending">
-    <h2>Org activity<span data-panel-message></span></h2>
-    <div class="body" id="tickerBody"></div>
+    <h2>Org activity<span data-panel-message>WAITING FOR EVENTS</span></h2>
+    <div class="body" id="tickerBody">—</div>
   </section>
 
   <section class="panel tiltL" id="apps" data-panel="apps" data-state="pending">
-    <h2>Service health <span id="appsum"></span><span data-panel-message></span></h2>
+    <h2>Service health <span id="appsum">—</span><span data-panel-message>SCORE PENDING</span></h2>
     <canvas id="appgrid"></canvas>
   </section>
 
   <section class="panel tiltR" id="releases" data-panel="releases" data-state="pending">
-    <h2>Latest releases<span data-panel-message></span></h2>
-    <div class="body" id="releasesBody"></div>
+    <h2>Latest releases<span data-panel-message>WAITING FOR RELEASE DATA</span></h2>
+    <div class="body" id="releasesBody">—</div>
   </section>
 
-  <section class="panel tiltR" id="infra" data-panel="infra" data-state="pending">
+  <section class="panel tiltR" id="infra" data-panel="infra" data-state="no-feed">
     <h2>Terrakube &amp; Semaphore<span data-panel-message></span></h2>
-    <div class="body" id="infraBody"></div>
   </section>
 </div>
 <script type="importmap">{"imports": {"three": "/vendor/three/three.module.js", "three/addons/": "/vendor/three/addons/"}}</script>

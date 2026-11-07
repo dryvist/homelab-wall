@@ -51,11 +51,9 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
 
 #ticker,#releases,#apps,#infra{display:flex;flex-direction:column}
 #apps canvas{flex:1;width:100%;display:block}
-#ticker .body,#releases .body,#infra .body{flex:1;overflow:hidden;padding:clamp(6px,1vmin,10px) clamp(8px,1.2vmin,12px)}
+#ticker .body,#releases .body{flex:1;overflow:hidden;padding:clamp(6px,1vmin,10px) clamp(8px,1.2vmin,12px)}
 
-/* Ticker/releases/infra rows: styled the same whether the data is live (ticker/releases, from
-   the public GitHub API) or stand-in (infra — no Terrakube/Semaphore exporter exists yet) so no
-   row ever reads as "less real" than another. */
+/* Ticker and release rows share one layout. */
 .feed-row{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;
   padding:5px 0;font-size:clamp(10px,1.05vmin,13px);border-bottom:1px solid rgba(79,179,169,.15)}
 .feed-row:last-child{border-bottom:none}
