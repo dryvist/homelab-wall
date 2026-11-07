@@ -1,6 +1,8 @@
 import type { Page, Route } from '@playwright/test';
 import { Q } from '../site/lib/queries.js';
-import { sampleAppScore } from '../site/lib/sampleData.js';
+
+// A fixed per-position score spread: one DOWN, one DEGRADED, the rest OK.
+export const sampleAppScore = (i: number) => (i === 3 ? 2 : i === 6 ? 6 : 8 + (i % 2));
 
 export const config = {
   title: 'HOMELAB',

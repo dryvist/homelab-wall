@@ -1,8 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import { Q } from '../site/lib/queries.js';
-import { sampleAppScore } from '../site/lib/sampleData.js';
-import { mockFeeds, recentRows, type FeedOpts } from './fixture';
+import { mockFeeds, recentRows, sampleAppScore, type FeedOpts } from './fixture';
 
 // mc3-specific contract: the request feed is real metadata rows from GET /api/llm/recent (never
 // message content, never fabricated rows), the GPU tile reads Q.acceleratorBusy, and the hero
