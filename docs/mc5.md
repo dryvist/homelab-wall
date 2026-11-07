@@ -4,7 +4,7 @@ MC5 is the GitOps pipeline overview for the `dryvist` GitHub organization. A 3D 
 repository nodes fills the screen, and comets fly through push, pull request, merge, release and deploy. Four cards
 float over it. The header title comes from `config.json` `title` and defaults to `HOMELAB`.
 
-![MC5 GitOps](screenshots/mc5.png)
+![MC5 GitOps](screenshots/mc5.jpg)
 
 ## Panels
 

@@ -3,7 +3,7 @@
 MC2 is the edge threat map. A full-screen globe with animated arcs sits behind a service health strip and two edge
 panels. The header title comes from `config.json` `title` and defaults to `HOMELAB`.
 
-![MC2 Edge](screenshots/mc2.png)
+![MC2 Edge](screenshots/mc2.jpg)
 
 ## Panels
 

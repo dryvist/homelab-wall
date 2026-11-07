@@ -3,7 +3,7 @@
 MC6 is LEXICON: one word cloud per source, the operator and every AI agent. A large hero cloud cycles through the
 sources, and a strip below keeps one small cloud per source on screen. The rotator names this slide `LEXICON`.
 
-![MC6 Lexicon](screenshots/mc6.png)
+![MC6 Lexicon](screenshots/mc6.jpg)
 
 ## Panels
 

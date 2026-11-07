@@ -4,7 +4,7 @@ MC8 is the Router Switchboard, a beta page. It draws token flow from each caller
 model, grouped by billing class, with four router readouts above it. MC8 uses real measurements only. The rotator
 names this slide `SWITCHBOARD`.
 
-![MC8 Router Switchboard](screenshots/mc8.png)
+![MC8 Router Switchboard](screenshots/mc8.jpg)
 
 ## Panels
 

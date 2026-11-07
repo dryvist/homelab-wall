@@ -4,7 +4,7 @@ MC9 is the Agent Constellation, a beta page. Each AI agent signal is a node in a
 rate and ringed by its last 24 hours. The default rotator lists MC9 last, after MC8, and names it
 `Agent Constellation`.
 
-![MC9 Agent Constellation](screenshots/mc9.png)
+![MC9 Agent Constellation](screenshots/mc9.jpg)
 
 ## Panels
 

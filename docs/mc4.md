@@ -4,7 +4,7 @@ MC4 is the media acquisition page. A 3D acquisition flow fills the screen behind
 library storage, playback and the media services, with a strip of recent additions along the bottom. The header title
 comes from `config.json` `title` and defaults to `HOMELAB`.
 
-![MC4 Media](screenshots/mc4.png)
+![MC4 Media](screenshots/mc4.jpg)
 
 ## Panels
 

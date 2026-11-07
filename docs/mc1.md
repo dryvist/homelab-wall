@@ -4,7 +4,7 @@ MC1 is the estate overview. It shows every configured node, the network topology
 activity and the large language model (LLM) router, with a ribbon of recent LLM requests along the bottom. The header
 title comes from `config.json` `title` and defaults to `HOMELAB`.
 
-![MC1 Mission Control](screenshots/mc1.png)
+![MC1 Mission Control](screenshots/mc1.jpg)
 
 ## Panels
 

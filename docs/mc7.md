@@ -3,7 +3,7 @@
 MC7 is the AI Benchmark Cockpit, a beta page. Engine cards show what each inference engine measures, and router
 cards show per-model latency as the router records it. The rotator names this slide `AI Benchmark Cockpit`.
 
-![MC7 AI Benchmark Cockpit](screenshots/mc7.png)
+![MC7 AI Benchmark Cockpit](screenshots/mc7.jpg)
 
 ## Panels
 

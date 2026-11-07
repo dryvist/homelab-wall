@@ -76,7 +76,7 @@ The rotator shows these pages in this order.
 The estate overview: nodes, network topology, service health, storage, firewall activity and the large language model
 (LLM) router, with recent LLM requests along the bottom.
 
-![MC1 Mission Control](docs/screenshots/mc1.png)
+![MC1 Mission Control](docs/screenshots/mc1.jpg)
 
 Details: [docs/mc1.md](docs/mc1.md).
 
@@ -84,7 +84,7 @@ Details: [docs/mc1.md](docs/mc1.md).
 
 An edge threat map: a full-screen globe behind a service health strip and two edge block panels.
 
-![MC2 Edge](docs/screenshots/mc2.png)
+![MC2 Edge](docs/screenshots/mc2.jpg)
 
 Details: [docs/mc2.md](docs/mc2.md).
 
@@ -93,7 +93,7 @@ Details: [docs/mc2.md](docs/mc2.md).
 The AI inference core: a hub with four device nodes and a cloud node, fleet health, and cards for the models with
 real recent requests.
 
-![MC3 AI Core](docs/screenshots/mc3.png)
+![MC3 AI Core](docs/screenshots/mc3.jpg)
 
 Details: [docs/mc3.md](docs/mc3.md).
 
@@ -101,7 +101,7 @@ Details: [docs/mc3.md](docs/mc3.md).
 
 Media acquisition: a 3D acquisition flow behind download, library, playback and media-service cards.
 
-![MC4 Media](docs/screenshots/mc4.png)
+![MC4 Media](docs/screenshots/mc4.jpg)
 
 Details: [docs/mc4.md](docs/mc4.md).
 
@@ -109,7 +109,7 @@ Details: [docs/mc4.md](docs/mc4.md).
 
 The GitOps pipeline of the `dryvist` GitHub organization: repositories, events, releases and service health.
 
-![MC5 GitOps](docs/screenshots/mc5.png)
+![MC5 GitOps](docs/screenshots/mc5.jpg)
 
 Details: [docs/mc5.md](docs/mc5.md).
 
@@ -117,7 +117,7 @@ Details: [docs/mc5.md](docs/mc5.md).
 
 One word cloud per source, the operator and each AI agent, with a hero cloud that cycles through them.
 
-![MC6 Lexicon](docs/screenshots/mc6.png)
+![MC6 Lexicon](docs/screenshots/mc6.jpg)
 
 Details: [docs/mc6.md](docs/mc6.md).
 
@@ -125,7 +125,7 @@ Details: [docs/mc6.md](docs/mc6.md).
 
 Engine and router benchmarks: throughput, latency percentiles, cache, concurrency and device power.
 
-![MC7 AI Benchmark Cockpit](docs/screenshots/mc7.png)
+![MC7 AI Benchmark Cockpit](docs/screenshots/mc7.jpg)
 
 Details: [docs/mc7.md](docs/mc7.md).
 
@@ -133,7 +133,7 @@ Details: [docs/mc7.md](docs/mc7.md).
 
 Token flow from each caller, through the LLM router, to each model, grouped by billing class.
 
-![MC8 Router Switchboard](docs/screenshots/mc8.png)
+![MC8 Router Switchboard](docs/screenshots/mc8.jpg)
 
 Details: [docs/mc8.md](docs/mc8.md).
 
@@ -141,7 +141,7 @@ Details: [docs/mc8.md](docs/mc8.md).
 
 AI agent activity as a constellation: each signal's 5-minute rate, ringed by its last 24 hours.
 
-![MC9 Agent Constellation](docs/screenshots/mc9.png)
+![MC9 Agent Constellation](docs/screenshots/mc9.jpg)
 
 Details: [docs/mc9.md](docs/mc9.md).
 

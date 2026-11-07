@@ -4,7 +4,7 @@ MC3 is the AI inference core. A hub with four device nodes and a cloud node fill
 hangs off the device that serves it. A fleet health column sits on the left, and a strip of model cards runs along
 the bottom.
 
-![MC3 AI Core](screenshots/mc3.png)
+![MC3 AI Core](screenshots/mc3.jpg)
 
 ## Panels
 
