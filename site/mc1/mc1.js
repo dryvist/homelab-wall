@@ -259,13 +259,16 @@ function gauge(id, val, max, label, unit, col) {
   if (label !== 'NO GPU') c.fillText(val == null ? '—' : val.toFixed(unit === '%' ? 0 : 1), cx, cy + 6);
   c.fillStyle = '#5d7d90'; c.font = '15px "JetBrains Mono",monospace'; c.fillText(label + (unit === '%' ? ' %' : ''), cx, cy + 34);
 }
+// No history yet: a dim dashed baseline, never an invented trace.
+function noHistory(c, w, h) {
+  c.setLineDash([6, 6]); c.strokeStyle = '#1d3a4f'; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(0, h - 2); c.lineTo(w, h - 2); c.stroke(); c.setLineDash([]);
+}
 function spark(id, h) {
   const el = $(id); if (!el) return;
   const c = el.getContext('2d'), W = 780, H = 52; c.clearRect(0, 0, W, H);
   if (h.length < 2) {
-    // No history yet: a dim dashed baseline, never an invented trace.
-    c.setLineDash([6, 6]); c.strokeStyle = '#1d3a4f'; c.lineWidth = 2;
-    c.beginPath(); c.moveTo(0, H - 2); c.lineTo(W, H - 2); c.stroke(); c.setLineDash([]);
+    noHistory(c, W, H);
     return;
   }
   const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, 'rgba(62,230,255,.35)'); g.addColorStop(1, 'rgba(62,230,255,0)');
@@ -327,7 +330,7 @@ function renderLlm() {
   }).join('') : '—';
   list.forEach((m, i) => {
     const c = $('lc' + i).getContext('2d'), values = m.hist, present = values.filter(Number.isFinite);
-    if (present.length < 2) return;
+    if (present.length < 2) { noHistory(c, 116, 28); return; }
     const mx = Math.max(0.1, ...present);
     let active = false;
     c.beginPath(); values.forEach((h, k) => {
