@@ -78,6 +78,8 @@ The feed publisher produces snapshot mode's file. Its contract:
   duration and leaves snapshot samples intact.
 - Range also accepts `{bounds: {start, end}}` to fix a live request's window.
 - `settle()` runs a set of queries and yields `null` for each one that failed, so only that panel is affected.
+- Live queries and the snapshot fetch time out after 10 seconds. A timed-out query counts as failed.
+- `site/lib/refresh.js` `guardRefresh` skips an interval tick while the previous refresh is still running.
 - Run the client tests offline with `node --test 'tests/*.test.js' 'tests/*.test.mjs'`.
 
 ## Other feeds
@@ -124,4 +126,7 @@ The feed publisher produces snapshot mode's file. Its contract:
 - Under heavy load, MC2 to MC6 lower their own render quality in steps: pixel ratio first, then bloom, then a cap
   of 30 frames per second. They step back up when frames are light again.
 - A page taller than the viewport scrolls itself down and back up, except under reduced motion.
+- `site/lib/pointer.js` gives MC2, MC3 and MC4 a bounded mouse offset on their camera.
+  - It runs only on a top-level page with a fine pointer and motion allowed, so a rotator slide never uses it.
+  - The offset eases back to zero when the pointer leaves the page.
 - `refreshSeconds` sets each page's poll interval. MC1 to MC7 also reload themselves every 24 hours.

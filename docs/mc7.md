@@ -21,6 +21,7 @@ cards show per-model latency from real requests as the router records it. The ro
   - Tokens/joule divides the recorded hourly generation rate by hourly mean power.
   - These are device totals, shown only when an engine exposes an accelerator association, not per-model power
     allocations.
+- The page fits one screen at 1920×1080, 2560×1440 and 1440×900, with every metric visible.
 - Router latency: one card per model with a real request in the last 4 days (`llmUsed4d`).
   - Router readings exclude the router's own health-check caller.
   - A listed model with no readings keeps its card, which reads `NO DATA`.
