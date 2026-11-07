@@ -10,7 +10,7 @@ import { Q } from './queries.js';
 
 const BASE = '/api/prom';
 const SNAPSHOT_TTL_MS = 2000;
-const CONFIG_TIMEOUT_MS = 10_000;
+const REQUEST_TIMEOUT_MS = 10_000;
 const EXPR_TO_KEY = new Map(Object.entries(Q).map(([key, expr]) => [expr, key]));
 
 function keyFor(expr) {
@@ -20,17 +20,33 @@ function keyFor(expr) {
 }
 
 let configPromise = null;
+async function fetchJson(url, options, readResponse, timeoutMessage) {
+  const controller = new AbortController();
+  let timeout;
+  const request = (async () => {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    return readResponse(response);
+  })();
+  const deadline = new Promise((_, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(new Error(timeoutMessage));
+    }, REQUEST_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([request, deadline]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function getConfig() {
   if (!configPromise) {
-    let timeout;
-    const request = Promise.race([
-      fetch('/config.json', { cache: 'no-store' }).then((r) => r.json()),
-      new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('config request timed out')), CONFIG_TIMEOUT_MS); }),
-    ]);
+    const request = fetchJson('/config.json', { cache: 'no-store' }, (r) => r.json(), 'config request timed out');
     const cached = request.catch((error) => {
       if (configPromise === cached) configPromise = null;
       throw error;
-    }).finally(() => clearTimeout(timeout));
+    });
     configPromise = cached;
   }
   return configPromise;
@@ -42,18 +58,19 @@ function getSnapshot(path) {
   const now = Date.now();
   if (!snapshotPromise || now - snapshotAt >= SNAPSHOT_TTL_MS) {
     snapshotAt = now;
-    snapshotPromise = fetch(path, { cache: 'no-store' }).then((r) => {
+    snapshotPromise = fetchJson(path, { cache: 'no-store' }, (r) => {
       if (!r.ok) throw new Error(`snapshot ${r.status}`);
       return r.json();
-    });
+    }, 'snapshot request timed out');
   }
   return snapshotPromise;
 }
 
 async function get(path, params) {
-  const res = await fetch(`${BASE}/${path}?${new URLSearchParams(params)}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`${path} ${res.status}`);
-  const body = await res.json();
+  const body = await fetchJson(`${BASE}/${path}?${new URLSearchParams(params)}`, { cache: 'no-store' }, (res) => {
+    if (!res.ok) throw new Error(`${path} ${res.status}`);
+    return res.json();
+  }, `${path} request timed out`);
   if (body.status !== 'success') throw new Error(`${path} ${body.error || 'failed'}`);
   return body.data.result;
 }
