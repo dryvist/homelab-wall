@@ -13,6 +13,8 @@ export const NODES = [
 
 export const STEP = 300;
 export const WINDOW = 86400;
+// The store rounds evaluation time up to a whole second and clocks drift, so allow a little future skew.
+export const SKEW = 5;
 const valid = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 const matching = (node, rows) => (rows || []).filter((r) => (r.labels?.backend || '') === (node.role || ''));
 
@@ -56,7 +58,9 @@ export function shapeNodes(feeds, previous = [], now = Date.now() / 1000) {
   return NODES.map((node) => {
     const old = previous.find((n) => n.id === node.id);
     const feed = feeds[node.signal];
-    const current = matching(node, feed?.current).filter((r) => valid(r.value) && valid(r.timestamp) && r.timestamp <= now);
+    const current = matching(node, feed?.current)
+      .filter((r) => valid(r.value) && valid(r.timestamp) && r.timestamp <= now + SKEW)
+      .map((r) => ({ ...r, timestamp: Math.min(r.timestamp, now) }));
     const history = matching(node, feed?.history).flatMap((r) => r.values || [])
       .filter(([at, v]) => valid(at) && valid(v) && at <= now);
     const observed = current.length ? current.reduce((sum, r) => sum + r.value, 0) : null;

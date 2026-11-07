@@ -43,6 +43,13 @@ test('missing and failed polls keep the last real rate and observation age', () 
   assert.equal(codex(shapeNodes(feed(0, [], now + 100), good, now + 100)).state, 'idle');
 });
 
+test('results stamped slightly ahead of the client clock still count, clamped to now', () => {
+  const ahead = codex(shapeNodes(feed(3, [], now + 0.6), [], now));
+  assert.equal(ahead.state, 'active');
+  assert.equal(ahead.seenAt, now);
+  assert.equal(codex(shapeNodes(feed(3, [], now + 10), [], now)).state, 'pending');
+});
+
 test('24h rings preserve real zeros, missing bins, and chronological position', () => {
   const ring = activityRing([[now - 600, 4], [now - 300, 0], [now, 2], [now - 90000, 7], [now + 600, 9], [now - 1200, NaN]], now);
   assert.equal(ring.length, 288);
@@ -69,7 +76,7 @@ test('repeated old measurements retain their source age and become stale', () =>
   }
   assert.equal(codex(shapeNodes(feed(3, [], now - 300), [], now)).state, 'active');
   assert.equal(codex(shapeNodes(feed(3, [], now - 301), [], now)).state, 'stale');
-  for (const timestamp of [undefined, NaN, Infinity, -1, now + 1]) {
+  for (const timestamp of [undefined, NaN, Infinity, -1, now + 10]) {
     const data = feed(3);
     data.mc9CodexRate.current[0].timestamp = timestamp;
     assert.equal(codex(shapeNodes(data, [], now)).state, 'pending');
