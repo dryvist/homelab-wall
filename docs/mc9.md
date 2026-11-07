@@ -16,7 +16,7 @@ rate and ringed by its last 24 hours. The default rotator lists MC9 last, after 
   - Hindsight memory, in operations/s.
   - Codex and Codex subagents, in output tokens/s.
   - Claude Code and Claude subagents, in output tokens/s.
-  - Large language model (LLM) spans, in spans/s.
+  - Large language model (LLM) spans, shown as `No feed`.
 - Footer: the legend (Active, Idle, Pending), how to read size and rings, and a `Pause motion` button.
 
 Node rules:
@@ -25,8 +25,7 @@ Node rules:
 - Claude Code groups `agent_name` into main (including an absent label) and subagents.
 - Both show output tokens/s.
 - Donna shows router requests/s for its key alias; Hindsight shows operations/s.
-- The LLM spans node consumes the trace pipeline's `traces_span_metrics_calls_total` with a generative AI model or
-  system label.
+- The LLM spans node has no signal.
 - Node area grows monotonically with the 5m rate, approaching its ring; signals have different units and are
   labelled.
 - Rings show measured 5m rates over 24h (brightness relative to each node's own maximum), with timestamp gaps
@@ -49,7 +48,6 @@ MC9 uses only the Prometheus gateway or snapshot, with `mc9*` queries in `Q`.
 - `mc9ClaudeSubagentRate`: Claude Code subagent output tokens per second.
 - `mc9GatewayAgents`: active agents across gateway instances, each at its 5-minute peak.
 - `mc9CronJobs`: running cron jobs across gateway instances, each at its 5-minute peak.
-- `mc9SpanRate`: generative AI trace spans per second.
 
 Each key is read as a current value and as a 24-hour range at 5-minute steps.
 
@@ -61,8 +59,8 @@ Each key is read as a current value and as a 24-hour range at 5-minute steps.
 - MC9 never substitutes sample values.
 - Pending:
   - Missing signals stay visible as pending.
-  - The LLM spans source is pending until span metrics arrive.
   - An empty 24h ring is pending.
+- No feed: the LLM spans node shows `No feed` and the status line counts it.
 - STALE:
   - A signal that disappears or fails retains its last measured value as STALE.
   - Current readings become stale after 300 seconds even during an unfinished poll.

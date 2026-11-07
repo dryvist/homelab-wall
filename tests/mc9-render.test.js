@@ -60,7 +60,7 @@ test('the page expires labels, reporting count, and rings during an unfinished p
   const donna = articles.find((el) => el.dataset.node === 'donna');
   assert.equal(donna.dataset.state, 'active');
   // Codex subagents has no row of its own, so it reads zero while Codex reports.
-  assert.equal(elements.get('status').textContent, '9 signals reporting · 0 pending');
+  assert.equal(elements.get('status').textContent, '8 signals reporting · 0 pending · 1 no feed');
   hung = true;
   const pending = timeouts.shift()();
   now += 301;

@@ -8,7 +8,7 @@ export const NODES = [
   { id: 'codex-subagents', label: 'Codex subagents', signal: 'mc9CodexRate', role: 'subagents', unit: 'output tokens/s', x: .88, y: .12, color: '#aebcff', parent: 'codex' },
   { id: 'claude', label: 'Claude Code', signal: 'mc9ClaudeMainRate', unit: 'output tokens/s', x: .77, y: .67, color: '#ecb28e' },
   { id: 'claude-subagents', label: 'Claude subagents', signal: 'mc9ClaudeSubagentRate', unit: 'output tokens/s', x: .91, y: .48, color: '#ecb28e', parent: 'claude' },
-  { id: 'spans', label: 'LLM spans', signal: 'mc9SpanRate', unit: 'spans/s', x: .56, y: .45, color: '#a7d7f0' },
+  { id: 'spans', label: 'LLM spans', signal: null, unit: 'spans/s', x: .56, y: .45, color: '#a7d7f0' },
 ];
 
 export const STEP = 300;
@@ -77,7 +77,7 @@ export function shapeNodes(feeds, previous = [], now = Date.now() / 1000) {
     const seenAt = observed !== null ? Math.min(...current.map((r) => r.timestamp)) : old?.seenAt ?? null;
     const rate = observed ?? old?.rate ?? null;
     const points = feed?.history != null ? history : old?.points || [];
-    const state = observed === null ? (rate === null ? 'pending' : 'stale')
+    const state = !node.signal ? 'no-feed' : observed === null ? (rate === null ? 'pending' : 'stale')
       : now - seenAt > 300 ? 'stale' : observed > 0 ? 'active' : 'idle';
     return refreshNode({ ...node, rate, state, points, lastActive, seenAt,
       historyAt: feed?.history != null ? feed.historyAt : old?.historyAt,

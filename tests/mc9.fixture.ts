@@ -10,7 +10,6 @@ export const mc9Rates: Record<string, [Record<string, string>, number][]> = {
   mc9CodexRate: [[{}, 12], [{ backend: 'subagents' }, 4]],
   mc9ClaudeMainRate: [[{}, 8]],
   mc9ClaudeSubagentRate: [[{}, 0]],
-  mc9SpanRate: [],
 };
 
 export async function mockMC9(page: Page, options: { empty?: boolean; fail?: boolean; failHistory?: boolean; refreshSeconds?: number } = {}) {
