@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/dryvist/homelab-wall/compare/v0.18.1...v0.19.0) (2026-11-07)
+
+
+### Features
+
+* **mc8:** add the router switchboard page ([#139](https://github.com/dryvist/homelab-wall/issues/139)) ([76bcaeb](https://github.com/dryvist/homelab-wall/commit/76bcaebbd3dc3979dedd8722937160293c572358))
+
 ## [0.18.1](https://github.com/dryvist/homelab-wall/compare/v0.18.0...v0.18.1) (2026-11-07)
 
 
