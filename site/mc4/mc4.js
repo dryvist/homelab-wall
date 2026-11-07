@@ -9,9 +9,12 @@ import {
   setStandIn, onDispose, onContextLoss, disposeThreeScene, hardwareGL, adaptiveBloomOn, adaptiveDpr,
 } from '/lib/stage.js';
 import { sampleAppScore } from '/lib/sampleData.js';
+import { createPointer } from '/lib/pointer.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const { pointer, dispose: disposePointer } = createPointer();
+onDispose(disposePointer);
 
 const cfg = await loadConfig();
 $('title').textContent = cfg.title || 'HOMELAB';
@@ -226,8 +229,8 @@ function build3DFlow() {
     // Slow camera drift (shock-and-awe): a gentle orbit around the sketch's own default position
     // so the hero scene reads as alive even beyond its own spin/flow animation.
     if (!RM) {
-      cam.position.x = Math.sin(t * 0.1) * 50;
-      cam.position.y = 40 + Math.sin(t * 0.07) * 20;
+      cam.position.x = Math.sin(t * 0.1) * 50 + pointer.x * 20;
+      cam.position.y = 40 + Math.sin(t * 0.07) * 20 + pointer.y * 10;
       cam.lookAt(0, 0, 0);
     }
     const spin = 0.4 + health;
