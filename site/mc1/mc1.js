@@ -262,7 +262,12 @@ function gauge(id, val, max, label, unit, col) {
 function spark(id, h) {
   const el = $(id); if (!el) return;
   const c = el.getContext('2d'), W = 780, H = 52; c.clearRect(0, 0, W, H);
-  if (h.length < 2) return;
+  if (h.length < 2) {
+    // No history yet: a dim dashed baseline, never an invented trace.
+    c.setLineDash([6, 6]); c.strokeStyle = '#1d3a4f'; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(0, H - 2); c.lineTo(W, H - 2); c.stroke(); c.setLineDash([]);
+    return;
+  }
   const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, 'rgba(62,230,255,.35)'); g.addColorStop(1, 'rgba(62,230,255,0)');
   c.beginPath(); h.forEach((v, i) => { const x = i / (h.length - 1) * W, y = H - clamp(v, 0, 100) / 100 * H; i ? c.lineTo(x, y) : c.moveTo(x, y); });
   c.strokeStyle = '#3ee6ff'; c.lineWidth = 2; c.stroke(); c.lineTo(W, H); c.lineTo(0, H); c.fillStyle = g; c.fill();
