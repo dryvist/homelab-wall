@@ -24,7 +24,7 @@ export function gpuByNode(modelRows, guestRows, busyRows) {
 const shortHost = (value = '') => String(value).split(':')[0].split('.')[0];
 
 export function buildStorageRows(sizeRows, availRows, pveRows, pveFailed = false) {
-  const availableByDevice = new Map((availRows || []).map((row) => [`${row.labels.instance}|${row.labels.device}`, row.value]));
+  const availableByDevice = new Map((availRows || []).map((row) => [`${row.labels.instance}|${row.labels.device}|${row.labels.mountpoint}`, row.value]));
   const pveByStorage = new Map();
   for (const row of pveRows || []) {
     const match = /^storage\/([^/]+)\/([^/]+)$/.exec(row.labels.id || '');
@@ -38,7 +38,7 @@ export function buildStorageRows(sizeRows, availRows, pveRows, pveFailed = false
   for (const row of sizeRows || []) {
     const labels = row.labels, size = row.value;
     if (!Number.isFinite(size) || size <= 0) continue;
-    const available = availableByDevice.get(`${labels.instance}|${labels.device}`);
+    const available = availableByDevice.get(`${labels.instance}|${labels.device}|${labels.mountpoint}`);
     const host = shortHost(labels.instance);
     if (labels.fstype === 'zfs') {
       const name = String(labels.device || '').split('/')[0];
@@ -111,10 +111,12 @@ export function buildTopologyHubs(groups, rxRows, txRows) {
     for (const row of rows || []) {
       const name = row.labels.network;
       if (typeof name !== 'string' || !name || !Number.isFinite(row.value)) continue;
-      const network = networks.get(name) || { name, rxBytes: null, txBytes: null };
+      const vlan = row.labels.vlan ?? '';
+      const id = `${name}|${vlan}`;
+      const network = networks.get(id) || { id, name, vlan, rxBytes: null, txBytes: null };
       const key = direction === 'rx' ? 'rxBytes' : 'txBytes';
       network[key] = (network[key] ?? 0) + row.value;
-      networks.set(name, network);
+      networks.set(id, network);
     }
   }
 
@@ -124,11 +126,11 @@ export function buildTopologyHubs(groups, rxRows, txRows) {
     if (key && !groupByName.has(key)) groupByName.set(key, group);
   }
   const matched = new Set();
-  const hubs = [...networks.values()].sort((a, b) => a.name.localeCompare(b.name)).map((network) => {
+  const hubs = [...networks.values()].sort((a, b) => a.id.localeCompare(b.id)).map((network) => {
     const group = groupByName.get(normalizeNetwork(network.name));
     if (group) matched.add(group);
     return {
-      key: `network:${network.name}`, name: network.name, isNetwork: true, hasGroup: !!group,
+      key: `network:${network.id}`, name: network.vlan ? `${network.name} · VLAN ${network.vlan}` : network.name, isNetwork: true, hasGroup: !!group,
       apps: group?.apps || [], color: group?.c || null, rxBytes: network.rxBytes, txBytes: network.txBytes,
     };
   });

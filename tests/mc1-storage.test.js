@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { buildStorageRows, formatStorageBytes } from '../site/lib/mc1Metrics.js';
 
 const zfs = (host, device, size) => ({ labels: { instance: `${host}.example.test:9100`, device, fstype: 'zfs' }, value: size });
-const avail = (host, device, value) => ({ labels: { instance: `${host}.example.test:9100`, device }, value });
+const avail = (host, device, value, mountpoint) => ({ labels: { instance: `${host}.example.test:9100`, device, mountpoint }, value });
 const pve = (host, storage, value) => ({ labels: { id: `storage/${host}/${storage}` }, value });
 
 test('ZFS pools sum referenced dataset bytes, use maximum free, and keep the larger Proxmox usage', () => {
@@ -38,7 +38,7 @@ test('failed Proxmox storage data falls back to referenced bytes and marks total
 test('non-ZFS rows retain their filesystem formula and byte formatting rounds the near-terabyte range', () => {
   const { rows } = buildStorageRows(
     [{ labels: { instance: 'node-a.example.test:9100', device: '/dev/data', mountpoint: '/data', fstype: 'ext4' }, value: 1e12 }],
-    [{ labels: { instance: 'node-a.example.test:9100', device: '/dev/data' }, value: 200e9 }],
+    [{ labels: { instance: 'node-a.example.test:9100', device: '/dev/data', mountpoint: '/data' }, value: 200e9 }],
     [],
   );
   assert.equal(rows[0].used, 800e9);

@@ -21,7 +21,7 @@ title comes from `config.json` `title` and defaults to `HOMELAB`.
   - The panel title counts nodes up out of all nodes.
 - Network fabric · topology: one cluster per `config.json` group and hubs for returned VLAN metrics.
   - The topology fills the page behind the panels. WAN rates come from UniFi WAN byte counters.
-  - VLAN hubs use client byte rates. Rates include every returned VLAN measurement, grouped by network.
+  - VLAN hubs use client byte rates. Each network and VLAN pair is its own hub, named with its VLAN.
   - Labels show group app counts and health, nodes up, apps scored, models up and the last update time.
   - On a software WebGL renderer the topology drops to a 2D mode, labelled `2D MODE`. `?gl=3d` or `?gl=2d` forces
     either.
