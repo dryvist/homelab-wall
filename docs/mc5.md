@@ -42,4 +42,7 @@ for the organization's events, repositories and releases.
   - Each stand-in panel carries `data-source="stand-in"`. Nothing on screen marks it.
 - Service health: with no scored app, the grid shows sample scores, marked `data-source="stand-in"`, and records
   state `empty`.
-- Pending, Idle, STALE, NO DATA and Unavailable: not used on MC5.
+- Service health after a failed score query:
+  - With no held scores, the panel records state `error` and reads `SCORE QUERY FAILED`.
+  - With held scores, it keeps them and records state `stale`.
+- Pending, Idle, NO DATA and Unavailable: not used on MC5.

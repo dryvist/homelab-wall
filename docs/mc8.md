@@ -17,10 +17,15 @@ names this slide `SWITCHBOARD`.
     5 minutes, in milliseconds.
 - Switchboard: callers on the left, the LiteLLM hub in the middle, and models by provider on the right.
   - Routes retain caller alias and team, model, and provider labels.
+  - Token rates exclude the router's own health-check caller.
+  - The page fits one screen. A column that cannot fit shows its top rows by rate plus one `+N more` row with their
+    combined rate.
+  - Routes to a collapsed caller or model end at its `+N more` row.
   - Width means input plus output tokens/s over 5 minutes.
   - Focus or hover a caller or model to trace its paths.
   - The hub reads the total tokens/s, or `Idle` at zero.
 - Billing banks: models sit in banks for local engines, subscriptions, pay per token, free, and unclassified.
+  - A bank with no measured model draws nothing.
   - Billing banks use the token series' `tag_telemetry_billing_class_` labels: `local`, `subscription`, `paid`, and
     `free`, when their string value is `true`.
   - Series with all flags false or missing remain Unclassified; provider names never determine billing.
@@ -28,6 +33,7 @@ names this slide `SWITCHBOARD`.
 - Failure flashes:
   - Failure flashes apply to model edges with measured failure or failed-fallback increases over the last minute.
   - Those counters do not establish caller attribution.
+  - A `+N more` row carries the failure markers of the models collapsed into it.
   - Model failure markers also appear at zero token throughput; failure-only models show `No token rate` rather
     than a made-up zero.
   - Failure and failed-fallback indicators cover the one-minute window that ends at each result's evaluation time,

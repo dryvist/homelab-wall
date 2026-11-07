@@ -56,6 +56,7 @@ open 'http://localhost:4173/?gl=2d'  # force 2D rendering; ?gl=3d forces 3D
 - Open `/` full screen on a 1920×1080 display. The rotator cycles the pages, or the `slides` list in `config.json`.
 - [The rotator page](docs/rotator.md) covers the default order, the controls and the reload rules.
 - Each page refreshes its data every `refreshSeconds` in `config.json`, 15 seconds by default.
+- A page opened directly, outside the rotator, moves its 3D camera with the mouse on MC2, MC3 and MC4.
 
 Snapshot mode reads every query from one static file instead of `/api/prom`. Add its path to `config.json`:
 

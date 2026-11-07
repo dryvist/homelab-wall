@@ -14,6 +14,7 @@ the bottom.
   - Active is the router-wide count of requests in flight.
 - Fleet health: the AI services and their health scores, with a ring that shows their mean score.
   - It lists only services whose health-check group is `AI · UI` or `AI · API`.
+  - Seven or more services use two compact columns, so the whole list and the readings below it fit the panel.
   - The title counts services OK, DEG (degraded) and DOWN.
   - Below the list: requests per minute, a graphics processing unit (GPU) tile with the mean accelerator busy
     percent, one sparkline per model, and a list of recent requests.

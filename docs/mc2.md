@@ -31,4 +31,7 @@ The globe and the two edge panels have no data source.
 - Service health:
   - With no scored app, the strip counts sample scores, marked `data-source="stand-in"`, and records state `empty`.
   - With no apps configured, the strip records state `empty`.
-- Pending, Idle, STALE, NO DATA and Unavailable: not used on MC2.
+- Service health after a failed score query:
+  - With no held scores, the panel records state `error` and reads `SCORE QUERY FAILED`.
+  - With held scores, it keeps them and records state `stale`.
+- Pending, Idle, NO DATA and Unavailable: not used on MC2.
