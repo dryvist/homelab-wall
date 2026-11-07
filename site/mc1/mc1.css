@@ -9,7 +9,7 @@
   background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}
 /* Panel grid cells have content-independent sizes; the topology cell overrides clipping for its overlays. */
 .panel{position:relative;z-index:2;min-width:0;min-height:0;overflow:hidden;contain:layout size;
-  background:rgba(6,12,20,.56);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);border:1px solid var(--edge);
+  background:rgba(6,12,20,.72);border:1px solid var(--edge);
   clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
 .panel>h2{margin:0;padding:var(--pad-y) var(--pad-x) calc(var(--pad-y)*.75);font:600 var(--fs-sm)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);
   display:flex;justify-content:space-between;border-bottom:1px solid var(--grid)}
@@ -51,7 +51,7 @@ header{grid-column:1/-1;position:relative;z-index:2;min-width:0;min-height:0;ove
 /* Full-viewport scene behind the transparent topology panel and glass panels. */
 #gl{position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;z-index:0;display:block}
 #labels{position:fixed;inset:0;z-index:1;pointer-events:none}
-#topo{grid-row:2;grid-column:2;z-index:2;overflow:visible;background:none;border:0;box-shadow:none;clip-path:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+#topo{grid-row:2;grid-column:2;z-index:2;overflow:visible;background:none;border:0;box-shadow:none;clip-path:none}
 #topo::before{display:none}
 #topo>h2{z-index:3;border-bottom:0}
 .vl{position:absolute;transform:translate(-50%,-140%);white-space:nowrap;text-align:center;font:600 12px/1.25 var(--disp);letter-spacing:.16em;
