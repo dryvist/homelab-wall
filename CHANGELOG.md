@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/dryvist/homelab-wall/compare/v0.21.0...v0.21.1) (2026-11-07)
+
+
+### Bug Fixes
+
+* **ci:** build release assets from the released tag ([#155](https://github.com/dryvist/homelab-wall/issues/155)) ([5017b18](https://github.com/dryvist/homelab-wall/commit/5017b1862fa23a90522ba635298b949395d2902e))
+
 ## [0.21.0](https://github.com/dryvist/homelab-wall/compare/v0.20.2...v0.21.0) (2026-11-07)
 
 
