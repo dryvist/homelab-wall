@@ -24,8 +24,13 @@ the bottom.
     no device attaches to the cloud node.
   - Each device label shows its name, busy percent, attached models and active requests.
   - A device name comes from its exporter's product label, or from `config.json` `accelerators` when that sets one.
+  - A product label shortens to its identifier: leading brand words go, the name ends at the first word with a digit,
+    and one short suffix word stays. `VENDOR Brand ABC 1234 SUPER` reads `ABC 1234 SUPER`.
   - Two devices that would read the same also get their role tag.
   - The cloud label shows router-wide requests in flight minus those drawn on devices, and its model count.
+  - Each listed model has one colour, assigned in name order, so it keeps that colour when its request rank changes.
+    Its 3D core and stream, its 2D dot and sparks, and its card all use that colour.
+  - A down model's 2D dot is dimmed with a red ring.
   - Each request in flight draws one bead, up to 12. Past that, beads pack into rings, up to 36, and a badge carries
     the true count.
   - A node dims when nothing is attached and nothing is in flight. A device with no busy series is always dim.
@@ -36,7 +41,8 @@ the bottom.
   - The cards list only models with real requests in the last 4 days. The router's own health-check caller does not
     count.
   - Cards are sorted by requests in the last hour, then by name.
-  - Each card shows the model name, `UP` or `DOWN`, its device, a large number, a sparkline and per-request numbers.
+  - Each card shows a colour swatch and a top border in the model's colour, the model name, `UP` or `DOWN`, its device,
+    a large number, a sparkline and per-request numbers.
   - The large number is the engine's decode speed p50 (50th percentile) in tok/s where the engine reports it.
     Otherwise it is the router's request time p50 in seconds.
   - Below it: request time p50, p90 and p99 (50th, 90th and 99th percentiles), and requests per hour.
