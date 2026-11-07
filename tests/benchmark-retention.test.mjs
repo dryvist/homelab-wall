@@ -53,21 +53,21 @@ test('a held row keeps its last source time when only its age row is current', a
   const now = 1_700_200_000;
   const { retainMeasurements, refreshFreshness, clock, empty, ageFor } = await setup(t, now);
   const labels = { backend: 'vllm', model: 'held-without-value' };
-  const ageKey = ageFor.engineKvPercent;
-  retainMeasurements({ ...empty, engineKvPercent: [{ labels, value: 40 }], [ageKey]: [{ labels, value: now }] });
+  const ageKey = ageFor.enginePrefixPercent;
+  retainMeasurements({ ...empty, enginePrefixPercent: [{ labels, value: 40 }], [ageKey]: [{ labels, value: now }] });
   clock.ms += 600_000;
   const later = refreshFreshness(retainMeasurements({ ...empty, [ageKey]: [{ labels, value: now + 599 }] }));
-  const row = later.data.engineKvPercent.find((item) => item.labels.model === labels.model);
+  const row = later.data.enginePrefixPercent.find((item) => item.labels.model === labels.model);
   assert.equal(row.value, 40);
   assert.equal(row.sourceTimestamp, now);
-  assert.ok(later.stale.get('engineKvPercent').has(row));
+  assert.ok(later.stale.get('enginePrefixPercent').has(row));
 });
 
-test('a percentile or ratio without a row reads Idle while its source is fresh', async (t) => {
+test('a percentile without a row reads Idle while its source is fresh', async (t) => {
   const now = 1_700_600_000;
   const { retainMeasurements, refreshFreshness, clock, empty, ageFor } = await setup(t, now);
   const labels = { backend: 'vllm', model: 'idle-without-rows' };
-  const keys = ['engineTtftP50', 'engineE2eP95', 'enginePrefixPercent', 'engineSpecPercent'];
+  const keys = ['engineTtftP50', 'engineTtftP99', 'engineItlP50', 'engineE2eP95'];
   const first = { ...empty };
   for (const key of keys) Object.assign(first, { [key]: [{ labels, value: 0.5 }], [ageFor[key]]: [{ labels, value: now }] });
   retainMeasurements(first);

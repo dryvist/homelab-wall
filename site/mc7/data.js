@@ -41,9 +41,9 @@ function retainByIdentity(current, previous = [], removed = []) {
 const sameIdentity = (row, age) => matches(row, age.labels)
   && Object.keys(row.labels).length === Object.keys(age.labels).length;
 
-// A window without requests makes a percentile NaN, which the store drops, and empties the prefix and
-// spec ratios through their `> 0` denominators. Such a key with a fresh source but no reading is idle.
-const IDLE_KEY = /P\d+$|^engine(Prefix|Spec)Percent$/;
+// Any percentile is NaN when its window holds no requests, and the store drops NaN, so a percentile with a
+// fresh source but no reading is idle. Ratios are not: a first sample too big for increase() hides requests.
+const QUANTILE_KEY = /P\d+$/;
 // A held reading unmeasured for longer than this is dropped, so retired engines and models leave the page.
 const HOLD_SECONDS = 3600;
 
@@ -68,12 +68,12 @@ export function retainMeasurements(raw) {
       const source = ages.find((age) => sameIdentity(row, age));
       return source && fresh(source) ? source : null;
     };
-    const idleKey = IDLE_KEY.test(key);
-    const idleRows = idleKey && raw[key] != null ? ages.filter((age) => fresh(age)
+    const quantile = QUANTILE_KEY.test(key);
+    const idleRows = quantile && raw[key] != null ? ages.filter((age) => fresh(age)
       && !raw[key].some((row) => Number.isFinite(row.value) && sameIdentity(row, age)))
       .map(({ labels }) => ({ labels, value: null, idle: true })) : [];
     const removed = [...raw[key]?.filter((row) => !Number.isFinite(row.value)
-      && !(idleKey && Number.isNaN(row.value) && !freshAge(row))) || [], ...idleRows];
+      && !(quantile && Number.isNaN(row.value) && !freshAge(row))) || [], ...idleRows];
     const values = raw[key] == null ? heldValues
       : retainByIdentity(raw[key].filter((row) => Number.isFinite(row.value)), heldValues, removed);
     const measured = new Set([...raw[key] || [], ...idleRows].map(identity));
