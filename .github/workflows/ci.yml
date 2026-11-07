@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   typecheck:
-    name: Typecheck
+    name: Typecheck and unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -35,6 +35,7 @@ jobs:
       # allow-list — the one source snapshot lookups (site/lib/prom.js) and the publisher read.
       - run: git diff --exit-code -- site/queries.json
       - run: npx tsc --noEmit
+      - run: node --test 'tests/*.test.js' 'tests/*.test.mjs'
 
   # One job per Playwright project instead of one job running all 8: the full matrix on a single
   # 4-vCPU runner over-subscribed it (WebGL/bloom scenes plus screenshot capture across 8
