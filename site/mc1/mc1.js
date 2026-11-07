@@ -308,7 +308,8 @@ function renderQuorum() {
 function renderStorage() {
   const rows = model.storage;
   const firstRow = $('strows').querySelector('.st');
-  const rowHeight = firstRow?.getBoundingClientRect().height || 18.5;
+  // Layout height: the panel's 3D sway transform inflates the bounding box.
+  const rowHeight = firstRow?.offsetHeight || 18.5;
   const capacity = Math.max(1, Math.floor(($('storage').clientHeight - $('storage').querySelector('h2').offsetHeight - 6) / rowHeight));
   const visibleCount = rows.length > capacity ? Math.max(0, capacity - 1) : rows.length;
   const visible = rows.slice(0, visibleCount);
