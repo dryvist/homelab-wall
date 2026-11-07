@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.22.3](https://github.com/dryvist/homelab-wall/compare/v0.22.2...v0.22.3) (2026-11-07)
+
+
+### Bug Fixes
+
+* **mc7:** fit cockpit on one screen ([6043af3](https://github.com/dryvist/homelab-wall/commit/6043af3061d94c599f8b802f97a2c489e23cece1))
+* **mc7:** fit the page to one screen ([#166](https://github.com/dryvist/homelab-wall/issues/166)) ([6043af3](https://github.com/dryvist/homelab-wall/commit/6043af3061d94c599f8b802f97a2c489e23cece1))
+* **wall:** show failed service scores as error or stale ([#164](https://github.com/dryvist/homelab-wall/issues/164)) ([aca6229](https://github.com/dryvist/homelab-wall/commit/aca6229c7b7f9a782e5a94cde7a2f6854c88db61))
+
 ## [0.22.2](https://github.com/dryvist/homelab-wall/compare/v0.22.1...v0.22.2) (2026-11-07)
 
 
