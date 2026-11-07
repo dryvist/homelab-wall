@@ -41,8 +41,10 @@ function reading(id, keys, value, unit, caption, missing = 'Pending') {
   }
   const stale = state.startsWith('STALE');
   panel.dataset.state = state.startsWith('Pending') || (value == null && !stale) ? 'pending' : stale ? 'stale' : 'ok';
-  // A missing value shows its fallback; staleness shows on the panel state and status line.
-  $(id).textContent = value == null ? missing : `${number(value)}${unit}`;
+  // A held empty reading (a measured zero or idle, then a failed poll) reads Stale. A reading never measured,
+  // or a share that cannot be computed, shows its fallback; the panel status carries any staleness.
+  const held = keys.some((key) => feeds[key]?.at != null);
+  $(id).textContent = value == null ? (stale && held && missing === 'Pending' ? 'Stale' : missing) : `${number(value)}${unit}`;
   panel.querySelector('.status').textContent = value == null && missing === 'Pending' && !stale ? 'No measurements yet' : state === 'Live' ? caption : state;
 }
 
