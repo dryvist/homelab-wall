@@ -11,6 +11,9 @@ export default defineConfig({
   testMatch: '**/*.spec.ts',
   testIgnore: ['**/wall.live.spec.ts'],
   timeout: 60_000,
+  // CI renders WebGL and DPR 2 pages in software on a shared 4-vCPU runner, so a poll's render can take
+  // longer than locally; assertions still have to pass, only the wait is longer.
+  expect: { timeout: process.env.CI ? 10_000 : 5_000 },
   // Shards split by test, not by file, so ci.yml's three shards per project stay balanced.
   fullyParallel: true,
   // ci.yml runs a third of one Playwright project per job (its own runner) instead of the full 8-project
