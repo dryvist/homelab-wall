@@ -65,7 +65,7 @@ export const Q = {
   vlanRxBytes: 'sum by (network, vlan) (rate(unpoller_client_receive_bytes_total[5m]))',
   vlanTxBytes: 'sum by (network, vlan) (rate(unpoller_client_transmit_bytes_total[5m]))',
   llmState: 'max by (litellm_model_name) (litellm_deployment_state)',
-  llmLocalModels: `group by (model) (litellm_total_tokens_metric_total{tag_telemetry_billing_class_local="true",${REAL_USE}})`,
+  llmLocalModels: `group by (model) (increase(litellm_total_tokens_metric_total{tag_telemetry_billing_class_local="true",${REAL_USE}}[4d]) > 0)`,
   // MC1 and MC3 model lists: a model is listed once it served a real request in the last 4d. An
   // hour with no request leaves the percentiles with no row for that model: idle, not an error.
   llmUsed4d: `sum by (model) (increase(${ROUTER_REQUESTS}[4d])) > 0`,
