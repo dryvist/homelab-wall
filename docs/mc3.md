@@ -24,8 +24,8 @@ the bottom.
     no device attaches to the cloud node.
   - Each device label shows its configured or exporter-provided name, busy percent, attached models and active requests.
   - Two devices that would read the same also get their role tag.
-  - The cloud label shows router-wide requests in flight minus local requests, when both readings are available, and
-    its model count.
+  - The cloud label shows router-wide requests in flight minus local requests, marked `router − local`, when both
+    readings are available, and its model count.
   - Each listed model has one colour, assigned in name order, so it keeps that colour when its request rank changes.
     Its 3D core and stream, its 2D dot and sparks, and its card all use that colour.
   - A down model's 2D dot is dimmed with a red ring.

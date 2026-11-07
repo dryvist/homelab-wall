@@ -221,7 +221,7 @@ function renderKpis() {
   const k = [
     ['tokens today', classPair(model.tokensToday.local, model.tokensToday.cloud, (value) => `${(value / 1e6).toFixed(2)}M`)],
     ['requests/min', classPair(model.reqPerMin.local, model.reqPerMin.cloud, (value) => value.toFixed(0))],
-    ['active', classPair(model.active.local, model.active.cloud, (value) => String(Math.round(value)))],
+    ['active · cloud = router − local', classPair(model.active.local, model.active.cloud, (value) => String(Math.round(value)))],
     ['models up', modelCountPair(model.modelCounts, true)],
   ];
   $('kpis').innerHTML = k.map(([label, value]) => `<div class="kpi"><b class="num split">${value}</b><span>${label}</span></div>`).join('');
@@ -446,7 +446,7 @@ function renderAnchors() {
     const models = `${d.models} model${d.models === 1 ? '' : 's'}`;
     let busyLine, statusLine;
     if (d.kind === 'cloud') {
-      busyLine = d.active == null ? 'no data' : d.active ? `${d.active} in flight` : 'idle';
+      busyLine = d.active == null ? 'no data' : d.active ? `${d.active} in flight · router − local` : 'idle';
       statusLine = d.models ? models : d.active == null ? 'no data' : 'no models';
     } else {
       busyLine = d.busy == null ? 'no data' : `${Math.round(d.busy)}% busy`;
