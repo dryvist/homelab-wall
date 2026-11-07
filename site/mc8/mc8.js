@@ -41,7 +41,8 @@ function reading(id, keys, value, unit, caption, missing = 'Pending') {
   }
   const stale = state.startsWith('STALE');
   panel.dataset.state = state.startsWith('Pending') || (value == null && !stale) ? 'pending' : stale ? 'stale' : 'ok';
-  $(id).textContent = value == null ? (stale ? 'Stale' : missing) : `${number(value)}${unit}`;
+  // A missing value shows its fallback; staleness shows on the panel state and status line.
+  $(id).textContent = value == null ? missing : `${number(value)}${unit}`;
   panel.querySelector('.status').textContent = value == null && missing === 'Pending' && !stale ? 'No measurements yet' : state === 'Live' ? caption : state;
 }
 
