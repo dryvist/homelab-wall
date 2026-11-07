@@ -24,7 +24,7 @@ test('frozen snapshots age per measurement, retain source times on failure, and 
   const snapshot = {
     // Even a newly published envelope must not refresh an old measurement.
     generated_at: new Date(now).toISOString(),
-    instant: Object.fromEntries([...INSTANT_KEYS, ...SOURCE_AGE_KEYS].map((key) => [key, { result: key === 'engineDecode' ? [
+    instant: Object.fromEntries([...INSTANT_KEYS, ...SOURCE_AGE_KEYS, 'llmUsed4d'].map((key) => [key, { result: key === 'engineDecode' ? [
       { metric: labels, value: [captured, '7'] },
       { metric: newer, value: [captured + 200, '8'] },
     ] : key === BENCHMARK_SOURCE_AGE_FOR.engineDecode ? [

@@ -20,7 +20,7 @@ for (const snapshot of [false, true]) {
     })) await expect(engine.locator(`[data-metric="${key}"]`)).toHaveText(expected);
     for (const canvas of await engine.locator('canvas').all()) await expect(canvas).toHaveAttribute('data-samples', '41');
     const router = page.locator('.card[data-backend="router"][data-model="model-large"]');
-    for (const [key, value] of Object.entries({ routerTtftP50: '200ms', routerTtftP95: '800ms', routerE2eP95: '4.0s' })) {
+    for (const [key, value] of Object.entries({ routerTtftP50: '200ms', routerTtftP95: '800ms', routerE2eP95: '4.0s', routerOutput: '38.0' })) {
       await expect(router.locator(`[data-metric="${key}"]`)).toHaveText(value);
     }
     const llama = page.locator('.card[data-backend="llamacpp"]');

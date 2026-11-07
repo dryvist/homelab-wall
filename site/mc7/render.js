@@ -22,7 +22,7 @@ function metric(data, stale, labels, key, format = number) {
 
 const field = (label, content) => `<div><dt>${label}</dt><dd>${content}</dd></div>`;
 const panelStale = (stale, router) => [...stale].some(([key, rows]) => rows.size > 0
-  && (router ? key.startsWith('router') || key === 'llmTokRate'
+  && (router ? key.startsWith('router')
     : key.startsWith('engine') || key === 'acceleratorWatts' || key === 'acceleratorTokensPerJoule'));
 const historyLabel = (history) => Number.isFinite(history?.staleSince)
   ? `<small data-state="stale">STALE ${age(history.staleSince)}</small>` : '';
@@ -60,7 +60,7 @@ function routerCard(labels, data, stale) {
   return `<article class="card" data-backend="router" data-model="${esc(labels.model)}"><h3>${esc(labels.model)}</h3>
     <p class="backend">Router accounting</p><dl>
     ${field('TTFT p50', m('routerTtftP50', duration))}${field('TTFT p95', m('routerTtftP95', duration))}${field('E2E p95', m('routerE2eP95', duration))}
-    ${field('Output tok/s', m('llmTokRate'))}${field('Input tok/s', m('routerInput'))}</dl></article>`;
+    ${field('Output tok/s', m('routerOutput'))}${field('Input tok/s', m('routerInput'))}</dl></article>`;
 }
 
 export function renderBenchmarks({ data, stale, failed }) {

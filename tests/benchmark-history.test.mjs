@@ -72,7 +72,7 @@ test('MC7 polls its allow-listed queries and preserves failed readings with meas
   });
   const raw = await loadBenchmarks();
   assert.ok(requested.some((path) => path.includes('query_range')));
-  assert.deepEqual(Object.keys(raw).sort(), [...INSTANT_KEYS, ...SOURCE_AGE_KEYS, 'engineDecodeHistory', 'enginePrefillHistory'].sort());
+  assert.deepEqual(Object.keys(raw).sort(), [...INSTANT_KEYS, ...SOURCE_AGE_KEYS, 'engineDecodeHistory', 'enginePrefillHistory', 'llmUsed4d'].sort());
   const row = { labels: { backend: 'vllm', model: 'example' }, value: 7, timestamp: 999 };
   raw.engineDecode = [row];
   raw[BENCHMARK_SOURCE_AGE_FOR.engineDecode] = [{ labels: row.labels, value: 999 }];
