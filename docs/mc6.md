@@ -40,4 +40,4 @@ MC6 uses no `site/lib/queries.js` keys. It reads `GET /api/words` (same origin),
   - The subtitle reads `STALE <age>`, then `STALE since <time>` after 5 minutes, and the panel title reads `STALE`.
 - Pending: with no data ever and the feed down, the panel stays `pending`.
 - Empty: a successful poll with no rows records state `empty`.
-- Idle and Unavailable: not used on MC6. MC6 never shows stand-in words.
+- Idle and Unavailable: not used on MC6. A source without a feed has no word cloud.

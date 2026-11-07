@@ -1,8 +1,8 @@
 # MC5 · GitOps
 
-MC5 is the GitOps pipeline overview for the `dryvist` GitHub organization. A 3D organization core with orbiting
-repository nodes fills the screen, and comets fly through push, pull request, merge, release and deploy. Four cards
-float over it. The header title comes from `config.json` `title` and defaults to `HOMELAB`.
+MC5 is a GitOps pipeline overview for a public organization. A 3D organization core with orbiting repository nodes
+fills the screen, and comets fly through push, pull request, merge, release and deploy. Four cards float over it. The
+header title comes from `config.json` `title` and defaults to `HOMELAB`.
 
 ![MC5 GitOps](screenshots/mc5.jpg)
 
@@ -18,14 +18,13 @@ float over it. The header title comes from `config.json` `title` and defaults to
 - Service health: an app grid in `config.json` group order, with one empty cell between groups.
   - The title counts apps OK, DEGRADED and DOWN.
 - Latest releases: the latest release tag and age for each of the 5 most recently pushed repositories.
-- Terrakube & Semaphore: four plan, apply, run and job rows that cycle through queued, running and succeeded.
+- Terrakube and Semaphore: the rows have no feed and show `No feed`.
 
 ## Data
 
 - `appScore`: the health score per app, for the service health grid.
 
-MC5 also calls the public GitHub application programming interface (API) straight from the browser, with no token,
-for the organization's events, repositories and releases.
+MC5 calls the public organization API from the browser for events, repositories and releases.
 
 - Events: polled at the interval the API asks for, never more often than once a minute.
 - Repositories: public repositories sorted by last push, polled hourly.
@@ -34,15 +33,14 @@ for the organization's events, repositories and releases.
 
 ## States
 
-- Stand-in:
-  - When the API is unreachable and nothing is cached, generic repositories and events stand in, so the hero and
-    ticker keep moving.
-  - Releases fall back to generated tags when no repository has a release.
-  - The Terrakube & Semaphore rows are always stand-in.
-  - Each stand-in panel carries `data-source="stand-in"`. Nothing on screen marks it.
-- Service health: with no scored app, the grid shows sample scores, marked `data-source="stand-in"`, and records
-  state `empty`.
+- No feed:
+  - The Terrakube and Semaphore rows have no feed and show `No feed`.
+  - Without cached organization data, the hero and ticker do not add repository or event rows.
+  - With no release rows, the panel reads `NO RELEASE DATA`.
+- Service health: missing scores show `—`. With no scores, the panel records state `empty` and reads
+  `NO SERVICE DATA` or `NO APPS CONFIGURED`.
 - Service health after a failed score query:
   - With no held scores, the panel records state `error` and reads `SCORE QUERY FAILED`.
   - With held scores, it keeps them and records state `stale`.
-- Pending, Idle, NO DATA and Unavailable: not used on MC5.
+- Failed organization queries show an error or retain the last real data with state `stale`.
+- Pending: used before the first data poll. Idle, NO DATA and Unavailable: not used on MC5.

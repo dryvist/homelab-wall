@@ -33,7 +33,7 @@ python3 -m http.server 4173 --bind localhost --directory site
 ```
 
 - Every page reads `/config.json` at start. Git ignores `site/config.json`.
-- With no Prometheus gateway or snapshot behind it, the pages show stand-in content.
+- Panels with no real source show `No feed`. Missing readings show `—` or that panel's visible state message.
 
 Deploy a release:
 

@@ -10,8 +10,8 @@ the bottom.
 
 - Header: `AI CORE // INFERENCE`, a subtitle with service and model counts, four key figures and a clock.
   - The key figures are tokens today in millions, requests per minute, active requests, and models up out of listed
-    models.
-  - Active is the router-wide count of requests in flight.
+    models. Each key figure shows local and cloud values separately.
+  - The page keeps local and cloud figures separate; it does not display a combined local-plus-cloud total.
 - Fleet health: the AI services and their health scores, with a ring that shows their mean score.
   - It lists only services whose health-check group is `AI · UI` or `AI · API`.
   - Seven or more services use two compact columns, so the whole list and the readings below it fit the panel.
@@ -20,15 +20,12 @@ the bottom.
     percent, one sparkline per model, and a list of recent requests.
 - Reactor: the hub, its five nodes, and the models attached to them.
   - The cloud node sits top right, and the four device nodes sit below the hub.
-  - The device nodes are `gpu-primary`, `gpu-secondary`, `mac-primary` and `mac-secondary`.
   - A model attaches to the first device whose host matches one of the model's serving URLs. A model whose URLs name
     no device attaches to the cloud node.
-  - Each device label shows its name, busy percent, attached models and active requests.
-  - A device name comes from its exporter's product label, or from `config.json` `accelerators` when that sets one.
-  - A product label shortens to its identifier: leading brand words go, the name ends at the first word with a digit,
-    and one short suffix word stays. `VENDOR Brand ABC 1234 SUPER` reads `ABC 1234 SUPER`.
+  - Each device label shows its configured or exporter-provided name, busy percent, attached models and active requests.
   - Two devices that would read the same also get their role tag.
-  - The cloud label shows router-wide requests in flight minus those drawn on devices, and its model count.
+  - The cloud label shows router-wide requests in flight minus local requests, when both readings are available, and
+    its model count.
   - Each listed model has one colour, assigned in name order, so it keeps that colour when its request rank changes.
     Its 3D core and stream, its 2D dot and sparks, and its card all use that colour.
   - A down model's 2D dot is dimmed with a red ring.
@@ -71,11 +68,9 @@ the bottom.
 - `llmTokensToday`: router tokens over 24 hours, for the tokens-today figure.
 - `llmReqPerMin`: router requests per minute over 5 minutes.
 - `acceleratorBusy`: busy percent per accelerator role, for each device label and the GPU tile.
-- `gpuModel`: each GPU device's role, product name and host.
-- `macChip`: each `mac-*` device's role, chip name and host.
-- `llmApiBase`: each model's serving URLs, matched against the device hosts.
-- `vllmRunning`: requests running per vLLM server, drawn on its device.
-- `llamaRunning`: requests processing per llama.cpp server, drawn on its device.
+- Device inventory readings provide each device's role and display name.
+- Local engine readings provide per-instance in-flight request counts.
+- Model deployment addresses map models to device roles; other models attach to the cloud node.
 - `routerInFlight`: requests in flight across the whole router.
 
 The recent-request list reads `/api/llm/recent` every 5 seconds. Its contract is in
@@ -87,14 +82,12 @@ The recent-request list reads `/api/llm/recent` every 5 seconds. Its contract is
   - A model with no request in the last hour reads `Idle`, with its last-request age.
   - An idle model's sparkline leaves a gap, never a zero.
   - A device with nothing attached and nothing in flight reads `idle`. So does the cloud node with nothing in flight.
-- NO DATA:
-  - A device with no busy series reads `no data`.
-  - The GPU tile reads `NO FEED` when no accelerator reports.
+- Missing data:
+  - Device labels show `no data` when their busy reading is absent. The GPU tile shows `—` with `NO DATA` or
+    `QUERY FAILED` beside it.
+  - Missing scores or measurements show `—`; the page does not fill them with invented values.
   - The request list reads `NO FEED` when `/api/llm/recent` fails, and `NO RECENT REQUESTS` when it answers empty.
-- Stand-in:
-  - Before any router model arrives, sample models sit on the cloud node, and the cards carry
-    `data-source="stand-in"`.
-  - Each key figure uses a stand-in value while its own query is empty or failed. Active then shows the sum of the
-    local servers' requests.
-  - When `llmUsed4d` fails, the cards list every deployment instead, so one failed query never empties the strip.
-- Pending, STALE and Unavailable: not used on MC3.
+- Query states:
+  - Panels show their current pending, empty, error or stale state and its visible message.
+  - If `llmUsed4d` fails, model deployment rows may remain visible and the panel reports the query failure.
+  - A failed state query may retain real model rows as stale.
