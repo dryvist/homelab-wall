@@ -48,20 +48,22 @@ export function createPointer({ win = globalThis.window, matchMedia = win?.match
     schedule();
   }
 
-  function onPointerLeave() {
+  // pointerleave never reaches window; a pointerout with no related target means the pointer left the page.
+  function onPointerOut(event) {
+    if (event.relatedTarget) return;
     inside = false;
     schedule();
   }
 
   win.addEventListener('pointermove', onPointerMove, { passive: true });
-  win.addEventListener('pointerleave', onPointerLeave);
+  win.addEventListener('pointerout', onPointerOut);
 
   return {
     pointer,
     dispose() {
       disposed = true;
       win.removeEventListener('pointermove', onPointerMove);
-      win.removeEventListener('pointerleave', onPointerLeave);
+      win.removeEventListener('pointerout', onPointerOut);
       if (frame !== null) win.cancelAnimationFrame?.(frame);
       frame = null;
     },
