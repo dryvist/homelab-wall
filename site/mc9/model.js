@@ -1,7 +1,7 @@
 // These are signal roles, never identities discovered in metric labels.
 export const NODES = [
-  { id: 'gateway', label: 'Hermes gateway', signal: null, unit: 'events/s', x: .20, y: .27, color: '#f6c780' },
-  { id: 'cron', label: 'Hermes cron', signal: null, unit: 'events/s', x: .12, y: .61, color: '#f6c780', parent: 'gateway' },
+  { id: 'gateway', label: 'Hermes gateway', signal: 'mc9GatewayAgents', unit: 'active agents', x: .20, y: .27, color: '#f6c780' },
+  { id: 'cron', label: 'Hermes cron', signal: 'mc9CronJobs', unit: 'running jobs', x: .12, y: .61, color: '#f6c780', parent: 'gateway' },
   { id: 'donna', label: 'Donna', signal: 'mc9DonnaRate', unit: 'requests/s', x: .47, y: .21, color: '#e8a9d5' },
   { id: 'memory', label: 'Hindsight memory', signal: 'mc9HindsightRate', unit: 'operations/s', x: .44, y: .66, color: '#9ddac9' },
   { id: 'codex', label: 'Codex', signal: 'mc9CodexRate', role: '', unit: 'output tokens/s', x: .73, y: .27, color: '#aebcff' },

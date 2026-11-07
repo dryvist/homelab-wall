@@ -11,7 +11,7 @@ rate and ringed by its last 24 hours. The default rotator lists MC9 last, after 
 - Header: `Mission Control 9 · Beta`, the title, a status line and a clock.
   - The status line counts signals reporting and signals pending, and adds `STALE data` when any node is stale.
 - Constellation: nine nodes, each with its label, rate, unit, and a last-seen or state line.
-  - Hermes gateway and Hermes cron, in events/s.
+  - Hermes gateway, in active agents, and Hermes cron, in running jobs.
   - Donna, in requests/s.
   - Hindsight memory, in operations/s.
   - Codex and Codex subagents, in output tokens/s.
@@ -47,6 +47,8 @@ MC9 uses only the Prometheus gateway or snapshot, with `mc9*` queries in `Q`.
 - `mc9CodexRate`: Codex output tokens per second, split into primary and subagents.
 - `mc9ClaudeMainRate`: Claude Code main-agent output tokens per second.
 - `mc9ClaudeSubagentRate`: Claude Code subagent output tokens per second.
+- `mc9GatewayAgents`: active agents across gateway instances, each at its 5-minute peak.
+- `mc9CronJobs`: running cron jobs across gateway instances, each at its 5-minute peak.
 - `mc9SpanRate`: generative AI trace spans per second.
 
 Each key is read as a current value and as a 24-hour range at 5-minute steps.
@@ -60,7 +62,6 @@ Each key is read as a current value and as a 24-hour range at 5-minute steps.
 - Pending:
   - Missing signals stay visible as pending.
   - The LLM spans source is pending until span metrics arrive.
-  - Hermes gateway and Hermes cron have no signal yet, so they stay pending.
   - An empty 24h ring is pending.
 - STALE:
   - A signal that disappears or fails retains its last measured value as STALE.

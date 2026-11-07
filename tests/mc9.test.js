@@ -150,8 +150,10 @@ test('a satellite without its own row reads zero at the parent sample time while
   const claude = { mc9ClaudeMainRate: { current: [{ labels: {}, value: 1, timestamp: now }] }, mc9ClaudeSubagentRate: { current: [] } };
   assert.equal(byId(shapeNodes(claude, [], now), 'claude-subagents').state, 'idle');
   assert.equal(byId(shapeNodes({ mc9ClaudeSubagentRate: { current: [] } }, [], now), 'claude-subagents').state, 'pending');
-  // Nodes without a signal never infer zero from a parent.
   assert.equal(byId(shapeNodes({}, [], now), 'cron').state, 'pending');
+  const hermes = { mc9GatewayAgents: { current: [{ labels: {}, value: 2, timestamp: now }] }, mc9CronJobs: { current: [] } };
+  assert.equal(byId(shapeNodes(hermes, [], now), 'gateway').state, 'active');
+  assert.equal(byId(shapeNodes(hermes, [], now), 'cron').state, 'idle');
 });
 
 test('a hung request times out while fulfilled and rejected requests keep their result', { timeout: 1000 }, async () => {

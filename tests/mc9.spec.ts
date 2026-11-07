@@ -13,8 +13,9 @@ test('constellation shows real rates, idle nodes, satellites, and pending source
   await expect(page.locator('[data-node="codex-subagents"] .rate')).toHaveText('4 output tokens/s');
   await expect(page.locator('[data-node="memory"]')).toHaveAttribute('data-state', 'idle');
   await expect(page.locator('[data-node="spans"] .rate')).toHaveText('Pending · no activity data');
-  await expect(page.locator('[data-node="gateway"]')).toHaveAttribute('data-state', 'pending');
-  await expect(page.locator('#status')).toHaveText('6 signals reporting · 3 pending');
+  await expect(page.locator('[data-node="gateway"] .rate')).toHaveText('2 active agents');
+  await expect(page.locator('[data-node="cron"]')).toHaveAttribute('data-state', 'idle');
+  await expect(page.locator('#status')).toHaveText('8 signals reporting · 1 pending');
   await expect(page.locator('body')).not.toContainText(/session_id|user_id|agent_name|session_source/);
   await expect.poll(() => page.locator('#sky').evaluate((el) => (el as HTMLCanvasElement).toDataURL().length)).toBeGreaterThan(2000);
   await page.screenshot({ path: testInfo.outputPath('mc9.png') });

@@ -3,6 +3,8 @@ import type { Page, Route } from '@playwright/test';
 import { Q } from '../site/lib/queries.js';
 
 export const mc9Rates: Record<string, [Record<string, string>, number][]> = {
+  mc9GatewayAgents: [[{}, 2]],
+  mc9CronJobs: [[{}, 0]],
   mc9DonnaRate: [[{}, .1]],
   mc9HindsightRate: [[{}, 0]],
   mc9CodexRate: [[{}, 12], [{ backend: 'subagents' }, 4]],
