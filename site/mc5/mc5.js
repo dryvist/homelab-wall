@@ -14,6 +14,7 @@ import {
 } from '/lib/stage.js';
 import { sampleAppScore } from '/lib/sampleData.js';
 import { groupedHexLayout } from '/lib/hexlayout.js';
+import { serviceScoreState } from '/lib/serviceScoreState.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -36,12 +37,13 @@ const appIndex = Object.fromEntries(apps.map((a) => [a.n, a]));
 // re-inserted — scoring/summary code below always uses `apps`/`appIndex`, never this.
 const hexCells = hexLayout.map((n) => (n === null ? null : appIndex[n]));
 const appPos = new Map(apps.map((a, i) => [a, i])); // apps' own index, for sampleAppScore(i)
-const model = { updated: 0 };
+const model = { updated: 0, scoreFailed: false };
 let appsSample = false;
 
 async function refreshApps() {
   let rows = null;
   try { rows = await query(Q.appScore); } catch { rows = null; }
+  model.scoreFailed = rows === null;
   if (rows) {
     const seen = new Set();
     for (const row of rows) {
@@ -62,7 +64,8 @@ function renderApps() {
   const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
   $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`;
   setSampleBadge($('apps'), appsSample);
-  setState($('apps'), scored.length ? 'ok' : 'empty', scored.length ? '' : 'NO SERVICE DATA');
+  const state = serviceScoreState(model.scoreFailed, scored.length > 0);
+  setState($('apps'), state, state === 'error' ? 'SCORE QUERY FAILED' : state === 'empty' ? 'NO SERVICE DATA' : '');
   // Test hook only (no visible marker): count of apps with no real score, regardless of the
   // sample-fallback badge above — the app grid draws every one of these as a red 0.
   $('appgrid').dataset.unknownCount = String(apps.filter((a) => a.s == null).length);
