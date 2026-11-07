@@ -29,6 +29,16 @@ export const APP_HEALTH_SCORE = `
 
 const APP_SCORE = `homelab:app_health_score or (${APP_HEALTH_SCORE})`;
 
+// The router's own health check calls every model many times a day; every other caller is real use.
+const REAL_USE = 'api_key_alias!="litellm-internal-health-check"';
+// One count per finished router request: the +Inf bucket of its latency histogram (_count is unreliable).
+const ROUTER_REQUESTS = `litellm_request_total_latency_metric_bucket{le="+Inf",${REAL_USE}}`;
+// Each request's own end-to-end time, in seconds, over the last hour of real requests.
+const requestTime = (q) => `histogram_quantile(${q}, sum by (model, le) (increase(litellm_request_total_latency_metric_bucket{${REAL_USE}}[1h])))`;
+// Each request's mean decode speed, in tok/s. Speed is the inverse of time per token, so the 0.9
+// quantile of time is the slow tail: "p90 104 tok/s" means 90% of requests decoded at least that fast.
+const decodeSpeed = (q) => `1 / histogram_quantile(${q}, sum by (model_name, le) (increase(vllm:request_time_per_output_token_seconds_bucket[1h])))`;
+
 export const Q = {
   ...MC9_QUERIES,
   ...BENCHMARK_Q,
@@ -57,6 +67,19 @@ export const Q = {
   vlanFwRate: 'sum by (vlan) (rate(unifi_vlan_fw_events_total[5m]))',
   llmState: 'max by (litellm_model_name) (litellm_deployment_state)',
   llmTokRate: 'sum by (model) (rate(litellm_output_tokens_metric_total[5m]))',
+  // MC1 and MC3 model lists: a model is listed once it served a real request in the last 4d. An
+  // hour with no request leaves the percentiles with no row for that model: idle, not an error.
+  llmUsed4d: `sum by (model) (increase(${ROUTER_REQUESTS}[4d])) > 0`,
+  llmRequests1h: `sum by (model) (increase(${ROUTER_REQUESTS}[1h]))`,
+  llmRequestP50: requestTime(0.5),
+  llmRequestP90: requestTime(0.9),
+  llmRequestP99: requestTime(0.99),
+  llmTtftP50: `histogram_quantile(0.5, sum by (model, le) (increase(litellm_llm_api_time_to_first_token_metric_bucket{${REAL_USE}}[1h])))`,
+  llmDecodeP50: decodeSpeed(0.5),
+  llmDecodeP90: decodeSpeed(0.9),
+  llmDecodeP99: decodeSpeed(0.99),
+  // Unix time of each model's last real request.
+  llmLastRequest: `tlast_change_over_time(sum by (model) (${ROUTER_REQUESTS})[4d:1m])`,
   // mc3
   llmTokensToday: 'sum(increase(litellm_total_tokens_metric_total[24h]))',
   llmReqPerMin: 'sum(rate(litellm_proxy_total_requests_metric_total[5m])) * 60',
