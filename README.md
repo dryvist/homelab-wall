@@ -93,10 +93,10 @@ MC8 uses real measurements only. Failed queries, and empty ones not covered
 below, show `Pending` until the first reading; later gaps retain the last
 measurement with a visible `STALE` age. An empty failure, fallback or spend
 result reads as zero while the router is live. TTFT p95 comes from bucket
-increases, so an empty TTFT result means no requests in the window; it reads
-`Idle` while the histogram's sample time is fresh. Zero token rate means idle;
-local share is unavailable when the total is zero. Routes retain caller alias
-and team, model, and provider labels;
+increases, which also count a new series' first small bucket counts; an empty
+TTFT result reads `Idle` while the histogram's sample time is fresh. Zero token
+rate means idle; local share is unavailable when the total is zero. Routes
+retain caller alias and team, model, and provider labels;
 width means input plus output tokens/s over 5 minutes. Focus or hover a caller
 or model to trace its paths. Failure flashes apply to model edges with measured
 failure or failed-fallback increases over the last minute; those counters do
