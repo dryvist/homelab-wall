@@ -139,8 +139,8 @@ prefill counter rates with timestamped, gap-preserving history, latency
 percentiles, concurrency, cache usage, prefix hits, and speculative acceptance.
 Router cards use LiteLLM `_bucket` histograms for TTFT p50/p95 and E2E p95,
 aggregated per model. Engine histograms also use standard `_bucket` names.
-Percentiles come from bucket increases over the trailing 5 minutes, which
-count a new series' first requests.
+Percentiles come from bucket increases over the trailing 5 minutes, which also
+count a new series' first small bucket counts.
 
 Missing measurements show `NO DATA`. A failed poll keeps each last measured
 value with its source sample time, and the tooltip shows that time, not the

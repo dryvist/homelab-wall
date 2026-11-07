@@ -5,8 +5,7 @@ const l = (expr) => `sum by (backend, guest) (label_replace(${expr}, "backend", 
 const identity = (name) => name.startsWith('llamacpp:') ? 'guest' : 'model_name';
 const rate = (name) => `sum by (${identity(name)}) (rate(${name}{job="llm_gpu_engine"}[5m]))`;
 const gauge = (name, agg = 'sum') => `${agg} by (${identity(name)}) (${name}{job="llm_gpu_engine"})`;
-// Percentiles use increase(), which counts a new series' first small bucket value that rate() skips, so a
-// percentile has no row only when its window holds no requests.
+// Percentiles use increase(), which also counts a new series' first small bucket value; rate() skips it.
 const quantile = (name, p) => v(`histogram_quantile(${p}, sum by (model_name, le) (increase(vllm:${name}_seconds_bucket{job="llm_gpu_engine"}[5m])))`);
 const routerQuantile = (name, p) => `histogram_quantile(${p}, sum by (model, le) (increase(litellm_${name}_bucket{job="llm_router"}[5m])))`;
 const devices = (name, backend) => {
