@@ -10,6 +10,7 @@ import { Q } from './queries.js';
 
 const BASE = '/api/prom';
 const SNAPSHOT_TTL_MS = 2000;
+const CONFIG_TIMEOUT_MS = 10_000;
 const EXPR_TO_KEY = new Map(Object.entries(Q).map(([key, expr]) => [expr, key]));
 
 function keyFor(expr) {
@@ -20,7 +21,18 @@ function keyFor(expr) {
 
 let configPromise = null;
 function getConfig() {
-  configPromise ??= fetch('/config.json', { cache: 'no-store' }).then((r) => r.json());
+  if (!configPromise) {
+    let timeout;
+    const request = Promise.race([
+      fetch('/config.json', { cache: 'no-store' }).then((r) => r.json()),
+      new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('config request timed out')), CONFIG_TIMEOUT_MS); }),
+    ]);
+    const cached = request.catch((error) => {
+      if (configPromise === cached) configPromise = null;
+      throw error;
+    }).finally(() => clearTimeout(timeout));
+    configPromise = cached;
+  }
   return configPromise;
 }
 

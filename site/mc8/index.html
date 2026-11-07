@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MC8 · Router Switchboard</title>
+<link rel="stylesheet" href="/mc8/mc8.css">
+</head>
+<body>
+<main id="stage">
+  <header><div><p class="edition">Mission Control / Beta</p><h1>Router Switchboard</h1></div>
+    <div class="live-note"><span class="pilot"></span> LiteLLM <time id="clock"></time></div></header>
+  <section class="readouts" aria-label="Router measurements">
+    <article data-panel="local-share" data-state="pending"><h2>Local token share</h2><div class="reading" id="local-share">Pending</div><p class="status">Waiting for token rates</p><p class="status" id="unclassified-share" data-state="pending"></p></article>
+    <article data-panel="in-flight" data-state="pending"><h2>Router in-flight</h2><div class="reading" id="in-flight">Pending</div><p class="status">Waiting for requests</p></article>
+    <article data-panel="spend" data-state="pending"><h2>Pay per token / month</h2><div class="reading" id="spend">Pending</div><p class="status">Waiting for spend</p><p class="reset-note">Counter resets can undercount month-to-date spend.</p></article>
+    <article data-panel="ttft" data-state="pending"><h2>Time to first token / p95</h2><div class="reading" id="ttft">Pending</div><p class="status">Waiting for histogram</p></article>
+  </section>
+  <section id="switchboard" data-panel="routes" data-state="pending" aria-label="Caller to model token flow">
+    <div class="board-head"><h2>Callers</h2><p>Input + output tokens/s · trailing 5 minutes</p><h2>Models by provider</h2></div>
+    <div id="diagram">
+      <canvas id="wires" aria-hidden="true"></canvas>
+      <div id="callers" class="terminals"></div>
+      <div id="hub"><span class="hub-port"></span><h2>LiteLLM</h2><p>Router</p><span id="route-state">Pending token rates</span></div>
+      <div id="models" class="terminals"></div>
+    </div>
+    <footer><span id="flow-status">Pending: no token rates yet</span><span id="failure-status">Failure telemetry pending</span></footer>
+  </section>
+  <div class="legend"><span class="local">Local engines</span><span class="subscription">Subscriptions</span><span class="paid">Pay per token</span><span class="failure">Failure flash</span><span class="fallback">Failed fallback flash</span><span>Width follows tokens/s</span></div>
+</main>
+<script type="module" src="/mc8/mc8.js"></script>
+</body>
+</html>
