@@ -152,6 +152,7 @@ Details: [docs/mc9.md](docs/mc9.md).
 ```sh
 direnv allow                                       # optional: the Nix development shell
 npm ci
+node scripts/vendor-three.mjs                      # generate site/vendor/three
 npx tsc --noEmit                                   # typecheck
 node --test 'tests/*.test.js' 'tests/*.test.mjs'   # unit tests
 npx playwright install chromium webkit
