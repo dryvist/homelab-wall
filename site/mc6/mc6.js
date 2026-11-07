@@ -8,6 +8,7 @@
 // https://github.com/jasondavies/d3-cloud (v2 README, "Canvas Rendering").
 import CloudLayout from '/vendor/d3-cloud/index.js';
 import { lastGoodGet, lastGoodSet } from '/lib/lastGood.js';
+import { guardRefresh } from '/lib/refresh.js';
 import { esc, loop, onDispose, setState, adaptiveDpr, loadConfig } from '/lib/stage.js';
 
 const $ = (id) => document.getElementById(id);
@@ -54,7 +55,7 @@ const cfg = await loadConfig();
 // The feed: ClickHouse FORMAT JSON — {meta, data: [{source, word, n}], rows}. n is a UInt64
 // serialized as a STRING; parse with Number().
 async function fetchWords() {
-  const res = await fetch('/api/words', { cache: 'no-store' });
+  const res = await fetch('/api/words', { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
   if (!res.ok) throw new Error(`words ${res.status}`);
   const body = await res.json();
   if (!Array.isArray(body.data)) throw new Error('words payload missing data');
@@ -740,8 +741,9 @@ const probes = await Promise.allSettled(FACES.map(([face, weight]) => probeFace(
 probes.forEach((probe, k) => {
   if (probe.status === 'fulfilled' && probe.value?.length) loadedFaces.add(`${FACES[k][1]}|${FACES[k][0].name}`);
 });
-await refresh().catch((e) => console.warn('refresh', e));
-const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+const guardedRefresh = guardRefresh(refresh);
+await guardedRefresh().catch((e) => console.warn('refresh', e));
+const refreshId = setInterval(() => guardedRefresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
 onDispose(() => clearInterval(refreshId));
 
 const tickClock = () => {

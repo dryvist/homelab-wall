@@ -1,6 +1,7 @@
 // Mission Control 4: media acquisition.
 import * as THREE from 'three';
 import { query, settle } from '/lib/prom.js';
+import { guardRefresh } from '/lib/refresh.js';
 import { Q } from '/lib/queries.js';
 import { makeBloom } from '/lib/bloom.js';
 import {
@@ -297,9 +298,10 @@ onDispose(() => clearInterval(clockId));
 // first data refresh resolves, so a slow/failing query never delays 'ready' past the rotator's
 // probe window.
 loop(0, (now) => drawCore(now)); // uncapped: native refresh rate, the display has headroom to spare
+const guardedRefresh = guardRefresh(() => refresh().catch((e) => console.warn('refresh', e)).then(() => renderApps()));
 await refresh().catch((e) => console.warn('refresh', e));
 renderApps();
-const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)).then(() => renderApps()), (cfg.refreshSeconds || 15) * 1000);
+const refreshId = setInterval(guardedRefresh, (cfg.refreshSeconds || 15) * 1000);
 onDispose(() => clearInterval(refreshId));
 // Nightly reload keeps a 24/7 kiosk's memory flat.
 setTimeout(() => location.reload(), 24 * 3600 * 1000);

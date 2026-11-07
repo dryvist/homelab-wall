@@ -3,6 +3,7 @@
 // and per-request percentiles, and the same-origin /api/llm/recent request feed. Four device anchors
 // and a cloud node are always drawn; each model hangs off the anchor of the device that serves it.
 import { query, settle } from '/lib/prom.js';
+import { guardRefresh } from '/lib/refresh.js';
 import { Q } from '/lib/queries.js';
 import { listedModels, perfReader, perfCard } from '/lib/modelPerf.js';
 import { assignModelColors, shortDevice } from '/lib/mc3.js';
@@ -390,7 +391,7 @@ function feedNotice(state, text) {
 async function pollFeed() {
   let rows;
   try {
-    const res = await fetch('/api/llm/recent', { cache: 'no-store' });
+    const res = await fetch('/api/llm/recent', { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw new Error(`recent ${res.status}`);
     const body = await res.json();
     rows = Array.isArray(body) ? body : body?.data;
@@ -417,6 +418,7 @@ async function pollFeed() {
   }).join('');
   feedSeen = new Set(rows.map(rowKey));
 }
+const guardedPollFeed = guardRefresh(pollFeed);
 
 /* ---------------- accelerator anchors: DOM labels over the hero canvas ---------------- */
 // One label per anchor, always present. Its text comes from accel (the same readings the scene
@@ -688,10 +690,11 @@ onDispose(() => layoutObserver.disconnect());
 loop(0, (now) => { drawScene(now); placeAnchors(); }); // uncapped: native refresh rate, the display has headroom to spare
 // The first feed poll runs alongside the first refresh, never after it: a slow refresh must not
 // hold the request feed on its empty placeholder (pollFeed handles its own failures).
-await Promise.all([refresh().catch((e) => console.warn('refresh', e)), pollFeed()]);
-const feedId = setInterval(pollFeed, FEED_POLL_MS);
+const guardedRefresh = guardRefresh(refresh);
+await Promise.all([guardedRefresh().catch((e) => console.warn('refresh', e)), guardedPollFeed()]);
+const feedId = setInterval(guardedPollFeed, FEED_POLL_MS);
 onDispose(() => clearInterval(feedId));
-const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+const refreshId = setInterval(() => guardedRefresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
 onDispose(() => clearInterval(refreshId));
 // Nightly reload keeps a 24/7 kiosk's memory flat.
 setTimeout(() => location.reload(), 24 * 3600 * 1000);

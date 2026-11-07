@@ -141,3 +141,32 @@ test('a timed-out config request is retried on the next query', async (t) => {
   assert.deepEqual(await prom.query(Q.nodeCpu), [{ labels, value: 12.5 }]);
   assert.equal(configs, 2);
 });
+
+for (const source of ['live', 'snapshot']) {
+  test(`a timed-out ${source} query settles to null`, async (t) => {
+    const requests = [];
+    t.mock.method(globalThis, 'fetch', async (url, options) => {
+      requests.push({ url, signal: options.signal });
+      if (url === '/config.json') {
+        return Response.json(source === 'snapshot' ? { snapshot: '/data/snapshot.json' } : {});
+      }
+      return new Promise(() => {});
+    });
+    const timers = [];
+    t.mock.method(globalThis, 'setTimeout', (callback, delay) => {
+      const timer = { callback, delay, cleared: false };
+      timers.push(timer);
+      return timer;
+    });
+    t.mock.method(globalThis, 'clearTimeout', (timer) => { timer.cleared = true; });
+    const prom = await import(`../site/lib/prom.js?request-timeout-${source}=${encodeURIComponent(t.name)}`);
+    const pending = prom.settle({ cpu: () => prom.query(Q.nodeCpu) });
+    await new Promise((resolve) => setImmediate(resolve));
+    const timeout = timers.find((timer) => !timer.cleared);
+    assert.ok(timeout);
+    assert.equal(timeout.delay, 10_000);
+    timeout.callback();
+    assert.deepEqual(await pending, { cpu: null });
+    assert.equal(requests.at(-1).signal.aborted, true);
+  });
+}

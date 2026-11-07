@@ -5,6 +5,7 @@
 // panel shows stand-in rows (setStandIn — no visible badge/pending text; see site/lib/stage.js).
 import * as THREE from 'three';
 import { query } from '/lib/prom.js';
+import { guardRefresh } from '/lib/refresh.js';
 import { Q } from '/lib/queries.js';
 import { makeBloom } from '/lib/bloom.js';
 import {
@@ -52,6 +53,7 @@ async function refreshApps() {
   }
   renderApps();
 }
+const guardedRefreshApps = guardRefresh(refreshApps);
 function renderApps() {
   const scored = apps.filter((a) => a.s != null);
   // A query that succeeded with zero rows has genuinely nothing to show yet — render the shared
@@ -472,8 +474,8 @@ onDispose(() => clearInterval(clockId));
 // rotator's probe window.
 loop(0, (now) => drawHero(now)); // uncapped: native refresh rate, adaptive quality steps it down
 fitCanvas($('apps'), $('appgrid'), drawAppGrid);
-await refreshApps().catch((e) => console.warn('refresh', e));
-const appsRefreshId = setInterval(() => refreshApps().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+await guardedRefreshApps().catch((e) => console.warn('refresh', e));
+const appsRefreshId = setInterval(() => guardedRefreshApps().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
 onDispose(() => clearInterval(appsRefreshId));
 pollEvents();
 pollRepos();
