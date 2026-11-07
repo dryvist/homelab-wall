@@ -5,9 +5,9 @@ export const NODES = [
   { id: 'donna', label: 'Donna', signal: 'mc9DonnaRate', unit: 'requests/s', x: .47, y: .21, color: '#e8a9d5' },
   { id: 'memory', label: 'Hindsight memory', signal: 'mc9HindsightRate', unit: 'operations/s', x: .44, y: .66, color: '#9ddac9' },
   { id: 'codex', label: 'Codex', signal: 'mc9CodexRate', role: '', unit: 'output tokens/s', x: .73, y: .27, color: '#aebcff' },
-  { id: 'codex-subagents', label: 'Codex subagents', signal: 'mc9CodexRate', role: 'subagents', unit: 'output tokens/s', x: .88, y: .12, color: '#aebcff', parent: 'codex' },
+  { id: 'codex-subagents', label: 'Codex subagents', signal: 'mc9CodexRate', role: 'subagents', unit: 'output tokens/s', x: .88, y: .12, color: '#aebcff', parent: 'codex', absentIsZero: true },
   { id: 'claude', label: 'Claude Code', signal: 'mc9ClaudeMainRate', unit: 'output tokens/s', x: .77, y: .67, color: '#ecb28e' },
-  { id: 'claude-subagents', label: 'Claude subagents', signal: 'mc9ClaudeSubagentRate', unit: 'output tokens/s', x: .91, y: .48, color: '#ecb28e', parent: 'claude' },
+  { id: 'claude-subagents', label: 'Claude subagents', signal: 'mc9ClaudeSubagentRate', unit: 'output tokens/s', x: .91, y: .48, color: '#ecb28e', parent: 'claude', absentIsZero: true },
   { id: 'spans', label: 'LLM spans', signal: null, unit: 'spans/s', x: .56, y: .45, color: '#a7d7f0' },
 ];
 
@@ -65,7 +65,7 @@ export function shapeNodes(feeds, previous = [], now = Date.now() / 1000) {
     // A satellite's series exists only while it works. A successful poll without its row reads zero
     // while the parent reports, at the parent's sample time.
     const parent = NODES.find((n) => n.id === node.parent);
-    if (!current.length && Array.isArray(feed?.current) && parent?.signal) {
+    if (!current.length && Array.isArray(feed?.current) && node.absentIsZero) {
       const lead = currentRows(parent, feeds[parent.signal], now);
       if (lead.length) current = [{ value: 0, timestamp: Math.min(...lead.map((r) => r.timestamp)) }];
     }

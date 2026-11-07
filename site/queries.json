@@ -1,6 +1,6 @@
 {
-  "mc9GatewayAgents": "sum(max_over_time(hermes_gateway_active_agents[5m]))",
-  "mc9CronJobs": "sum(max_over_time(hermes_cron_jobs_running[5m]))",
+  "mc9GatewayAgents": "sum(hermes_gateway_active_agents)",
+  "mc9CronJobs": "sum(hermes_cron_jobs_running)",
   "mc9DonnaRate": "sum(rate(litellm_proxy_total_requests_metric_total{api_key_alias=\"donna\"}[5m]))",
   "mc9HindsightRate": "sum(rate(hindsight_operation_operations_total[5m]))",
   "mc9CodexRate": "sum by (backend) (label_replace(rate(codex_turn_token_usage_sum{token_type=\"output\"}[5m]), \"backend\", \"subagents\", \"session_source\", \"subagent_.*\"))",

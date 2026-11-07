@@ -153,6 +153,9 @@ test('a satellite without its own row reads zero at the parent sample time while
   assert.equal(byId(shapeNodes({}, [], now), 'cron').state, 'pending');
   const hermes = { mc9GatewayAgents: { current: [{ labels: {}, value: 2, timestamp: now }] }, mc9CronJobs: { current: [] } };
   assert.equal(byId(shapeNodes(hermes, [], now), 'gateway').state, 'active');
+  // A running-jobs gauge reports zero itself, so its absence is not zero.
+  assert.equal(byId(shapeNodes(hermes, [], now), 'cron').state, 'pending');
+  hermes.mc9CronJobs.current = [{ labels: {}, value: 0, timestamp: now }];
   assert.equal(byId(shapeNodes(hermes, [], now), 'cron').state, 'idle');
 });
 

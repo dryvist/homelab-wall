@@ -46,8 +46,8 @@ MC9 uses only the Prometheus gateway or snapshot, with `mc9*` queries in `Q`.
 - `mc9CodexRate`: Codex output tokens per second, split into primary and subagents.
 - `mc9ClaudeMainRate`: Claude Code main-agent output tokens per second.
 - `mc9ClaudeSubagentRate`: Claude Code subagent output tokens per second.
-- `mc9GatewayAgents`: active agents across gateway instances, each at its 5-minute peak.
-- `mc9CronJobs`: running cron jobs across gateway instances, each at its 5-minute peak.
+- `mc9GatewayAgents`: active agents, the sum of what each gateway instance reports now.
+- `mc9CronJobs`: running cron jobs, the sum of what each gateway instance reports now.
 
 Each key is read as a current value and as a 24-hour range at 5-minute steps.
 
