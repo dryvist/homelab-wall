@@ -10,7 +10,7 @@
 .mc2stage::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
   background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}
 
-/* Shock-and-awe hero layer: the globe/arcs canvas is a full-viewport fixed layer behind every
+/* Hero layer: the globe canvas is a full-viewport fixed layer behind every
    panel, not confined to the "threat" panel's own box. It must NOT be a descendant of any
    element with `contain`/`transform`/`filter`/`backdrop-filter` (those establish a containing
    block for position:fixed, which would clip it right back down to that ancestor's box) — see
@@ -53,35 +53,4 @@
   font:600 clamp(11px,1.2vmin,15px)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:#fff;
   display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,59,92,.25)}
 .panel [data-panel-message]{color:var(--amber);font:600 clamp(7px,.7vmin,10px)/1 var(--mono);letter-spacing:.1em}
-.stat{position:absolute;left:clamp(14px,2vmin,32px);bottom:clamp(14px,2vmin,32px);z-index:2;
-  display:flex;gap:clamp(20px,3.2vmin,48px)}
-.stat div{font:600 clamp(11px,1.15vmin,15px)/1.4 var(--mono);color:#fff;letter-spacing:.16em;text-transform:uppercase;
-  text-shadow:0 0 10px rgba(255,59,92,.4)}
-.stat b{display:block;margin-top:6px;font:700 clamp(22px,3.4vmin,44px)/1 var(--disp);color:#fff;letter-spacing:.03em;
-  text-shadow:0 0 22px rgba(255,59,92,.85),0 0 4px #fff}
-
-/* blocked-traffic feed: newest row enters at the top, older rows pushed down and capped */
-.feed{position:absolute;inset:clamp(48px,7vmin,64px) 0 0;overflow:hidden;display:flex;flex-direction:column;
-  padding:0 clamp(8px,1.3vmin,16px) clamp(8px,1.3vmin,16px)}
-.frow{display:grid;grid-template-columns:auto 1fr auto;gap:clamp(6px,1vmin,12px);align-items:baseline;
-  padding:clamp(5px,.9vmin,9px) 0;border-bottom:1px solid rgba(255,59,92,.12);
-  font:clamp(9px,1vmin,13px)/1.3 var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;
-  animation:frow-in .4s ease-out;opacity:1}
-.frow .t{color:var(--dim);letter-spacing:.05em}
-.frow .src{color:#fff;text-overflow:ellipsis;overflow:hidden;letter-spacing:.02em}
-.frow .src em{color:var(--red);font-style:normal;font-weight:600}
-.frow .act{font-weight:700;letter-spacing:.08em;text-transform:uppercase}
-.frow .act.drop{color:var(--red)}
-.frow .act.allow{color:var(--green)}
-/* Older rows fade out gradually rather than staying full-strength until they hit the cap. */
-.frow:nth-child(n+6){opacity:.82}
-.frow:nth-child(n+11){opacity:.62}
-.frow:nth-child(n+17){opacity:.42}
-.frow:nth-child(n+23){opacity:.25}
-@keyframes frow-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
-/* The newest row gets a brief amber flash on top of its fade-in, so an insertion reads as an
-   event, not just another line appearing. */
-.frow-flash{animation:frow-in .4s ease-out,frow-flash .7s ease-out}
-@keyframes frow-flash{from{background:rgba(255,166,62,.35)}to{background:transparent}}
-
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
