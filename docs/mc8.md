@@ -67,7 +67,9 @@ times out after 10 seconds.
 
 ## States
 
-- Pending: failed queries, and empty ones not covered below, show `Pending` until the first reading.
+- Pending: failed queries, and empty ones not covered below, show `Pending` until the first reading. A reading never
+  measured shows `Pending`, even when its sources are stale.
+- Unavailable: a share that cannot be computed shows `Unavailable`.
 - STALE:
   - Later gaps retain the last measurement with a visible `STALE` age.
   - Measurements older than 5 minutes, more than 5 seconds ahead, or without a valid timestamp are stale, even after

@@ -66,6 +66,7 @@ Each key is read as a current value and as a 24-hour range at 5-minute steps.
   - A signal that disappears or fails retains its last measured value as STALE.
   - Current readings become stale after 300 seconds even during an unfinished poll.
   - History becomes stale when its refresh fails or its last successful refresh is over 10 minutes old.
+  - Stale history marks the page header only where its ring is drawn.
   - A series that has gone quiet keeps current history.
 - Idle:
   - Zero means a measured idle rate.

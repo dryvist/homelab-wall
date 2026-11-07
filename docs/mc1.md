@@ -35,6 +35,8 @@ title comes from `config.json` `title` and defaults to `HOMELAB`.
   - The title shows used and total TB.
 - Firewall: two columns, `Blocked at the edge` and `Live firewall · flows`.
 - LLM fabric: up to 9 router models, sorted by state, then output tok/s, then name.
+  - It lists only models with real requests in the last 4 days. The router's own health-check caller does not count.
+  - When that query fails, it lists every deployment instead.
   - Each row shows a state dot, the model name, a token-rate sparkline, output tok/s and the state `ok`, `degraded`
     or `outage`.
   - The title counts models up out of all models, plus their summed tok/s.
@@ -62,6 +64,7 @@ title comes from `config.json` `title` and defaults to `HOMELAB`.
 - `fsSize`: filesystem size in bytes.
 - `fsAvail`: filesystem free bytes.
 - `llmState`: the router deployment state per model: 0 ok, 1 degraded, 2 outage.
+- `llmUsed4d`: models with a real request in the last 4 days. Only these models get a row.
 - `llmTokRate`: output tok/s per model over 5 minutes.
 - `vlanFwRate`: firewall events per second per VLAN over 5 minutes.
 
