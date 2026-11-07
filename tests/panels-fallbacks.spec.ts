@@ -1,7 +1,34 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { Q } from '../site/lib/queries.js';
 import { mockFeeds } from './fixture';
 import { wallUrl } from './panels-contract';
+
+// MC1's LLM list holds only models with a real request in the last 4d (Q.llmUsed4d), in MC1's existing
+// order, and its summary counts only those. model-unused is deployed but served only the health check.
+test('mc1 LLM list shows only recently used models and its summary counts only those', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped model list only');
+  await mockFeeds(page);
+  await page.goto('/mc1/?gl=2d');
+  const llm = page.locator('[data-panel="llm"]');
+  await expect(llm).toHaveAttribute('data-state', 'ok');
+  await expect(page.locator('#llmrows .lr > span:first-of-type')).toHaveText(['model-small', 'model-coder', 'model-large', 'model-mini']);
+  await expect(page.locator('#llmrows')).not.toContainText('model-unused');
+  await expect(page.locator('#llmsum')).toContainText('3/4 UP');
+});
+
+// A failed Q.llmUsed4d lists every deployment as before, with the panel's error marker, never an empty list.
+test('mc1 a failed used-models query lists every deployment and marks the LLM panel', async ({ page }) => {
+  test.skip(!!wallUrl, 'forces a query failure against the fixture server only');
+  await mockFeeds(page, { failQuery: (q) => q === Q.llmUsed4d });
+  await page.goto('/mc1/?gl=2d');
+  const llm = page.locator('[data-panel="llm"]');
+  await expect(llm).toHaveAttribute('data-state', 'error');
+  await expect(llm.locator('[data-panel-message]')).toHaveText('');
+  await expect(page.locator('#llmrows .lr')).toHaveCount(5);
+  await expect(page.locator('#llmrows')).toContainText('model-unused');
+  await expect(page.locator('#llmsum')).toContainText('4/5 UP');
+});
 
 // settle() turns a rejected query into null, rendered as an
 // explicit error panel — never as "0 OK / 54 NO DATA" (the bug the operator saw). Forces the
