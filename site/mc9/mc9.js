@@ -129,7 +129,7 @@ async function poll(refresh) {
     feeds[key].current = result[0].status === 'fulfilled' ? result[0].value : null;
     if (historyDue) {
       feeds[key].historyFailed = result[1].status === 'rejected';
-      if (!feeds[key].historyFailed) feeds[key].history = result[1].value;
+      if (!feeds[key].historyFailed) Object.assign(feeds[key], { history: result[1].value, historyAt: now });
     }
   }));
   if (stopped) return;

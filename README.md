@@ -62,8 +62,11 @@ prefix inventory alone does not define an activity counter.
 
 MC9 never substitutes sample values. Missing signals stay visible as pending;
 a signal that disappears or fails retains its last measured value as STALE.
-Zero means a measured idle rate. Node area grows monotonically with the 5m
-rate, approaching its ring; signals have different units and are labelled.
+Zero means a measured idle rate. A subagent series exists only while a
+subagent works, so a satellite without its own row reads zero, at its
+parent's sample time, while the parent reports. Node area grows
+monotonically with the 5m rate, approaching its ring; signals have different
+units and are labelled.
 Rings show measured 5m rates over 24h (brightness relative to each node's own
 maximum), with timestamp gaps unfilled. History refreshes every 5 minutes;
 current rates follow `refreshSeconds`. Last seen is the end of the last
@@ -71,10 +74,10 @@ positive activity window, with 5-minute resolution for historical samples;
 it is unknown when no activity was observed. Lines show agent grouping only.
 Requests time out after 10 seconds. Current readings become stale after
 300 seconds even during an unfinished poll. History becomes stale when its
-newest sample is over 10 minutes old (allowing for refresh and alignment);
-an empty 24h ring is pending, and expired retained history is also stale.
+refresh fails or its last successful refresh is over 10 minutes old; a series
+that has gone quiet keeps current history. An empty 24h ring is pending.
 No host, session, or user identities appear. Pause and reduced motion stop
-glow animation. The default rotator includes MC9 immediately after MC6.
+glow animation. The default rotator lists MC9 last, after MC8.
 
 A panel whose source is not wired yet, or whose query comes back empty or
 fails, shows plausible stand-in content instead of a placeholder. Nothing on

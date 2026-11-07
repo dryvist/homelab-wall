@@ -8,8 +8,10 @@ const now = 90000;
 const feed = (rate, values = [], timestamp = now) => ({ mc9CodexRate: {
   current: [{ labels: {}, value: rate, timestamp }, { labels: { backend: 'subagents' }, value: 2, timestamp }],
   history: [{ labels: {}, values }],
+  historyAt: now,
 } });
 const codex = (nodes) => nodes.find((n) => n.id === 'codex');
+const byId = (nodes, id) => nodes.find((n) => n.id === id);
 
 test('an empty feed is pending, never zero or an invented activity time', () => {
   for (const node of shapeNodes({}, [], now)) {
@@ -102,7 +104,7 @@ test('render-time freshness expires active and idle states without a completed p
   }
 });
 
-test('history status follows in-window samples and newest sample age between polls', () => {
+test('history status follows in-window samples and the history fetch age between polls', () => {
   const node = codex(shapeNodes(feed(3, [[now, 0]]), [], now));
   assert.equal(node.historyPending, false);
   assert.equal(node.historyStale, false);
@@ -116,6 +118,40 @@ test('history status follows in-window samples and newest sample age between pol
   const empty = codex(shapeNodes(feed(3), [], now));
   assert.equal(empty.historyPending, true);
   assert.equal(empty.historyStale, false);
+});
+
+test('a series that went quiet keeps current history while the history fetch is current', () => {
+  const quiet = { mc9CodexRate: {
+    current: [{ labels: {}, value: 3, timestamp: now }],
+    history: [{ labels: { backend: 'subagents' }, values: [[now - 720, 5]] }],
+    historyAt: now,
+  } };
+  const node = byId(shapeNodes(quiet, [], now), 'codex-subagents');
+  assert.equal(node.historyStale, false);
+  assert.equal(node.lastActive, now - 720);
+  assert.equal(refreshNode(node, now + 601).historyStale, true);
+});
+
+test('a satellite without its own row reads zero at the parent sample time while the parent reports', () => {
+  const parent = (timestamp) => [{ labels: {}, value: 3, timestamp }];
+  const idle = byId(shapeNodes({ mc9CodexRate: { current: parent(now - 20) } }, [], now), 'codex-subagents');
+  assert.deepEqual([idle.state, idle.rate, idle.seenAt], ['idle', 0, now - 20]);
+  // A satellite that just finished reads zero, not its last rate turning stale.
+  const busy = shapeNodes(feed(3), [], now);
+  assert.equal(byId(busy, 'codex-subagents').rate, 2);
+  const done = byId(shapeNodes({ mc9CodexRate: { current: parent(now + 390) } }, busy, now + 400), 'codex-subagents');
+  assert.deepEqual([done.state, done.rate, done.lastActive], ['idle', 0, now]);
+  // A stale parent makes the inferred zero stale too.
+  assert.equal(byId(shapeNodes({ mc9CodexRate: { current: parent(now - 400) } }, [], now), 'codex-subagents').state, 'stale');
+  // A failed poll, or no reporting parent, is no evidence of idleness.
+  assert.equal(byId(shapeNodes({ mc9CodexRate: { current: null } }, [], now), 'codex-subagents').state, 'pending');
+  assert.equal(byId(shapeNodes({ mc9CodexRate: { current: [] } }, [], now), 'codex-subagents').state, 'pending');
+  // A satellite with its own query takes the parent's separate feed.
+  const claude = { mc9ClaudeMainRate: { current: [{ labels: {}, value: 1, timestamp: now }] }, mc9ClaudeSubagentRate: { current: [] } };
+  assert.equal(byId(shapeNodes(claude, [], now), 'claude-subagents').state, 'idle');
+  assert.equal(byId(shapeNodes({ mc9ClaudeSubagentRate: { current: [] } }, [], now), 'claude-subagents').state, 'pending');
+  // Nodes without a signal never infer zero from a parent.
+  assert.equal(byId(shapeNodes({}, [], now), 'cron').state, 'pending');
 });
 
 test('a hung request times out while fulfilled and rejected requests keep their result', { timeout: 1000 }, async () => {

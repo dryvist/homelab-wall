@@ -45,22 +45,30 @@ export async function withTimeout(request, milliseconds = 10_000) {
 
 export function refreshNode(node, now) {
   const ring = activityRing(node.points, now);
-  const newest = Math.max(0, ...node.points.map(([at]) => at));
   return { ...node, ring,
     state: node.rate !== null && now - node.seenAt > STEP ? 'stale' : node.state,
     historyPending: ring.every((v) => v === null),
-    // Allow one refresh interval plus the aligned range endpoint's age.
-    historyStale: node.historyFailed || (node.points.length > 0 && now - newest > 2 * STEP),
+    // History refreshes every STEP: a missed refresh is stale, a series that has gone quiet is not.
+    historyStale: node.historyFailed || (Number.isFinite(node.historyAt) && now - node.historyAt > 2 * STEP),
   };
 }
+
+const currentRows = (node, feed, now) => matching(node, feed?.current)
+  .filter((r) => valid(r.value) && valid(r.timestamp) && r.timestamp <= now + SKEW)
+  .map((r) => ({ ...r, timestamp: Math.min(r.timestamp, now) }));
 
 export function shapeNodes(feeds, previous = [], now = Date.now() / 1000) {
   return NODES.map((node) => {
     const old = previous.find((n) => n.id === node.id);
     const feed = feeds[node.signal];
-    const current = matching(node, feed?.current)
-      .filter((r) => valid(r.value) && valid(r.timestamp) && r.timestamp <= now + SKEW)
-      .map((r) => ({ ...r, timestamp: Math.min(r.timestamp, now) }));
+    let current = currentRows(node, feed, now);
+    // A satellite's series exists only while it works. A successful poll without its row reads zero
+    // while the parent reports, at the parent's sample time.
+    const parent = NODES.find((n) => n.id === node.parent);
+    if (!current.length && Array.isArray(feed?.current) && parent?.signal) {
+      const lead = currentRows(parent, feeds[parent.signal], now);
+      if (lead.length) current = [{ value: 0, timestamp: Math.min(...lead.map((r) => r.timestamp)) }];
+    }
     const history = matching(node, feed?.history).flatMap((r) => r.values || [])
       .filter(([at, v]) => valid(at) && valid(v) && at <= now);
     const observed = current.length ? current.reduce((sum, r) => sum + r.value, 0) : null;
@@ -72,6 +80,7 @@ export function shapeNodes(feeds, previous = [], now = Date.now() / 1000) {
     const state = observed === null ? (rate === null ? 'pending' : 'stale')
       : now - seenAt > 300 ? 'stale' : observed > 0 ? 'active' : 'idle';
     return refreshNode({ ...node, rate, state, points, lastActive, seenAt,
+      historyAt: feed?.history != null ? feed.historyAt : old?.historyAt,
       historyFailed: feed?.historyFailed === true }, now);
   });
 }
