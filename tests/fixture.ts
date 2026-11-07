@@ -9,7 +9,7 @@ export const config = {
   refreshSeconds: 15,
   guestCount: 42,
   nodeRoles: { 'node-a': 'compute', 'node-b': 'storage', 'node-c': 'node-c' },
-  extraNodes: [{ name: 'studio', role: 'inference · not PVE' }],
+  extraNodes: [{ name: 'node-d', role: 'extra' }],
   groups: [
     { name: 'apps', apps: ['alpha', 'bravo', 'charlie', 'delta', 'echo'] },
     { name: 'media', apps: ['foxtrot', 'golf', 'hotel', 'autobrr'] },
@@ -22,9 +22,20 @@ export { GH_ORG, ghEvents, ghRepos, words, mockGithub, mockWords } from './catal
 import { mockGithub, mockWords } from './catalog-fixture';
 
 const NODES = ['node-a', 'node-b', 'node-c'];
-const inst = (n: string) => ({ instance: `${n}.example.test:9100`, job: 'pve_node_exporter' });
+const inst = (n: string) => ({ instance: `${n}:9100`, job: 'pve_node_exporter' });
 const vec = (rows: Array<[Record<string, string>, number]>) =>
   rows.map(([metric, v]) => ({ metric, value: [Date.now() / 1000, String(v)] }));
+export const fixturePools = NODES.map((node, i) => {
+  const suffix = String.fromCharCode(97 + i);
+  return { node, name: `pool-${suffix}`, device: `pool-${suffix}/ROOT/base`, size: (i + 2) * 4e12,
+    available: (i + 2) * 1.5e12, pveUsed: (i + 1) * 2.5e12 };
+});
+export const fixtureVlans = [
+  { network: 'net-a', vlan: '10', rx: 1e6, tx: 0.5e6 },
+  { network: 'net-b', vlan: '20', rx: 2e6, tx: 1e6 },
+  { network: 'net-c', vlan: '30', rx: 3e6, tx: 1.5e6 },
+  { network: 'net-d', vlan: '40', rx: 4e6, tx: 2e6 },
+];
 
 export interface AnswerOpts {
   inflight?: number;
@@ -51,10 +62,8 @@ const MC4_RECENT_TITLES = [
   'The Great Train Robbery (1903)', 'The Hunchback of Notre Dame (1923)', 'Sherlock Jr. (1924)',
 ];
 
-// Per-request router and engine readings for the MC1 and MC3 model lists, matched by exact query.
-// model-unused is deployed (litellm_deployment_state below) but served no real request in 4d, so
-// no list shows it. model-mini served none in the last hour (Idle); only model-large has engine
-// decode rows. Percentiles are seconds per request; decode readings are already tok/s.
+// Exact per-request router and engine readings for MC1 and MC3; model-unused has no real request.
+// Percentiles are seconds per request; decode readings are tok/s.
 function modelPerf(q: string): unknown[] | undefined {
   const rows = (pairs: Array<[string, number]>, label = 'model') =>
     vec(pairs.map(([name, v]): [Record<string, string>, number] => [{ [label]: name }, v]));
@@ -144,44 +153,57 @@ export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
   if (q.includes('hwmon')) return vec(NODES.map((n, i) => [inst(n), [44, 57, 60][i]]));
   if (q.includes('boot_time')) return vec(NODES.map((n, i) => [inst(n), (i + 1) * 20 * 86400]));
   if (q.includes('accelerator:busy_percent')) return vec([[{ accelerator: 'gpu-primary' }, 36], [{ accelerator: 'gpu-secondary' }, 64], [{ accelerator: 'mac-primary' }, 20]]);
-  const SHARED_DEVICE = { device: 'nas:/export/shared', mountpoint: '/mnt/pve/shared-nfs', fstype: 'nfs4' };
-  if (q.includes('filesystem_size')) {
+  const SHARED_DEVICE = { device: 'shared-volume', mountpoint: '/mnt/shared-volume', fstype: 'nfs4' };
+  if (q === Q.fsSize) {
     return vec([
-      ...NODES.flatMap((n, i) => [[{ ...inst(n), device: `pool${i}`, mountpoint: '/' }, (i + 2) * 4e12], [{ ...inst(n), device: `data${i}`, mountpoint: '/data' }, (i + 1) * 16e12]]),
+      ...fixturePools.flatMap((pool, i) => [[{ ...inst(pool.node), device: pool.device, mountpoint: '/', fstype: 'zfs' }, pool.size], [{ ...inst(pool.node), device: `data-${String.fromCharCode(97 + i)}`, mountpoint: '/data', fstype: 'ext4' }, (i + 1) * 16e12]]),
       [{ ...inst('node-a'), ...SHARED_DEVICE }, 8e12],
       [{ ...inst('node-b'), ...SHARED_DEVICE }, 8e12],
     ] as Array<[Record<string, string>, number]>);
   }
-  if (q.includes('filesystem_avail')) {
+  if (q === Q.fsAvail) {
     return vec([
-      ...NODES.flatMap((n, i) => [[{ ...inst(n), device: `pool${i}`, mountpoint: '/' }, (i + 2) * 1.5e12], [{ ...inst(n), device: `data${i}`, mountpoint: '/data' }, (i + 1) * 3e12]]),
+      ...fixturePools.flatMap((pool, i) => [[{ ...inst(pool.node), device: pool.device, mountpoint: '/', fstype: 'zfs' }, pool.available], [{ ...inst(pool.node), device: `data-${String.fromCharCode(97 + i)}`, mountpoint: '/data', fstype: 'ext4' }, (i + 1) * 3e12]]),
       [{ ...inst('node-a'), ...SHARED_DEVICE }, 3e12],
       [{ ...inst('node-b'), ...SHARED_DEVICE }, 3e12],
     ] as Array<[Record<string, string>, number]>);
   }
-  if (q.includes('unifi_vlan_fw_events_total')) return vec([[{ vlan: '10' }, 4.2], [{ vlan: '20' }, 1.1], [{ vlan: '30' }, 0.4]]);
-  if (q.includes('DCGM_FI_DEV_GPU_UTIL')) return vec([
-    [{ instance: 'gpu-host-a.example.test:9400', modelName: 'Example GPU 1' }, 1],
-    [{ accelerator: 'gpu-secondary', instance: 'gpu-host-b.example.test:9400', modelName: 'VENDOR Example GPU 2' }, 1],
-    [{ accelerator: 'gpu-secondary', instance: 'GPU-HOST-B.example.test:9401', modelName: 'VENDOR Example GPU 2' }, 1],
-    [{ accelerator: 'gpu-secondary', instance: 'gpu-host-c.example.test:9400', modelName: 'VENDOR Example GPU 2' }, 1],
+  if (q === Q.pveStorageUsed) return vec(fixturePools.map((pool): [Record<string, string>, number] => [{ id: `storage/${pool.node}/${pool.name}` }, pool.pveUsed]));
+  if (q === Q.wanRxBytes) return vec([[{ port: 'wan-a' }, 1e6], [{ port: 'wan-b' }, 2e6]]);
+  if (q === Q.wanTxBytes) return vec([[{ port: 'wan-a' }, 0.5e6], [{ port: 'wan-b' }, 1e6]]);
+  if (q === Q.vlanRxBytes) return vec(fixtureVlans.map((vlan): [Record<string, string>, number] => [{ network: vlan.network, vlan: vlan.vlan }, vlan.rx]));
+  if (q === Q.vlanTxBytes) return vec(fixtureVlans.map((vlan): [Record<string, string>, number] => [{ network: vlan.network, vlan: vlan.vlan }, vlan.tx]));
+  if (q === Q.gpuModel) return vec([
+    [{ accelerator: 'gpu-primary', instance: 'gpu-a.device:9400', modelName: 'GPU-A' }, 1],
+    [{ accelerator: 'gpu-primary', instance: 'gpu-a:9400', modelName: 'GPU-A' }, 1],
+    [{ accelerator: 'gpu-secondary', instance: 'gpu-b.device:9400', modelName: 'GPU-B' }, 1],
+    [{ accelerator: 'gpu-secondary', instance: 'gpu-b:9400', modelName: 'GPU-B' }, 1],
+    [{ accelerator: 'gpu-secondary', instance: 'GPU-B:9401', modelName: 'GPU-B' }, 1],
+    [{ accelerator: 'gpu-secondary', instance: 'gpu-c.device:9400', modelName: 'GPU-B' }, 1],
+    [{ accelerator: 'gpu-secondary', instance: 'gpu-c:9400', modelName: 'GPU-B' }, 1],
   ]);
-  if (q.includes('macmon_gpu_usage_ratio')) return vec([
-    [{ accelerator: 'mac-primary', chip: 'Example Chip 3', instance: '[2001:db8::1]:9100' }, 1],
-    [{ accelerator: 'mac-secondary', chip: 'Example Chip 3', instance: '[2001:db8::2]:9100' }, 1],
+  if (q === Q.guestNode) return vec([
+    [{ name: 'gpu-a', node: 'node-a' }, 1], [{ name: 'gpu-b', node: 'node-b' }, 1], [{ name: 'gpu-c', node: 'node-b' }, 1],
   ]);
-  if (q.includes('api_base')) return vec([
-    [{ litellm_model_name: 'model-large', api_base: 'http://gpu-host-a.example.test:8000/v1', api_provider: 'local' }, 1],
-    [{ litellm_model_name: 'model-coder', api_base: 'http://GPU-Host-B.Example.test:8080/v1', api_provider: 'local' }, 1],
-    [{ litellm_model_name: 'model-small', api_provider: 'openai' }, 1],
-    [{ litellm_model_name: 'model-mini', api_provider: 'openrouter' }, 1],
+  if (q === Q.acceleratorBusy) return vec([
+    [{ accelerator: 'gpu-primary' }, 36], [{ accelerator: 'gpu-secondary' }, 64], [{ accelerator: 'mac-primary' }, 20],
+  ]);
+  if (q === Q.macChip) return vec([
+    [{ accelerator: 'mac-primary', chip: 'DEVICE-A', instance: 'device-a:9100' }, 1],
+    [{ accelerator: 'mac-secondary', chip: 'DEVICE-A', instance: 'device-b:9100' }, 1],
+  ]);
+  if (q === Q.llmApiBase) return vec([
+    [{ litellm_model_name: 'model-large', api_base: 'http://gpu-a:8000/v1', api_provider: 'local' }, 1],
+    [{ litellm_model_name: 'model-coder', api_base: 'http://GPU-B:8080/v1', api_provider: 'local' }, 1],
+    [{ litellm_model_name: 'model-small', api_provider: 'provider-a' }, 1],
+    [{ litellm_model_name: 'model-mini', api_provider: 'provider-b' }, 1],
     ...(opts.extraApiBase ?? []).map((labels): [Record<string, string>, number] => [labels, 1]),
   ]);
   if (q.includes('vllm:num_requests_running')) return vec([
-    [{ instance: 'gpu-host-a.example.test:8000' }, opts.vllmRunning ?? 0],
+    [{ instance: 'gpu-a:8000' }, opts.vllmRunning ?? 0],
     ...(opts.extraLocal ?? []).map(([instance, v]): [Record<string, string>, number] => [{ instance }, v]),
   ]);
-  if (q.includes('llamacpp:requests_processing')) return vec([[{ instance: 'gpu-host-b.example.test:8080' }, opts.llamaRunning ?? 0]]);
+  if (q.includes('llamacpp:requests_processing')) return vec([[{ instance: 'gpu-b:8080' }, opts.llamaRunning ?? 0]]);
   if (q.includes('litellm_in_flight_requests')) return vec([[{}, opts.inflight ?? 3]]);
   if (q.includes('litellm_deployment_state')) return vec([[{ litellm_model_name: 'model-large' }, 0], [{ litellm_model_name: 'model-coder' }, 0], [{ litellm_model_name: 'model-small' }, 2], [{ litellm_model_name: 'model-mini' }, 0], [{ litellm_model_name: 'model-unused' }, 0]]);
   if (q.includes('litellm_output_tokens')) return vec([[{ model: 'model-large' }, 38], [{ model: 'model-coder' }, 91]]);

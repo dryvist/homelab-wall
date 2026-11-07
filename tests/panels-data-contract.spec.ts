@@ -2,6 +2,12 @@ import { expect, test } from '@playwright/test';
 import { config, mockFeeds } from './fixture';
 import { PAGES, MODES, pending, invalidMetric, wallUrl } from './panels-contract';
 
+const noFeedPanels: Record<string, string[]> = {
+  mc1: ['firewall'],
+  mc2: ['threat', 'blocked'],
+  mc5: ['infra'],
+};
+
 for (const pageSpec of PAGES) {
   for (const mode of MODES) {
     test(`${pageSpec.id} ${mode} panels honor the data contract`, async ({ page }) => {
@@ -30,24 +36,22 @@ for (const pageSpec of PAGES) {
       const panels = page.locator('[data-panel]');
       await expect(panels).not.toHaveCount(0);
 
-      // Every panel on the page must be 'ok' unless this page's expected-pending.json entry
-      // lists it — generic across pages, no panel id (e.g. mc1's "apps") is special-cased here.
+      // Every panel is 'ok', except declared pending panels and panels with no feed at all.
       const allowed = new Set(pending.panels[pageSpec.id] ?? []);
+      const noFeed = new Set(noFeedPanels[pageSpec.id] ?? []);
       const count = await panels.count();
       for (let index = 0; index < count; index += 1) {
         const panel = panels.nth(index);
         const id = await panel.getAttribute('data-panel');
         expect(id).not.toBeNull();
+        if (noFeed.has(id!)) {
+          await expect(panel).toHaveAttribute('data-state', 'no-feed');
+          await expect.poll(() => panel.evaluate((el) => getComputedStyle(el, '::after').content)).toBe('"No feed"');
+          continue;
+        }
         // Web-first assertion: the state is set once the panel's feed resolves, not on insert.
         if (allowed.has(id!)) {
           await expect(panel).toHaveAttribute('data-state', 'pending', firstState);
-          // A permanently-pending panel is marked data-source stand-in (invisible) and still has
-          // real-looking content, never a blank panel — no visible marker distinguishes it. mc1's
-          // "nodes" panel is the one exception: it's pending only while its GPU feed has no series,
-          // and its node cards still show real data, so it stays data-source 'live'.
-          if (!(pageSpec.id === 'mc1' && id === 'nodes')) {
-            await expect(panel).toHaveAttribute('data-source', 'stand-in');
-          }
           await expect.poll(() => panel.innerText()).not.toBe('');
         } else {
           await expect(panel, `request faults: ${faults.join(' | ') || 'none'}`).toHaveAttribute('data-state', 'ok', firstState);

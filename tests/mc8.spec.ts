@@ -12,13 +12,12 @@ test('measured routes, provider banks and hero readings render without page faul
   await expect(page.locator('[data-panel="routes"]')).toHaveAttribute('data-state', 'ok');
   await expect(page.locator('#callers .terminal')).toHaveCount(2);
   await expect(page.locator('#models .terminal')).toHaveCount(3);
-  await expect(page.locator('#local-share')).toHaveText(/69[.,]2%/);
+  await expect(page.locator('#local-rate')).toHaveText('90 t/s');
   await expect(page.locator('#in-flight')).toHaveText('local 3 · cloud 4');
   await expect(page.locator('#spend')).toHaveText(/123[.,]4¢/);
   await expect(page.locator('#ttft')).toHaveText('local 210 ms · cloud 420 ms');
   await expect(page.locator('#route-state')).toHaveText('local 90 · cloud 40 tokens/s');
   await expect(page.locator('#callers .terminal').first().locator('.rate')).toHaveText('local 90 tokens/s · cloud 15 tokens/s');
-  expect(await page.locator('[data-source="stand-in"]').count()).toBe(0);
   expect(errors).toEqual([]);
   expect(await page.evaluate(() => document.scrollingElement!.scrollHeight)).toBeLessThanOrEqual(await page.evaluate(() => innerHeight));
   await page.screenshot({ path: test.info().outputPath('mc8.png'), fullPage: true });
@@ -48,7 +47,8 @@ test('high-cardinality routes fit one screen and keep collapsed terminal routes 
   expect(callerCount + visibleCallers).toBe(20);
 
   const modelMore = page.locator('#models .more strong');
-  const modelCount = Number((await modelMore.innerText()).match(/^\+(\d+) more$/)?.[1]);
+  const [, localMore, cloudMore] = (await modelMore.innerText()).match(/^\+(\d+) local · \+(\d+) cloud$/) || [];
+  const modelCount = Number(localMore) + Number(cloudMore);
   const visibleModels = await page.locator('#models .terminal:not(.more)').count();
   expect(Number.isInteger(modelCount)).toBe(true);
   expect(modelCount + visibleModels).toBe(12);
@@ -179,7 +179,7 @@ test('unclassified share goes stale on its own when every token series is unclas
   }));
   await page.route('**/data/mc8.json', (r) => r.fulfill({ json: { generated_at: new Date().toISOString(), instant } }));
   await page.goto('/mc8/');
-  await expect(page.locator('#local-share')).toHaveText('Unavailable');
+  await expect(page.locator('#local-rate')).toHaveText('Unavailable');
   await expect(page.locator('#unclassified-share')).toContainText('unclassified cloud 100%');
   await expect(page.locator('#unclassified-share')).toHaveAttribute('data-state', 'stale');
   await expect(page.locator('#unclassified-share')).toContainText('STALE');

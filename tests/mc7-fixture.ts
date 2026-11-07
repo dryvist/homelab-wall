@@ -17,7 +17,7 @@ function ageRows(ageKey: string): Labels[] {
   return [...seen.values()];
 }
 
-// Test responses only; the page imports no fixture or stand-in data.
+// Test responses only; the page imports no fixture data.
 export async function mockMc7(page: Page, options: { empty?: boolean; error?: boolean; snapshot?: boolean } = {}) {
   await page.route('**/config.json', (r) => r.fulfill({ json: {
     refreshSeconds: 1, ...(options.snapshot ? { snapshot: '/mc7-snapshot.json' } : {}),

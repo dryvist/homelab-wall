@@ -19,9 +19,9 @@ names this slide `SWITCHBOARD`.
 - Switchboard: callers on the left, the router hub in the middle, and models by provider on the right.
   - Routes retain caller alias and team, model, and provider labels.
   - Token rates exclude the router's own health-check caller.
-  - The page fits one screen. A column that cannot fit shows its top rows by rate plus one `+N more` row with their
-    combined rate.
-  - Routes to a collapsed caller or model end at its `+N more` row.
+  - The page fits one screen. A column that cannot fit shows its top rows plus one collapsed row with their local
+    and cloud rates apart. The model column's collapsed row reads `+N local · +M cloud`.
+  - Routes to a collapsed caller or model end at its collapsed row, one route per class.
   - Width means input plus output tokens/s over 5 minutes.
   - Focus or hover a caller or model to trace its paths.
   - Caller rates and the route status keep local and cloud values separate.
@@ -34,7 +34,7 @@ names this slide `SWITCHBOARD`.
 - Failure flashes:
   - Failure flashes apply to model edges with measured failure or failed-fallback increases over the last minute.
   - Those counters do not establish caller attribution.
-  - A `+N more` row carries the failure markers of the models collapsed into it.
+  - A collapsed row carries the failure markers of the models collapsed into it.
   - Model failure markers also appear at zero token throughput; failure-only models show `No token rate` rather
     than a made-up zero.
   - Failure and failed-fallback indicators cover the one-minute window that ends at each result's evaluation time,

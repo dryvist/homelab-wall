@@ -29,14 +29,24 @@ for (const vp of STABILITY_MATRIX) {
     test('every panel fits the viewport, stays stable, has no overlap, and reports ok or an explicit error', async ({ page }) => {
       if (!wallUrl) await mockFeeds(page);
       await page.goto('/mc1/');
+      const topologyLayers = await page.evaluate(() => {
+        const gl = document.querySelector('#gl')!, labels = document.querySelector('#labels')!, topo = document.querySelector('#topo')!;
+        return {
+          glParent: gl.parentElement?.id, glPosition: getComputedStyle(gl).position, glZ: getComputedStyle(gl).zIndex,
+          labelsParent: labels.parentElement?.id, labelsPosition: getComputedStyle(labels).position, labelsZ: getComputedStyle(labels).zIndex,
+          topoZ: getComputedStyle(topo).zIndex,
+        };
+      });
+      expect(topologyLayers).toEqual({ glParent: 'stage', glPosition: 'fixed', glZ: '0', labelsParent: 'stage', labelsPosition: 'fixed', labelsZ: '1', topoZ: '2' });
       const panels = page.locator('[data-panel]');
       await expect(panels).not.toHaveCount(0);
       const count = await panels.count();
 
-      // never a silently blank panel: it's ok, declared-pending, or an explicit error.
+      // Never a silently blank panel: each has live data, an expected pending/error state, or no feed.
       for (let i = 0; i < count; i += 1) {
-        await expect(panels.nth(i)).toHaveAttribute('data-state', /^(ok|pending|error)$/);
+        await expect(panels.nth(i)).toHaveAttribute('data-state', /^(ok|pending|error|no-feed)$/);
       }
+      await expect(page.locator('#fw')).toHaveAttribute('data-state', 'no-feed');
 
       // offsetLeft/Top/Width/Height (not getBoundingClientRect) — the grid's actual box,
       // ignoring the panels' intentional decorative 3D sway (mc1.css #nodes/#storage/...
