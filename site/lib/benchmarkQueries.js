@@ -5,8 +5,10 @@ const l = (expr) => `sum by (backend, guest) (label_replace(${expr}, "backend", 
 const identity = (name) => name.startsWith('llamacpp:') ? 'guest' : 'model_name';
 const rate = (name) => `sum by (${identity(name)}) (rate(${name}{job="llm_gpu_engine"}[5m]))`;
 const gauge = (name, agg = 'sum') => `${agg} by (${identity(name)}) (${name}{job="llm_gpu_engine"})`;
-const quantile = (name, p) => v(`histogram_quantile(${p}, sum by (model_name, le) (rate(vllm:${name}_seconds_bucket{job="llm_gpu_engine"}[5m])))`);
-const routerQuantile = (name, p) => `histogram_quantile(${p}, sum by (model, le) (rate(litellm_${name}_bucket{job="llm_router"}[5m])))`;
+// Percentiles use increase(), which counts a new series' first small bucket value that rate() skips, so a
+// percentile has no row only when its window holds no requests.
+const quantile = (name, p) => v(`histogram_quantile(${p}, sum by (model_name, le) (increase(vllm:${name}_seconds_bucket{job="llm_gpu_engine"}[5m])))`);
+const routerQuantile = (name, p) => `histogram_quantile(${p}, sum by (model, le) (increase(litellm_${name}_bucket{job="llm_router"}[5m])))`;
 const devices = (name, backend) => {
   const source = `${name}{job="llm_gpu_engine",accelerator!=""}`;
   const labels = backend === 'llamacpp' ? source : `label_replace(${source}, "model", "$1", "model_name", "(.*)")`;
