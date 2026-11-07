@@ -7,9 +7,9 @@ for (const pageSpec of PAGES) {
     test(`${pageSpec.id} ${mode} panels honor the data contract`, async ({ page }) => {
       // A forced 3D page runs WebGL2 on CI's software rasterizer, where the first painted frame, and the
       // first poll's render behind it, take far longer than on the wall's GPU; mc3's core is the slowest.
-      const slowFirstFrame = mode === '3d';
+      const slowFirstFrame = mode === '3d' && !wallUrl;
       if (slowFirstFrame) test.slow();
-      const firstState = { timeout: slowFirstFrame ? 15_000 : 5_000 };
+      const firstState = slowFirstFrame ? { timeout: 15_000 } : {};
       const faults: string[] = [];
       page.on('pageerror', (error) => faults.push(error.message));
       page.on('console', (message) => {
