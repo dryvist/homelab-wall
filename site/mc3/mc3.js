@@ -5,7 +5,7 @@
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import { listedModels, perfReader, perfCard } from '/lib/modelPerf.js';
-import { assignModelColors } from '/lib/mc3.js';
+import { assignModelColors, shortDevice } from '/lib/mc3.js';
 import {
   clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct,
   setSampleBadge, onDispose, hardwareGL, adaptiveDpr,
@@ -39,8 +39,6 @@ const ROLE = new Map(ANCHOR_DEFS.slice(0, CLOUD).map((d, i) => [d.id, i]));
 const BEAD_RING = 12;
 const BEAD_CAP = 36;
 const ANCHOR_COLOR = { gpu: '#3ee6ff', mac: '#38ff9c', cloud: '#ffb347' };
-// A device model name can lead with its vendor as one all-caps word; that word is dropped.
-const VENDOR_WORD = /^[A-Z]{4,}\s+/;
 // The host of a "host:port" instance label or a "scheme://host:port/path" serving URL. A bracketed IPv6
 // address ("[fd00::1]:8000") is read whole, so distinct IPv6 hosts stay distinct.
 const hostOf = (s) => {
@@ -146,14 +144,16 @@ function deriveAccelerators(r) {
     if (!ROLE.has(role)) continue;
     const host = hostOf(row.labels.instance);
     if (host) hostRole.set(host, role);
-    if (row.labels.modelName) names[ROLE.get(role)].add(String(row.labels.modelName).replace(VENDOR_WORD, ''));
+    const name = shortDevice(row.labels.modelName);
+    if (name) names[ROLE.get(role)].add(name);
   }
   for (const row of r.macChip || []) {
     const role = row.labels.accelerator;
     if (!ROLE.has(role)) continue;
     const host = hostOf(row.labels.instance);
     if (host) hostRole.set(host, role);
-    if (row.labels.chip) names[ROLE.get(role)].add(String(row.labels.chip));
+    const name = shortDevice(row.labels.chip);
+    if (name) names[ROLE.get(role)].add(name);
   }
 
   const busy = ANCHOR_DEFS.map(() => null);
