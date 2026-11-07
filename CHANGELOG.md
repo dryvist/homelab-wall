@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.1](https://github.com/dryvist/homelab-wall/compare/v0.20.0...v0.20.1) (2026-11-07)
+
+
+### Bug Fixes
+
+* **mc9:** read a quiet satellite as idle and judge history by its refresh ([#144](https://github.com/dryvist/homelab-wall/issues/144)) ([805ab9a](https://github.com/dryvist/homelab-wall/commit/805ab9af317130d61d0907dc3bfac67a6244e9e2))
+
 ## [0.20.0](https://github.com/dryvist/homelab-wall/compare/v0.19.0...v0.20.0) (2026-11-07)
 
 
