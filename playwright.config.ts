@@ -7,6 +7,8 @@ const wallUrl = process.env.WALL_URL;
 
 export default defineConfig({
   testDir: 'tests',
+  // Specs only: the node:test unit files (*.test.js, *.test.mjs) run under `node --test`.
+  testMatch: '**/*.spec.ts',
   testIgnore: ['**/wall.live.spec.ts'],
   timeout: 60_000,
   // ci.yml runs one Playwright project per job (its own runner) instead of the full 8-project
