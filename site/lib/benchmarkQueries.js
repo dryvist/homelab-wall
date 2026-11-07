@@ -7,7 +7,8 @@ const rate = (name) => `sum by (${identity(name)}) (rate(${name}{job="llm_gpu_en
 const gauge = (name, agg = 'sum') => `${agg} by (${identity(name)}) (${name}{job="llm_gpu_engine"})`;
 // Percentiles use increase(), which also counts a new series' first small bucket value; rate() skips it.
 const quantile = (name, p) => v(`histogram_quantile(${p}, sum by (model_name, le) (increase(vllm:${name}_seconds_bucket{job="llm_gpu_engine"}[5m])))`);
-const routerQuantile = (name, p) => `histogram_quantile(${p}, sum by (model, le) (increase(litellm_${name}_bucket{job="llm_router"}[5m])))`;
+const HEALTH_CHECK = 'api_key_alias!="litellm-internal-health-check"';
+const routerQuantile = (name, p) => `histogram_quantile(${p}, sum by (model, le) (increase(litellm_${name}_bucket{job="llm_router",${HEALTH_CHECK}}[5m])))`;
 const devices = (name, backend) => {
   const source = `${name}{job="llm_gpu_engine",accelerator!=""}`;
   const labels = backend === 'llamacpp' ? source : `label_replace(${source}, "model", "$1", "model_name", "(.*)")`;
@@ -35,9 +36,10 @@ export const BENCHMARK_SOURCE_AGE_FOR = {
   engineItlP50: 'engineItlSourceAge', engineItlP99: 'engineItlSourceAge', engineE2eP95: 'engineE2eSourceAge',
   engineDevices: 'engineDevicesSourceAge', engineRunning: 'engineRunningSourceAge', engineWaiting: 'engineWaitingSourceAge',
   engineKvPercent: 'engineKvSourceAge', enginePrefixPercent: 'enginePrefixSourceAge', engineSpecPercent: 'engineSpecSourceAge',
-  routerInput: 'routerInputSourceAge', routerTtftP50: 'routerTtftSourceAge', routerTtftP95: 'routerTtftSourceAge',
+  routerInput: 'routerInputSourceAge', routerOutput: 'routerOutputSourceAge',
+  routerTtftP50: 'routerTtftSourceAge', routerTtftP95: 'routerTtftSourceAge',
   routerE2eP95: 'routerE2eSourceAge', acceleratorWatts: 'acceleratorWattsSourceAge',
-  acceleratorTokensPerJoule: 'acceleratorTokensPerJouleSourceAge', llmTokRate: 'llmTokRateSourceAge',
+  acceleratorTokensPerJoule: 'acceleratorTokensPerJouleSourceAge',
 };
 
 export const BENCHMARK_SOURCE_AGE_Q = {
@@ -52,12 +54,12 @@ export const BENCHMARK_SOURCE_AGE_Q = {
   engineKvSourceAge: gpuAge('vllm:kv_cache_usage_perc'),
   enginePrefixSourceAge: older(gpuAge('vllm:prefix_cache_hits_total'), gpuAge('vllm:prefix_cache_queries_total')),
   engineSpecSourceAge: `(${older(gpuAge('vllm:spec_decode_num_accepted_tokens_total'), gpuAge('vllm:spec_decode_num_draft_tokens_total'))}) or (${older(llamaAge('llamacpp:spec_decode_num_accepted_tokens_total'), llamaAge('llamacpp:spec_decode_num_draft_tokens_total'))})`,
-  routerInputSourceAge: 'max by (model) (tlast_over_time(litellm_input_tokens_metric_total[5m]))',
-  routerTtftSourceAge: 'max by (model) (tlast_over_time(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router"}[5m]))',
-  routerE2eSourceAge: 'max by (model) (tlast_over_time(litellm_request_total_latency_metric_bucket{job="llm_router"}[5m]))',
+  routerInputSourceAge: `max by (model) (tlast_over_time(litellm_input_tokens_metric_total{${HEALTH_CHECK}}[5m]))`,
+  routerOutputSourceAge: `max by (model) (tlast_over_time(litellm_output_tokens_metric_total{${HEALTH_CHECK}}[5m]))`,
+  routerTtftSourceAge: `max by (model) (tlast_over_time(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",${HEALTH_CHECK}}[5m]))`,
+  routerE2eSourceAge: `max by (model) (tlast_over_time(litellm_request_total_latency_metric_bucket{job="llm_router",${HEALTH_CHECK}}[5m]))`,
   acceleratorWattsSourceAge: powerAge,
   acceleratorTokensPerJouleSourceAge: older(`(${tokenSourceAge})`, `(${powerAge})`),
-  llmTokRateSourceAge: 'max by (model) (tlast_over_time(litellm_output_tokens_metric_total[5m]))',
 };
 
 export const BENCHMARK_Q = {
@@ -75,7 +77,8 @@ export const BENCHMARK_Q = {
   engineKvPercent: v(`100 * ${gauge('vllm:kv_cache_usage_perc', 'avg')}`),
   enginePrefixPercent: v(`100 * ${rate('vllm:prefix_cache_hits_total')} / (${rate('vllm:prefix_cache_queries_total')} > 0)`),
   engineSpecPercent: `${v(`100 * ${rate('vllm:spec_decode_num_accepted_tokens_total')} / (${rate('vllm:spec_decode_num_draft_tokens_total')} > 0)`)} or ${l(`100 * ${rate('llamacpp:spec_decode_num_accepted_tokens_total')} / (${rate('llamacpp:spec_decode_num_draft_tokens_total')} > 0)`)}`,
-  routerInput: 'sum by (model) (rate(litellm_input_tokens_metric_total[5m]))',
+  routerInput: `sum by (model) (rate(litellm_input_tokens_metric_total{${HEALTH_CHECK}}[5m]))`,
+  routerOutput: `sum by (model) (rate(litellm_output_tokens_metric_total{${HEALTH_CHECK}}[5m]))`,
   routerTtftP50: routerQuantile('llm_api_time_to_first_token_metric', 0.5),
   routerTtftP95: routerQuantile('llm_api_time_to_first_token_metric', 0.95),
   routerE2eP95: routerQuantile('request_total_latency_metric', 0.95),

@@ -3,7 +3,7 @@ import { Q } from '../lib/queries.js';
 import { BENCHMARK_Q, BENCHMARK_SOURCE_AGE_FOR, BENCHMARK_SOURCE_AGE_Q } from '../lib/benchmarkQueries.js';
 import { lastGoodGet, lastGoodSet } from '../lib/lastGood.js';
 
-export const INSTANT_KEYS = [...Object.keys(BENCHMARK_Q), 'llmTokRate'];
+export const INSTANT_KEYS = Object.keys(BENCHMARK_Q);
 export const HISTORY_KEYS = ['engineDecode', 'enginePrefill'];
 export const SOURCE_AGE_KEYS = Object.keys(BENCHMARK_SOURCE_AGE_Q);
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -19,6 +19,7 @@ function bounded(request) {
 export async function loadBenchmarks() {
   return settle({
     ...Object.fromEntries(INSTANT_KEYS.map((key) => [key, () => bounded(query(Q[key]))])),
+    llmUsed4d: () => bounded(query(Q.llmUsed4d)),
     ...Object.fromEntries(SOURCE_AGE_KEYS.map((key) => [key, () => bounded(query(Q[key]))])),
     ...Object.fromEntries(HISTORY_KEYS.map((key) => [`${key}History`, async () => {
       const end = Math.floor(Date.now() / 1000 / 15) * 15;
@@ -98,6 +99,7 @@ export function retainMeasurements(raw) {
     if (raw[historyKey] != null) lastGoodSet(`mc7:${historyKey}`, history);
     data[historyKey] = history;
   }
+  data.llmUsed4d = raw.llmUsed4d;
   return refreshFreshness({ data, failed: Object.values(raw).some((rows) => rows == null), checkedAt: Date.now() });
 }
 
@@ -127,10 +129,13 @@ export const reading = (data, key, labels) => data[key]?.find((row) => matches(r
 
 export function identities(data, router = false) {
   const found = new Map();
-  for (const key of INSTANT_KEYS.filter((key) => router ? key.startsWith('router') || key === 'llmTokRate' : key.startsWith('engine'))) {
+  const recentlyUsed = router && data.llmUsed4d != null
+    ? new Set(data.llmUsed4d.map(({ labels }) => labels.model)) : null;
+  for (const key of INSTANT_KEYS.filter((key) => router ? key.startsWith('router') : key.startsWith('engine'))) {
     for (const { labels } of data[key] || []) {
       const key = !router && labels.backend === 'llamacpp' ? 'guest' : 'model';
       if (!labels[key] || (!router && !labels.backend)) continue;
+      if (router && recentlyUsed && !recentlyUsed.has(labels.model)) continue;
       const id = router ? { model: labels.model } : { backend: labels.backend, [key]: labels[key] };
       found.set(JSON.stringify(id), id);
     }

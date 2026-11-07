@@ -3,16 +3,19 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Q } from '../site/lib/queries.js';
 import { BENCHMARK_Q, BENCHMARK_SOURCE_AGE_FOR, BENCHMARK_SOURCE_AGE_Q } from '../site/lib/benchmarkQueries.js';
+import { identities } from '../site/mc7/data.js';
 import fixtures from './mc7-fixtures.json' with { type: 'json' };
+
+const HEALTH_CHECK = 'api_key_alias!="litellm-internal-health-check"';
 
 test('generated allow-list equals Q; every MC7 query has a fixture and a unique expression', () => {
   assert.deepEqual(JSON.parse(readFileSync(new URL('../site/queries.json', import.meta.url))), Q);
-  assert.deepEqual(Object.keys(fixtures).sort(), [...Object.keys(BENCHMARK_Q), 'llmTokRate'].sort());
+  assert.deepEqual(Object.keys(fixtures).sort(), [...Object.keys(BENCHMARK_Q), 'llmUsed4d'].sort());
   assert.equal(new Set(Object.values(Q)).size, Object.keys(Q).length);
 });
 
 test('every benchmark reading has an allow-listed raw-source age query', () => {
-  assert.deepEqual(Object.keys(BENCHMARK_SOURCE_AGE_FOR).sort(), [...Object.keys(BENCHMARK_Q), 'llmTokRate'].sort());
+  assert.deepEqual(Object.keys(BENCHMARK_SOURCE_AGE_FOR).sort(), Object.keys(BENCHMARK_Q).sort());
   assert.deepEqual(new Set(Object.values(BENCHMARK_SOURCE_AGE_FOR)), new Set(Object.keys(BENCHMARK_SOURCE_AGE_Q)));
   for (const [reading, ageKey] of Object.entries(BENCHMARK_SOURCE_AGE_FOR)) {
     assert.equal(Q[ageKey], BENCHMARK_SOURCE_AGE_Q[ageKey]);
@@ -24,11 +27,14 @@ test('every benchmark reading has an allow-listed raw-source age query', () => {
 test('engine and router percentiles use standard buckets, aggregate le, and drop accelerator', () => {
   for (const [key, expr] of Object.entries(BENCHMARK_Q)) {
     assert.equal(Q[key], expr);
-    assert.doesNotMatch(expr, /api_key|team|api_base|position|\bvector\(/);
+    assert.doesNotMatch(expr.replaceAll(HEALTH_CHECK, ''), /api_key|team|api_base|position|\bvector\(/);
     if (!/P\d+$/.test(key)) continue;
     assert.match(expr, /histogram_quantile\(/);
     assert.match(expr, /sum by \((?:model_name|model), le\)/);
-    assert.match(expr, /increase\([^()]*_bucket\{job="llm_(gpu_engine|router)"\}\[5m\]\)/);
+    const bucket = key.startsWith('router')
+      ? /increase\([^()]*_bucket\{job="llm_router",api_key_alias!="litellm-internal-health-check"\}\[5m\]\)/
+      : /increase\([^()]*_bucket\{job="llm_gpu_engine"\}\[5m\]\)/;
+    assert.match(expr, bucket);
     assert.doesNotMatch(expr, /by \([^)]*accelerator/);
     const p = Number(key.match(/P(\d+)$/)[1]) / 100;
     assert.ok(expr.includes(`histogram_quantile(${p},`));
@@ -36,6 +42,31 @@ test('engine and router percentiles use standard buckets, aggregate le, and drop
   assert.match(Q.engineE2eP95, /vllm:e2e_request_latency_seconds_bucket/);
   assert.match(Q.routerTtftP95, /litellm_llm_api_time_to_first_token_metric_bucket/);
   assert.match(Q.routerE2eP95, /litellm_request_total_latency_metric_bucket/);
+});
+
+test('router rates, percentiles, and source ages exclude health-check traffic', () => {
+  for (const [key, expr] of Object.entries(BENCHMARK_Q).filter(([key]) => key.startsWith('router'))) {
+    assert.ok(expr.includes(HEALTH_CHECK), `${key} must exclude the health-check caller`);
+  }
+  for (const [key, expr] of Object.entries(BENCHMARK_SOURCE_AGE_Q).filter(([key]) => key.startsWith('router'))) {
+    assert.ok(expr.includes(HEALTH_CHECK), `${key} must exclude the health-check caller`);
+  }
+  assert.equal(Q.routerOutput, `sum by (model) (rate(litellm_output_tokens_metric_total{${HEALTH_CHECK}}[5m]))`);
+});
+
+test('router identities require real use and fall back when the usage query fails', () => {
+  const readings = {
+    routerOutput: [
+      { labels: { model: 'health-check-only' }, value: 12 },
+      { labels: { model: 'real-model' }, value: 34 },
+    ],
+    llmUsed4d: [{ labels: { model: 'real-model' }, value: 1 }],
+  };
+  assert.deepEqual(identities(readings, true), [{ model: 'real-model' }]);
+  assert.deepEqual(identities({ ...readings, llmUsed4d: [] }, true), []);
+  assert.deepEqual(identities({ ...readings, llmUsed4d: null }, true), [
+    { model: 'health-check-only' }, { model: 'real-model' },
+  ]);
 });
 
 test('rates, cache ratios, and measured efficiency have the expected windows and labels', () => {

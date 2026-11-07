@@ -233,7 +233,7 @@
       "value": 0.5
     }
   ],
-  "llmTokRate": [
+  "routerOutput": [
     {
       "labels": {
         "model": "model-large"
@@ -245,6 +245,20 @@
         "model": "model-coder"
       },
       "value": 91
+    }
+  ],
+  "llmUsed4d": [
+    {
+      "labels": {
+        "model": "model-large"
+      },
+      "value": 1
+    },
+    {
+      "labels": {
+        "model": "model-coder"
+      },
+      "value": 1
     }
   ]
 }
