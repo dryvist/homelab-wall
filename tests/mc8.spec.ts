@@ -86,9 +86,10 @@ test('high-cardinality routes fit one screen and keep collapsed terminal routes 
 
 test('a failure on a collapsed model shows on the "+N more" row', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 720 });
-  await mockMc8(page, { rows: highCardinalityRows, failure: true });
+  await mockMc8(page, { rows: highCardinalityRows, failure: true, fallback: true });
   await page.goto('/mc8/');
-  await expect(page.locator('#models .more .failure-marker')).toHaveText('Failures · last minute');
+  await expect(page.locator('#models .more .failure-marker')).toHaveText('Failures · last minute · Failed fallback · last minute');
+  expect(await page.locator('#models').evaluate((node) => node.scrollHeight <= node.clientHeight)).toBe(true);
 });
 
 test('empty data remains pending and draws no sample routes or numeric heroes', async ({ page }) => {

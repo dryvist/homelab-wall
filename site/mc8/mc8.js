@@ -15,7 +15,7 @@ const sourceTimes = {
   mc8InputRate: 'mc8InputSourceTime', mc8OutputRate: 'mc8OutputSourceTime', mc8InFlight: 'mc8InFlightSourceTime',
   mc8SpendCents: 'mc8SpendSourceTime', mc8TtftP95: 'mc8TtftSourceTime', mc8Failures: 'mc8FailuresSourceTime', mc8Fallbacks: 'mc8FallbacksSourceTime',
 };
-let shaped = shapeRates([], []), displayed = { callers: [], models: [], routes: [] }, wires = [], selected = null;
+let shaped = shapeRates([], []), displayed = { callers: [], models: [], routes: [], hidden: [] }, wires = [], selected = null;
 
 function age(at) {
   if (at == null) return 'STALE: measurement time unavailable';
@@ -81,7 +81,7 @@ function modelMarkup(split) {
 }
 
 // Render candidate splits and use the column's real scroll box to find the largest one that fits.
-function fitRows(container, rows, markup) {
+function fitRows(container, rows, markup, mark = () => {}) {
   if (!rows.length) {
     const split = splitTopByRate(rows, 1);
     container.innerHTML = markup(split);
@@ -93,6 +93,7 @@ function fitRows(container, rows, markup) {
     const limit = Math.floor((low + high) / 2);
     const split = splitTopByRate(rows, limit);
     container.innerHTML = markup(split);
+    mark(split);
     if (container.scrollHeight <= container.clientHeight) {
       best = split;
       low = limit + 1;
@@ -144,9 +145,11 @@ function render() {
   $('route-state').textContent = !ready ? 'Pending token rates' : shaped.total === 0 ? 'Idle' : `${number(shaped.total)} tokens/s`;
   const callers = $('callers'), models = $('models');
   const callerSplit = fitRows(callers, shaped.callers, callerMarkup);
-  const modelSplit = fitRows(models, shaped.models, modelMarkup);
+  const collapsed = (split) => shaped.models.filter((model) => !split.visible.includes(model));
+  const modelSplit = fitRows(models, shaped.models, modelMarkup, (split) => markModels(collapsed(split)));
   displayed.callers = [...callerSplit.visible, ...(callerSplit.more ? [moreTerminal('callers', callerSplit.more)] : [])];
   displayed.models = [...modelSplit.visible, ...(modelSplit.more ? [moreTerminal('models', modelSplit.more)] : [])];
+  displayed.hidden = collapsed(modelSplit);
   displayed.routes = compactRoutes(shaped.routes, displayed.callers, displayed.models);
   callers.innerHTML = callerMarkup(callerSplit);
   models.innerHTML = modelMarkup(modelSplit);
@@ -162,6 +165,23 @@ function terminal(node, kind) {
   return `<div class="terminal${node.more ? ' more' : ''}" tabindex="0" data-kind="${kind}" data-id="${esc(node.id)}" title="${esc(destinations)}"><div><strong>${esc(node.name)}</strong>${node.team ? `<small>${esc(node.team)}</small>` : ''}${kind === 'model' ? '<small class="failure-marker"></small>' : ''}</div><span class="rate">${node.rate == null ? 'No token rate' : `${number(node.rate)} t/s`}</span></div>`;
 }
 
+// A "+N more" row carries the markers of the models collapsed into it.
+function markModels(hidden) {
+  for (const node of document.querySelectorAll('[data-kind="model"]')) {
+    const more = node.classList.contains('more');
+    const models = more ? hidden : shaped.models.filter((m) => m.id === node.dataset.id);
+    const failedModel = models.find((m) => increased(feeds.mc8Failures, m.metricId));
+    const fallbackModel = models.find((m) => increased(feeds.mc8Fallbacks, m.metricId));
+    const failed = Boolean(failedModel), fallback = Boolean(fallbackModel);
+    const failureText = failed ? `Failures · ${windowLabel(windowAge(feeds.mc8Failures, failedModel.metricId))}` : '';
+    const fallbackText = fallback ? `Failed fallback · ${windowLabel(windowAge(feeds.mc8Fallbacks, fallbackModel.metricId))}` : '';
+    const marker = node.querySelector('.failure-marker');
+    marker.textContent = more ? [failureText, fallbackText].filter(Boolean).join(' · ') : failureText || fallbackText;
+    marker.classList.toggle('failure', failed);
+    marker.classList.toggle('fallback', !failed && fallback);
+  }
+}
+
 function updateStatus() {
   $('clock').textContent = new Date().toLocaleTimeString();
   $('flow-status').textContent = stateText(['mc8InputRate', 'mc8OutputRate']);
@@ -169,20 +189,7 @@ function updateStatus() {
   $('failure-status').textContent = state === 'Live' ? 'Failure flashes: increases in the last minute' : `Failure telemetry: ${state}`;
   updateUnclassified();
   board.dataset.state = !shaped.routes.length ? 'pending' : stateText(['mc8InputRate', 'mc8OutputRate']).startsWith('STALE') ? 'stale' : 'ok';
-  for (const node of document.querySelectorAll('[data-kind="model"]')) {
-    // A "+N more" row carries the markers of the models collapsed into it.
-    const models = node.classList.contains('more')
-      ? shaped.models.filter((m) => !displayed.models.some((shown) => shown.id === m.id))
-      : shaped.models.filter((m) => m.id === node.dataset.id);
-    const failedModel = models.find((m) => increased(feeds.mc8Failures, m.metricId));
-    const fallbackModel = models.find((m) => increased(feeds.mc8Fallbacks, m.metricId));
-    const failed = Boolean(failedModel), fallback = Boolean(fallbackModel);
-    const marker = node.querySelector('.failure-marker');
-    marker.textContent = failed ? `Failures · ${windowLabel(windowAge(feeds.mc8Failures, failedModel.metricId))}`
-      : fallback ? `Failed fallback · ${windowLabel(windowAge(feeds.mc8Fallbacks, fallbackModel.metricId))}` : '';
-    marker.classList.toggle('failure', failed);
-    marker.classList.toggle('fallback', !failed && fallback);
-  }
+  markModels(displayed.hidden);
   for (const [id, keys] of [['local-share', ['mc8InputRate', 'mc8OutputRate']], ['in-flight', ['mc8InFlight']], ['spend', ['mc8SpendCents']], ['ttft', ['mc8TtftP95']]]) {
     const panel = $(id).closest('[data-panel]');
     if (panel.dataset.state !== 'pending' && stateText(keys).startsWith('STALE')) {
@@ -219,8 +226,9 @@ function draw(now) {
     if (!a || !b) continue;
     const active = !selected || wire[selected.kind] === selected.id;
     const model = displayed.models.find((m) => m.id === wire.model);
-    const failed = model?.metricId && increased(feeds.mc8Failures, model.metricId);
-    const fallback = model?.metricId && increased(feeds.mc8Fallbacks, model.metricId);
+    const behind = model?.more ? displayed.hidden : model ? [model] : [];
+    const failed = behind.some((m) => increased(feeds.mc8Failures, m.metricId));
+    const fallback = behind.some((m) => increased(feeds.mc8Fallbacks, m.metricId));
     const flash = motion.matches || Math.floor(now / 450) % 2 === 0;
     ctx.strokeStyle = wire.color;
     ctx.globalAlpha = (active ? .65 : .06) * (board.dataset.state === 'stale' ? .35 : 1);
