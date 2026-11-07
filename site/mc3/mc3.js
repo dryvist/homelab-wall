@@ -12,9 +12,12 @@ import {
   setSampleBadge, onDispose, hardwareGL, adaptiveDpr,
 } from '/lib/stage.js';
 import { SAMPLE_LLM } from '/lib/sampleData.js';
+import { createPointer } from '/lib/pointer.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const { pointer, dispose: disposePointer } = createPointer();
+onDispose(disposePointer);
 const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e', '#ff3b5c', '#e8f4ff', '#8ab8ff', '#ffd23e'];
 
 const cfg = await loadConfig();
@@ -643,6 +646,7 @@ async function startGpuCore() {
     const core = await buildGpuCore(reactor, {
       palette: PALETTE,
       reducedMotion: RM,
+      pointer,
       onLost: () => {
         core.dispose();
         if (core3d === core) core3d = null;

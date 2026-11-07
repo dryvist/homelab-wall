@@ -49,7 +49,7 @@ const norm = (s) => String(s ?? '').toLowerCase().split('/').pop();
 // tok/s -> 0..1 on a log scale (~127 tok/s saturates).
 const tokNorm = (tok) => clamp(Math.log2(1 + Math.max(0, tok || 0)) / 7, 0, 1);
 
-export async function buildGpuCore(canvas, { palette, reducedMotion = false, onLost } = {}) {
+export async function buildGpuCore(canvas, { palette, reducedMotion = false, onLost, pointer = { x: 0, y: 0 } } = {}) {
   const RM = reducedMotion;
   const colorFor = (name) => palette[strHash(norm(name)) % palette.length];
 
@@ -464,8 +464,8 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
 
     // Camera drift first, so the anchors are pinned against this frame's view.
     if (!RM) {
-      cam.position.x = AIM.x + Math.sin(t * 0.07) * 24;
-      cam.position.y = 14 + Math.sin(t * 0.05) * 10;
+      cam.position.x = AIM.x + Math.sin(t * 0.07) * 24 + pointer.x * 12;
+      cam.position.y = 14 + Math.sin(t * 0.05) * 10 + pointer.y * 6;
       cam.lookAt(AIM);
     }
     pinAnchors();
