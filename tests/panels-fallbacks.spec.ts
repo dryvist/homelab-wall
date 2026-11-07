@@ -61,13 +61,12 @@ for (const pageId of ['mc2', 'mc4', 'mc5']) {
     test.skip(!!wallUrl, 'exercises changing score responses against the fixture server only');
     await mockFeeds(page);
     await page.route('**/config.json', (route) => route.fulfill({ json: { ...config, refreshSeconds: 1 } }));
-    let scorePolls = 0;
+    let phase: 'live' | 'failing' | 'recovered' = 'live';
     await page.route('**/api/prom/**', async (route) => {
       const url = new URL(route.request().url());
       if (url.searchParams.get('query') !== Q.appScore) return route.fallback();
-      scorePolls += 1;
-      if (scorePolls === 2) return route.fulfill({ status: 500, json: { status: 'error', error: 'forced failure' } });
-      if (scorePolls === 3) {
+      if (phase === 'failing') return route.fulfill({ status: 500, json: { status: 'error', error: 'forced failure' } });
+      if (phase === 'recovered') {
         const result = config.groups.flatMap((group) => group.apps).map((name) => ({
           metric: { name }, value: [Date.now() / 1000, '0'],
         }));
@@ -80,9 +79,11 @@ for (const pageId of ['mc2', 'mc4', 'mc5']) {
     const apps = page.locator('[data-panel="apps"]');
     await expect(apps).toHaveAttribute('data-state', 'ok');
     await expect(page.locator('#appsum')).not.toContainText(/\b0 OK\b/);
+    phase = 'failing';
     await expect(apps).toHaveAttribute('data-state', 'stale');
     await expect(apps).toHaveAttribute('data-source', 'live');
     await expect(page.locator('#appsum')).not.toContainText(/\b0 OK\b/);
+    phase = 'recovered';
     await expect(apps).toHaveAttribute('data-state', 'ok');
     await expect(page.locator('#appsum')).toContainText(/\b0 OK\b/);
   });
