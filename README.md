@@ -92,7 +92,8 @@ from whichever series a poll happens to return.
 MC8 uses real measurements only. Empty or failed queries show `Pending` until
 the first reading; later gaps retain the last measurement with a visible
 `STALE` age. An empty failure, fallback or spend result reads as zero while the
-router is live. Zero token rate means idle; local share is unavailable when the
+router is live. An empty TTFT result reads `Idle` while its histogram's sample
+time is fresh. Zero token rate means idle; local share is unavailable when the
 total is zero. Routes retain caller alias and team, model, and provider labels;
 width means input plus output tokens/s over 5 minutes. Focus or hover a caller
 or model to trace its paths. Failure flashes apply to model edges with measured
