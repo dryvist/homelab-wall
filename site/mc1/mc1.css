@@ -62,7 +62,7 @@ header{grid-column:1/-1;position:relative;z-index:2;min-width:0;min-height:0;ove
 #wan b{color:var(--ink);font-weight:600}
 #wan [data-panel-message]{display:block;margin-top:3px}
 #wan[data-state="error"] [data-panel-message]{color:var(--red)}
-#vlans{top:118px;left:14px;width:300px;line-height:1.8}
+#vlans{top:118px;left:14px;width:300px;line-height:1.8;background:rgba(6,12,20,.72);padding:4px 8px}
 #vlans b{color:var(--ink);font-weight:600}
 #vlans [data-panel-message]{display:block;margin-top:3px}
 #vlans[data-state="error"] [data-panel-message]{color:var(--red)}
