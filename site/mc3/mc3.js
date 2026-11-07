@@ -302,6 +302,9 @@ function drawSpark(canvas, hist, color) {
   c.strokeStyle = color; c.lineWidth = 1.5 * dpr; c.lineJoin = 'round'; c.stroke();
 }
 
+// Active: a real (non-health-check) request in the last hour, the same rule as the card's Idle text.
+const active = (m) => !m.perf?.idle;
+
 function renderCore() {
   const sample = !model.models.length;
   const list = sample ? sampleModels() : model.models;
@@ -315,8 +318,10 @@ function renderCore() {
   // enough that auto-fit's old 200px-min columns would have wrapped anyway.
   tab.style.gridTemplateColumns = `repeat(${Math.max(list.length, 1)},minmax(0,1fr))`;
   tab.classList.toggle('dense', list.length > 5);
+  // Bar: each model's share of real requests in the last hour, against the busiest listed model.
+  const maxReq = Math.max(1, ...list.map((m) => m.perf?.requests ?? 0));
   tab.innerHTML = list.map((m) => {
-    const col = m.up ? (m.tok > 0.05 ? 'var(--green)' : 'var(--cyan)') : 'var(--red)';
+    const col = m.up ? (active(m) ? 'var(--green)' : 'var(--cyan)') : 'var(--red)';
     const card = cards.get(m.n);
     const stats = m.up ? card.stats : ['health check failing', ...card.stats];
     const device = accel[m.anchor].name;
@@ -324,12 +329,12 @@ function renderCore() {
       <div class="mcat" title="${esc(device)}">${esc(device)}</div>
       <div class="mctok" style="color:${col}">${esc(card.value)}${card.unit ? `<i>${esc(card.unit)}</i>` : ''}</div>
       <canvas class="mcspark" data-model="${esc(m.n)}"></canvas>
-      <div class="mcbar"><div style="width:${m.up ? clamp(m.tok * 2, 6, 100) : 100}%;background:${col}"></div></div>
+      <div class="mcbar"><div style="width:${m.up ? clamp(100 * (m.perf?.requests ?? 0) / maxReq, 6, 100) : 100}%;background:${col}"></div></div>
       <div class="mcstats">${stats.map((s) => `<span>${esc(s)}</span>`).join('')}</div></div>`;
   }).join('');
   for (const canvas of $('modeltab').querySelectorAll('.mcspark')) {
     const m = list.find((x) => x.n === canvas.dataset.model);
-    drawSpark(canvas, perfHistory.get(m.n).values, m.up ? (m.tok > 0.05 ? '#38ff9c' : '#3ee6ff') : '#ff3b5c');
+    drawSpark(canvas, perfHistory.get(m.n).values, m.up ? (active(m) ? '#38ff9c' : '#3ee6ff') : '#ff3b5c');
   }
   const up = list.filter((m) => m.up).length;
   $('coresum').textContent = `${up}/${list.length} UP`;
@@ -526,7 +531,7 @@ function drawReactor(now) {
     const a = (k / n) * Math.PI * 2 + t * 0.25;
     const x = p.x + Math.cos(a) * R * 0.42, y = p.y + Math.sin(a) * R * 0.21;
     c.beginPath(); c.arc(x, y, (m.up ? 4 : 3) * dpr, 0, Math.PI * 2);
-    c.fillStyle = m.up ? (m.tok > 0.05 ? '#38ff9c' : '#3ee6ff') : '#ff3b5c';
+    c.fillStyle = m.up ? (active(m) ? '#38ff9c' : '#3ee6ff') : '#ff3b5c';
     c.shadowColor = c.fillStyle; c.shadowBlur = 8 * dpr; c.fill(); c.shadowBlur = 0;
     // An up model with tokens in flight streams from its dot into the hub: travelling sparks, the 2D
     // stand-in for the 3D stream. The same gate as the 3D stream.
