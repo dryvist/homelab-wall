@@ -1,3 +1,4 @@
+// A hung refresh blocks every later tick, so each request it awaits must have its own timeout.
 export function guardRefresh(refresh) {
   let refreshing = false;
   return async (...args) => {

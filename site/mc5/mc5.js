@@ -228,16 +228,14 @@ function renderTicker() {
   setStandIn($('ticker'), usingStandInEvents);
 }
 let eventsTimer = null;
-let guardedPollEvents;
 async function pollEvents() {
   const data = await ghGet(`/orgs/${GH_ORG}/events`, 'mc5.gh.events');
   if (Array.isArray(data) && data.length) applyEvents(data, false);
   else if (!tickerEvents.length) applyEvents([nextStandInEvent()], true);
   const cached = lsGet('mc5.gh.events');
   const delaySec = Math.max(Number(cached?.pollSeconds) || 60, 60);
-  eventsTimer = setTimeout(guardedPollEvents, delaySec * 1000);
+  eventsTimer = setTimeout(pollEvents, delaySec * 1000);
 }
-guardedPollEvents = guardRefresh(pollEvents);
 onDispose(() => clearTimeout(eventsTimer));
 // Keeps comets/ticker flowing between real polls when no live source has answered yet — the
 // hero must never sit static for a full 60s poll interval on first load or while offline.
@@ -272,7 +270,6 @@ async function pollReleases(topRepos, standIn) {
 }
 let repoLayoutHook = () => {};
 let reposTimer = null;
-let guardedPollRepos;
 async function pollRepos() {
   const data = await ghGet(`/orgs/${GH_ORG}/repos?per_page=100&sort=pushed&type=public`, 'mc5.gh.repos');
   const live = Array.isArray(data) ? data.filter((r) => !r.private) : [];
@@ -285,9 +282,8 @@ async function pollRepos() {
   });
   repoLayoutHook(sceneState.repos);
   await pollReleases(top, standIn);
-  reposTimer = setTimeout(guardedPollRepos, 3600_000);
+  reposTimer = setTimeout(pollRepos, 3600_000);
 }
-guardedPollRepos = guardRefresh(pollRepos);
 onDispose(() => clearTimeout(reposTimer));
 
 /* ------------------------------------ infra (stand-in, animated) ------------------------------*/
@@ -481,7 +477,7 @@ fitCanvas($('apps'), $('appgrid'), drawAppGrid);
 await guardedRefreshApps().catch((e) => console.warn('refresh', e));
 const appsRefreshId = setInterval(() => guardedRefreshApps().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
 onDispose(() => clearInterval(appsRefreshId));
-guardedPollEvents();
-guardedPollRepos();
+pollEvents();
+pollRepos();
 // Nightly reload keeps a 24/7 kiosk's memory flat.
 setTimeout(() => location.reload(), 24 * 3600 * 1000);

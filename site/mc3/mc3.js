@@ -391,7 +391,7 @@ function feedNotice(state, text) {
 async function pollFeed() {
   let rows;
   try {
-    const res = await fetch('/api/llm/recent', { cache: 'no-store' });
+    const res = await fetch('/api/llm/recent', { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw new Error(`recent ${res.status}`);
     const body = await res.json();
     rows = Array.isArray(body) ? body : body?.data;

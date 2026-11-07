@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { Q } from '../site/lib/queries.js';
-import { guardRefresh } from '../site/lib/refresh.js';
 import { shapeNodes, ageLabel, refreshNode, withTimeout } from '../site/mc9/model.js';
 
 test('the page expires labels, reporting count, and rings during an unfinished poll, then retries', { timeout: 1000 }, async () => {
@@ -38,7 +37,7 @@ test('the page expires labels, reporting count, and rings during an unfinished p
     document, Q, shapeNodes: (feeds, previous) => shapeNodes(feeds, previous, now), ageLabel, refreshNode,
     Date: class extends Date { static now() { return now * 1000; } },
     matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} }),
-    loadConfig: async () => ({ refreshSeconds: 1 }), guardRefresh,
+    loadConfig: async () => ({ refreshSeconds: 1 }),
     loop() {}, observeCanvas() {}, onDispose() {},
     setInterval: (fn) => intervals.push(fn), clearInterval() {},
     setTimeout: (fn) => timeouts.push(fn), clearTimeout() {},
