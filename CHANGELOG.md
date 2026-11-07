@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/dryvist/homelab-wall/compare/v0.22.3...v0.23.0) (2026-11-07)
+
+
+### Features
+
+* **wall:** follow the mouse on directly opened pages ([#171](https://github.com/dryvist/homelab-wall/issues/171)) ([86b3367](https://github.com/dryvist/homelab-wall/commit/86b3367422ca4149c2836ecf032cbb52bdc36c77))
+
 ## [0.22.3](https://github.com/dryvist/homelab-wall/compare/v0.22.2...v0.22.3) (2026-11-07)
 
 
