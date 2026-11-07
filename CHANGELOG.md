@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.0](https://github.com/dryvist/homelab-wall/compare/v0.24.2...v0.25.0) (2026-11-07)
+
+
+### Features
+
+* **mc4:** render live media telemetry ([#178](https://github.com/dryvist/homelab-wall/issues/178)) ([8f216f8](https://github.com/dryvist/homelab-wall/commit/8f216f802c70f6ffc97a54740c44faedfc858881))
+
 ## [0.24.2](https://github.com/dryvist/homelab-wall/compare/v0.24.1...v0.24.2) (2026-11-07)
 
 
