@@ -17,6 +17,28 @@ export function providerClass(labels) {
 export const modelKey = (labels) => JSON.stringify([labels.model || 'Unlabelled model', labels.api_provider || 'unknown']);
 export const validRows = (rows) => (rows || []).filter((r) => Number.isFinite(r.value) && r.value >= 0);
 
+// Keep the highest-rate rows and summarize everything else in one visible row. maxRows includes
+// that summary row when one is needed.
+export function splitTopByRate(rows, maxRows) {
+  const ranked = [...(rows || [])].sort((a, b) => {
+    const rateA = Number.isFinite(a.rate) ? a.rate : -Infinity;
+    const rateB = Number.isFinite(b.rate) ? b.rate : -Infinity;
+    return rateB - rateA || String(a.id).localeCompare(String(b.id));
+  });
+  const limit = Math.max(1, Math.floor(Number.isFinite(maxRows) ? maxRows : 1));
+  if (ranked.length <= limit) return { visible: ranked, more: null };
+  const visible = ranked.slice(0, limit - 1);
+  const hidden = ranked.slice(visible.length);
+  const measured = hidden.filter((row) => Number.isFinite(row.rate));
+  return {
+    visible,
+    more: {
+      count: hidden.length,
+      rate: measured.length ? measured.reduce((sum, row) => sum + row.rate, 0) : null,
+    },
+  };
+}
+
 const labelKey = (labels) => JSON.stringify(Object.entries(labels || {}).sort(([a], [b]) => a.localeCompare(b)));
 
 // Source-time queries return each raw series' last sample time as their value. It lands in

@@ -94,10 +94,10 @@ export const Q = {
   llamaRunning: 'sum by (instance) (llamacpp:requests_processing)',
   routerInFlight: 'sum(litellm_in_flight_requests)',
   // MC8: retain caller dimensions only on the token edges; all other queries aggregate early.
-  mc8InputRate: 'sum by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (rate(litellm_input_tokens_metric_total{job="llm_router"}[5m]))',
-  mc8OutputRate: 'sum by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (rate(litellm_output_tokens_metric_total{job="llm_router"}[5m]))',
-  mc8InputSourceTime: 'max by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (tlast_over_time(litellm_input_tokens_metric_total{job="llm_router"}[5m]))',
-  mc8OutputSourceTime: 'max by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (tlast_over_time(litellm_output_tokens_metric_total{job="llm_router"}[5m]))',
+  mc8InputRate: `sum by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (rate(litellm_input_tokens_metric_total{job="llm_router",${REAL_USE}}[5m]))`,
+  mc8OutputRate: `sum by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (rate(litellm_output_tokens_metric_total{job="llm_router",${REAL_USE}}[5m]))`,
+  mc8InputSourceTime: `max by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (tlast_over_time(litellm_input_tokens_metric_total{job="llm_router",${REAL_USE}}[5m]))`,
+  mc8OutputSourceTime: `max by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (tlast_over_time(litellm_output_tokens_metric_total{job="llm_router",${REAL_USE}}[5m]))`,
   mc8InFlight: 'sum(litellm_in_flight_requests{job="llm_router"})',
   // increase() also counts a new series' first small bucket value; rate() skips it.
   mc8TtftP95: 'histogram_quantile(0.95, sum by (le) (increase(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router"}[5m])))',

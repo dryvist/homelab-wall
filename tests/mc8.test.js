@@ -1,12 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { shapeRates, providerClass, retain, fresh, increased, modelKey } from '../site/mc8/data.js';
+import { shapeRates, splitTopByRate, providerClass, retain, fresh, increased, modelKey } from '../site/mc8/data.js';
 import { Q } from '../site/lib/queries.js';
 import * as mc8Data from '../site/mc8/data.js';
 
 const row = (value, labels = {}, timestamp = 1) => ({ value, labels, timestamp });
 const billing = (bank) => Object.fromEntries(['local', 'subscription', 'paid', 'free'].map((key) => [`tag_telemetry_billing_class_${key}`, String(key === bank)]));
+test('top-rate split preserves the highest rows and totals collapsed rows', () => {
+  const rows = [
+    { id: 'c', rate: 3 }, { id: 'a', rate: 9 }, { id: 'e', rate: 1 },
+    { id: 'b', rate: 7 }, { id: 'd', rate: 2 },
+  ];
+  const split = splitTopByRate(rows, 3);
+  assert.deepEqual(split.visible.map((item) => item.id), ['a', 'b']);
+  assert.deepEqual(split.more, { count: 3, rate: 6 });
+  assert.equal(splitTopByRate(rows, 5).more, null);
+  assert.deepEqual(rows.map((item) => item.id), ['c', 'a', 'e', 'b', 'd']);
+});
+
 test('rates merge input and output by caller, team, model, and provider', () => {
   const a = { api_key_alias: 'caller-a', team: 'team-a', model: 'model-a', api_provider: 'hosted_vllm', ...billing('local') };
   const b = { ...a, model: 'model-b', api_provider: 'openrouter', ...billing('paid') };
@@ -167,7 +179,10 @@ test('query allow-list is generated from Q and MC8 uses standard histogram bucke
       assert.ok(Q[key].includes(`tag_telemetry_billing_class_${bank}`));
     }
     assert.match(Q[key], /sum by \(api_key_alias, team, model, api_provider,/);
-    assert.match(Q[key], /_tokens_metric_total\{job="llm_router"\}\[5m\]/);
+    assert.match(Q[key], /_tokens_metric_total\{job="llm_router",api_key_alias!="litellm-internal-health-check"\}\[5m\]/);
+  }
+  for (const key of ['mc8InputRate', 'mc8OutputRate', 'mc8InputSourceTime', 'mc8OutputSourceTime']) {
+    assert.ok(Q[key].includes('api_key_alias!="litellm-internal-health-check"'), key);
   }
 });
 test('spend query subtracts per-series UTC month baseline before sum, then converts dollars to cents', () => {
@@ -187,7 +202,7 @@ test('token-rate source times are raw-counter tlast values grouped exactly like 
     ['mc8InputRate', 'mc8InputSourceTime', 'litellm_input_tokens_metric_total'],
     ['mc8OutputRate', 'mc8OutputSourceTime', 'litellm_output_tokens_metric_total'],
   ]) {
-    assert.equal(Q[source], `max by (${group(Q[rate])}) (tlast_over_time(${metric}{job="llm_router"}[5m]))`);
+    assert.equal(Q[source], `max by (${group(Q[rate])}) (tlast_over_time(${metric}{job="llm_router",api_key_alias!="litellm-internal-health-check"}[5m]))`);
   }
 });
 test('token-rate freshness follows each raw counter sample time, not the evaluation time', () => {

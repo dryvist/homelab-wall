@@ -5,33 +5,53 @@ import { Q } from '../site/lib/queries.js';
 const billing = (bank: string): Record<string, string> => Object.fromEntries(
   ['local', 'subscription', 'paid', 'free'].map((key) => [`tag_telemetry_billing_class_${key}`, String(key === bank)]),
 );
+type TokenFixtureRow = { labels: Record<string, string>; input: number; output: number };
 export const tokenRows = [
-  { api_key_alias: 'caller-a', team: 'engineering', model: 'local-model', api_provider: 'hosted_vllm', ...billing('local') },
-  { api_key_alias: 'caller-b', team: 'automation', model: 'subscription-model', api_provider: 'openai', ...billing('subscription') },
-  { api_key_alias: 'caller-a', team: 'engineering', model: 'paid-model', api_provider: 'openai', ...billing('paid') },
+  { labels: { api_key_alias: 'caller-a', team: 'engineering', model: 'local-model', api_provider: 'hosted_vllm', ...billing('local') }, input: 60, output: 30 },
+  { labels: { api_key_alias: 'caller-b', team: 'automation', model: 'subscription-model', api_provider: 'openai', ...billing('subscription') }, input: 20, output: 5 },
+  { labels: { api_key_alias: 'caller-a', team: 'engineering', model: 'paid-model', api_provider: 'openai', ...billing('paid') }, input: 10, output: 5 },
 ];
 
-export function mc8Answer(expr: string) {
-  const vec = (rows: Array<[Record<string, string>, number]>) => rows.map(([metric, value]) => ({ metric, value: [Date.now() / 1000, String(value)] }));
+export const highCardinalityRows: TokenFixtureRow[] = Array.from({ length: 20 * 12 }, (_, index) => {
+  const caller = index % 20;
+  const model = Math.floor(index / 20);
+  const banks = ['local', 'subscription', 'paid', 'free', 'unknown'];
+  return {
+    labels: {
+      api_key_alias: `caller-${String(caller + 1).padStart(2, '0')}`,
+      team: `team-${String(caller + 1).padStart(2, '0')}`,
+      model: `model-${String(model + 1).padStart(2, '0')}`,
+      api_provider: `provider-${model % 3 + 1}`,
+      ...billing(banks[model % banks.length]),
+    },
+    input: 1 + caller * 2 + model,
+    output: 1 + model * 2,
+  };
+});
+
+export function mc8Answer(expr: string, rows: TokenFixtureRow[] = tokenRows) {
+  const vec = (answers: Array<[Record<string, string>, number]>) => answers.map(([metric, value]) => ({ metric, value: [Date.now() / 1000, String(value)] }));
+  const modelRows = [...new Map(rows.map((row) => [JSON.stringify([row.labels.model, row.labels.api_provider]), row.labels])).values()];
   // Raw counter sample times: freshness reads each source value as that sample's time in seconds.
-  if (expr === Q.mc8InputSourceTime || expr === Q.mc8OutputSourceTime) return vec(tokenRows.map((m) => [m, Date.now() / 1000]));
+  if (expr === Q.mc8InputSourceTime || expr === Q.mc8OutputSourceTime) return vec(rows.map((row) => [row.labels, Date.now() / 1000]));
   if (expr === Q.mc8InFlightSourceTime || expr === Q.mc8SpendSourceTime || expr === Q.mc8TtftSourceTime) return vec([[{}, Date.now() / 1000]]);
-  if (expr === Q.mc8FailuresSourceTime || expr === Q.mc8FallbacksSourceTime) return vec(tokenRows.map((m) => [{ model: m.model, api_provider: m.api_provider }, Date.now() / 1000]));
-  if (expr === Q.mc8InputRate) return vec(tokenRows.map((m, i) => [m, [60, 20, 10][i]]));
-  if (expr === Q.mc8OutputRate) return vec(tokenRows.map((m, i) => [m, [30, 5, 5][i]]));
+  if (expr === Q.mc8FailuresSourceTime || expr === Q.mc8FallbacksSourceTime) return vec(modelRows.map((m) => [{ model: m.model, api_provider: m.api_provider }, Date.now() / 1000]));
+  if (expr === Q.mc8InputRate) return vec(rows.map((row) => [row.labels, row.input]));
+  if (expr === Q.mc8OutputRate) return vec(rows.map((row) => [row.labels, row.output]));
   if (expr === Q.mc8InFlight) return vec([[{}, 7]]);
   if (expr === Q.mc8SpendCents) return vec([[{}, 123.4]]);
   if (expr === Q.mc8TtftP95) return vec([[{}, 0.42]]);
-  if (expr === Q.mc8Failures || expr === Q.mc8Fallbacks) return vec(tokenRows.map((m) => [{ model: m.model, api_provider: m.api_provider }, 0]));
+  if (expr === Q.mc8Failures || expr === Q.mc8Fallbacks) return vec(modelRows.map((m) => [{ model: m.model, api_provider: m.api_provider }, 0]));
   return [];
 }
 
-export async function mockMc8(page: Page, opts: { empty?: boolean; fail?: () => boolean; snapshot?: boolean; failure?: boolean; fallback?: boolean; idleTtft?: boolean } = {}) {
+export async function mockMc8(page: Page, opts: { empty?: boolean; fail?: () => boolean; snapshot?: boolean; failure?: boolean; fallback?: boolean; idleTtft?: boolean; rows?: TokenFixtureRow[] } = {}) {
+  const rows = opts.rows || tokenRows;
   await page.route('**/config.json', (r) => r.fulfill({ json: { refreshSeconds: 1, ...(opts.snapshot ? { snapshot: '/data/mc8.json' } : {}) } }));
   await page.route('**/api/prom/query?**', (r) => {
     if (opts.fail?.()) return r.fulfill({ status: 500, json: { status: 'error' } });
     const expr = new URL(r.request().url()).searchParams.get('query') || '';
-    const result = mc8Answer(expr);
+    const result = mc8Answer(expr, rows);
     if ((opts.failure && expr === Q.mc8Failures) || (opts.fallback && expr === Q.mc8Fallbacks)) {
       result[0].value[1] = '1';
     }
@@ -41,6 +61,6 @@ export async function mockMc8(page: Page, opts: { empty?: boolean; fail?: () => 
   });
   await page.route('**/data/mc8.json', (r) => r.fulfill({ json: {
     generated_at: new Date().toISOString(),
-    instant: Object.fromEntries(Object.entries(Q).filter(([key]) => key.startsWith('mc8')).map(([key, expr]) => [key, { result: mc8Answer(expr) }])),
+    instant: Object.fromEntries(Object.entries(Q).filter(([key]) => key.startsWith('mc8')).map(([key, expr]) => [key, { result: mc8Answer(expr, rows) }])),
   } }));
 }
