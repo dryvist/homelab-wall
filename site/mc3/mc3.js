@@ -5,6 +5,7 @@
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import { listedModels, perfReader, perfCard } from '/lib/modelPerf.js';
+import { assignModelColors, shortDevice } from '/lib/mc3.js';
 import {
   clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct,
   setSampleBadge, onDispose, hardwareGL, adaptiveDpr,
@@ -38,8 +39,6 @@ const ROLE = new Map(ANCHOR_DEFS.slice(0, CLOUD).map((d, i) => [d.id, i]));
 const BEAD_RING = 12;
 const BEAD_CAP = 36;
 const ANCHOR_COLOR = { gpu: '#3ee6ff', mac: '#38ff9c', cloud: '#ffb347' };
-// A device model name can lead with its vendor as one all-caps word; that word is dropped.
-const VENDOR_WORD = /^[A-Z]{4,}\s+/;
 // The host of a "host:port" instance label or a "scheme://host:port/path" serving URL. A bracketed IPv6
 // address ("[fd00::1]:8000") is read whole, so distinct IPv6 hosts stay distinct.
 const hostOf = (s) => {
@@ -62,9 +61,9 @@ let accel = ANCHOR_DEFS.map((d) => ({ ...d, name: d.id, busy: null, active: 0, m
 
 // Sample models for the scene before any real model arrives; they sit on the cloud node, and each
 // card reads its sample tok/s as a decode speed, or Idle at zero.
-const sampleModels = () => SAMPLE_LLM.map((m) => ({
+const sampleModels = () => assignModelColors(SAMPLE_LLM.map((m) => ({
   n: m.n, up: m.state < 2, tok: m.tok, anchor: CLOUD, perf: { idle: !(m.tok > 0), decode: { p50: m.tok } },
-}));
+})), PALETTE);
 
 async function refresh() {
   const r = await settle({
@@ -113,7 +112,7 @@ async function refresh() {
       apiBase.set(n, [...(apiBase.get(n) ?? []), x.labels.api_base]);
     }
     // Only models with a real request in the last 4d, busiest first.
-    model.models = listedModels(r.state, r.used, r.requests).slice(0, 8).map((x) => {
+    model.models = assignModelColors(listedModels(r.state, r.used, r.requests).slice(0, 8).map((x) => {
       const n = x.labels.litellm_model_name;
       // Attached to the first device, in anchor order, that one of its serving URLs names. A model
       // whose URLs name no device (hosted rungs, an empty URL) belongs to the cloud node.
@@ -123,7 +122,7 @@ async function refresh() {
         if (role != null) anchor = Math.min(anchor, ROLE.get(role));
       }
       return { n, up: x.value < 2, tok: tok[n] ?? 0, perf: perf(n), anchor };
-    });
+    }), PALETTE);
   }
   for (const m of model.models) accel[m.anchor].models += 1;
 
@@ -145,14 +144,16 @@ function deriveAccelerators(r) {
     if (!ROLE.has(role)) continue;
     const host = hostOf(row.labels.instance);
     if (host) hostRole.set(host, role);
-    if (row.labels.modelName) names[ROLE.get(role)].add(String(row.labels.modelName).replace(VENDOR_WORD, ''));
+    const name = shortDevice(row.labels.modelName);
+    if (name) names[ROLE.get(role)].add(name);
   }
   for (const row of r.macChip || []) {
     const role = row.labels.accelerator;
     if (!ROLE.has(role)) continue;
     const host = hostOf(row.labels.instance);
     if (host) hostRole.set(host, role);
-    if (row.labels.chip) names[ROLE.get(role)].add(String(row.labels.chip));
+    const name = shortDevice(row.labels.chip);
+    if (name) names[ROLE.get(role)].add(name);
   }
 
   const busy = ANCHOR_DEFS.map(() => null);
@@ -202,6 +203,7 @@ function render() {
   renderCore();
   renderKpis();
   renderAnchors();
+  reactor.dataset.modelColors = JSON.stringify(reactorList.map(({ n, color }) => ({ n, color })));
   core3d?.sync(model.models, model.tokensToday, sceneAnchors());
   markPending(); // the inputs changed: the next drawn frame takes them in and marks the signal ready
 }
@@ -325,7 +327,7 @@ function renderCore() {
     const card = cards.get(m.n);
     const stats = m.up ? card.stats : ['health check failing', ...card.stats];
     const device = accel[m.anchor].name;
-    return `<div class="mc"><div class="mch"><b title="${esc(m.n)}">${esc(m.n.split('/').pop())}</b><span style="color:${col}">${m.up ? 'UP' : 'DOWN'}</span></div>
+    return `<div class="mc" data-model="${esc(m.n)}" data-color="${m.color}" style="--mc-color:${m.color}"><div class="mch"><div class="mcname"><i class="mcswatch" aria-hidden="true"></i><b title="${esc(m.n)}">${esc(m.n.split('/').pop())}</b></div><span style="color:${col}">${m.up ? 'UP' : 'DOWN'}</span></div>
       <div class="mcat" title="${esc(device)}">${esc(device)}</div>
       <div class="mctok" style="color:${col}">${esc(card.value)}${card.unit ? `<i>${esc(card.unit)}</i>` : ''}</div>
       <canvas class="mcspark" data-model="${esc(m.n)}"></canvas>
@@ -531,8 +533,14 @@ function drawReactor(now) {
     const a = (k / n) * Math.PI * 2 + t * 0.25;
     const x = p.x + Math.cos(a) * R * 0.42, y = p.y + Math.sin(a) * R * 0.21;
     c.beginPath(); c.arc(x, y, (m.up ? 4 : 3) * dpr, 0, Math.PI * 2);
-    c.fillStyle = m.up ? (active(m) ? '#38ff9c' : '#3ee6ff') : '#ff3b5c';
-    c.shadowColor = c.fillStyle; c.shadowBlur = 8 * dpr; c.fill(); c.shadowBlur = 0;
+    c.fillStyle = m.color;
+    c.shadowColor = m.up ? m.color : '#ff3b5c'; c.shadowBlur = 8 * dpr;
+    if (!m.up) c.globalAlpha = 0.35;
+    c.fill();
+    if (!m.up) {
+      c.globalAlpha = 1; c.strokeStyle = '#ff3b5c'; c.lineWidth = 1.5 * dpr; c.stroke();
+    }
+    c.shadowBlur = 0; c.globalAlpha = 1;
     // An up model with tokens in flight streams from its dot into the hub: travelling sparks, the 2D
     // stand-in for the 3D stream. The same gate as the 3D stream.
     if (m.up && m.tok > 0.05) {
@@ -541,7 +549,7 @@ function drawReactor(now) {
         const f = (t * 0.3 + s / 3 + k * 0.21) % 1;
         c.beginPath(); c.arc(x + (cx - x) * f, y + (cy - y) * f, 1.6 * dpr, 0, Math.PI * 2);
         c.globalAlpha = Math.sin(f * Math.PI) * 0.9;
-        c.fillStyle = m.tok > 0.05 ? '#38ff9c' : '#3ee6ff'; c.fill();
+        c.fillStyle = m.color; c.fill();
       }
       c.globalAlpha = 1;
     }

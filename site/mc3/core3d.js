@@ -321,12 +321,13 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
       s.flow = m.up ? 0.3 + 1.7 * tn : 0.06;
       s.stream = m.up && (m.tok || 0) > 0.05 ? 0.12 + 0.55 * tn : 0;
       s.targetBright = m.up ? (0.45 + 1.05 * g) * (0.8 + 0.5 * tn) : 0.1;
-      s.targetColor.set(colorFor(m.n));
+      s.targetColor.set(m.color);
       if (!s.bright) s.color.copy(s.targetColor);
     });
     for (let i = list.length; i < MAX_CORES; i++) { state[i].radius = 0; state[i].targetRadius = 0; state[i].bright = 0; state[i].targetBright = 0; state[i].name = ''; }
     // The count of models whose stream is drawn, read by the render-path checks (the 2D canvas records the same).
     canvas.dataset.streams = String(list.filter((_, i) => state[i].stream > 0).length);
+    canvas.dataset.modelColors = JSON.stringify(list.map(({ n, color }) => ({ n, color })));
   }
 
   // Screen points (CSS px) for the anchors, from mc3.js; applied on the next frame.

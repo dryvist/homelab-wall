@@ -115,10 +115,12 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
 .modeltab.dense .mch{font-size:clamp(9px,.9vmin,11px)}
 .modeltab.dense .mctok{font-size:clamp(16px,2.2vmin,22px)}
 .modeltab.dense .mcstats{font-size:clamp(8px,.75vmin,9px);gap:1px 6px}
-.mc{border:1px solid rgba(255,79,216,.3);background:rgba(20,6,26,.6);padding:10px 14px 12px;
+.mc{border:1px solid rgba(255,79,216,.3);border-top:2px solid var(--mc-color,rgba(255,79,216,.3));background:rgba(20,6,26,.6);padding:10px 14px 12px;
   clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
-.mch{display:flex;justify-content:space-between;gap:8px;font:600 clamp(11px,1.1vmin,13px) var(--disp)}
-.mch b{color:#fff;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:600}
+.mch{display:flex;justify-content:space-between;align-items:center;gap:8px;font:600 clamp(11px,1.1vmin,13px) var(--disp)}
+.mcname{display:flex;align-items:center;gap:6px;min-width:0}
+.mcswatch{width:7px;height:7px;flex:none;border-radius:50%;background:var(--mc-color);box-shadow:0 0 6px var(--mc-color)}
+.mch b{min-width:0;color:#fff;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:600}
 /* The device a model is attached to, small under the model name. */
 .mcat{font:400 clamp(8px,.75vmin,10px)/1.2 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);
   overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
