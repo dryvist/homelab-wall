@@ -56,7 +56,7 @@ test('MC7 keeps held values through a failed poll, marks them STALE once the sou
   let state = 'ok';
   await page.route('**/api/prom/**', (r) => {
     const expr = new URL(r.request().url()).searchParams.get('query');
-    if (state !== 'ok' && expr === Q.engineDecode) return r.fulfill({ status: 500 });
+    if ((state === 'failed' || state === 'aged') && expr === Q.engineDecode) return r.fulfill({ status: 500 });
     if (state === 'gap' && [Q.engineDecode, Q.engineKvPercent].includes(expr!)) {
       return r.fulfill({ json: { status: 'success', data: { result: [{ metric: { backend: 'vllm', model: 'engine-large' }, value: [1, 'NaN'] }] } } });
     }
