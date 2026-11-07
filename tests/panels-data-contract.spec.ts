@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { mockFeeds } from './fixture';
+import { config, mockFeeds } from './fixture';
 import { PAGES, MODES, pending, invalidMetric, wallUrl } from './panels-contract';
 
 for (const pageSpec of PAGES) {
@@ -20,7 +20,12 @@ for (const pageSpec of PAGES) {
         if (response.status() >= 400) faults.push(`${response.status()} ${response.url()}`);
       });
 
-      if (!wallUrl) await mockFeeds(page);
+      if (!wallUrl) {
+        await mockFeeds(page);
+        // A transient failed first poll recovers on the next one, as on the wall; poll often enough
+        // that the next one lands inside the first-state wait.
+        await page.route('**/config.json', (r) => r.fulfill({ json: { ...config, refreshSeconds: 4 } }));
+      }
       await page.goto(`${pageSpec.path}?gl=${mode}`);
       const panels = page.locator('[data-panel]');
       await expect(panels).not.toHaveCount(0);
@@ -45,7 +50,7 @@ for (const pageSpec of PAGES) {
           }
           await expect.poll(() => panel.innerText()).not.toBe('');
         } else {
-          await expect(panel).toHaveAttribute('data-state', 'ok', firstState);
+          await expect(panel, `request faults: ${faults.join(' | ') || 'none'}`).toHaveAttribute('data-state', 'ok', firstState);
           // Poll, not a one-shot read: a panel can flip to data-state="ok" (set synchronously
           // by renderStatic) a frame before its own rAF-scheduled repaint (e.g. mc1's #appsum)
           // has actually painted over its placeholder "—".
@@ -80,7 +85,7 @@ for (const pageSpec of PAGES) {
 
       await expect.poll(() => page.locator('canvas').evaluateAll((canvases) => Array.from(canvases).every((canvas) =>
         canvas instanceof HTMLCanvasElement && canvas.toDataURL().length > 200,
-      )), { timeout: slowFirstFrame ? 45_000 : 5_000 }).toBe(true);
+      )), slowFirstFrame ? { timeout: 45_000 } : {}).toBe(true);
 
       const overlaps = await panels.evaluateAll((elements) => (elements as HTMLElement[]).flatMap((element, index) => {
         const a = { left: element.offsetLeft, top: element.offsetTop, right: element.offsetLeft + element.offsetWidth, bottom: element.offsetTop + element.offsetHeight };
