@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.1](https://github.com/dryvist/homelab-wall/compare/v0.22.0...v0.22.1) (2026-11-07)
+
+
+### Bug Fixes
+
+* **mc7:** show router numbers from real requests only ([#159](https://github.com/dryvist/homelab-wall/issues/159)) ([fd9b248](https://github.com/dryvist/homelab-wall/commit/fd9b24893464378784b540797b5b8c5d0f7fe5b6))
+
 ## [0.22.0](https://github.com/dryvist/homelab-wall/compare/v0.21.1...v0.22.0) (2026-11-07)
 
 
