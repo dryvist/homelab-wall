@@ -34,6 +34,7 @@ for (const snapshot of [false, true]) {
       expect(request!.searchParams.get('step')).toBe('15');
       expect(Number(request!.searchParams.get('end')) - Number(request!.searchParams.get('start'))).toBe(600);
     }
+    if (!snapshot) await page.screenshot({ path: test.info().outputPath('mc7.png') });
     expect(faults).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
