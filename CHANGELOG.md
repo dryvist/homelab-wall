@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/dryvist/homelab-wall/compare/v0.19.0...v0.20.0) (2026-11-07)
+
+
+### Features
+
+* **mc7:** add the AI benchmark cockpit page ([#142](https://github.com/dryvist/homelab-wall/issues/142)) ([a5eddbf](https://github.com/dryvist/homelab-wall/commit/a5eddbfa6d929e8fbb7eab6fa5aa7ec5fee5e1b0))
+
 ## [0.19.0](https://github.com/dryvist/homelab-wall/compare/v0.18.1...v0.19.0) (2026-11-07)
 
 
