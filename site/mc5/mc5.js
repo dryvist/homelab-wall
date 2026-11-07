@@ -5,6 +5,7 @@
 // panel shows stand-in rows (setStandIn — no visible badge/pending text; see site/lib/stage.js).
 import * as THREE from 'three';
 import { query } from '/lib/prom.js';
+import { guardRefresh } from '/lib/refresh.js';
 import { Q } from '/lib/queries.js';
 import { makeBloom } from '/lib/bloom.js';
 import {
@@ -52,6 +53,7 @@ async function refreshApps() {
   }
   renderApps();
 }
+const guardedRefreshApps = guardRefresh(refreshApps);
 function renderApps() {
   const scored = apps.filter((a) => a.s != null);
   // A query that succeeded with zero rows has genuinely nothing to show yet — render the shared
@@ -226,14 +228,16 @@ function renderTicker() {
   setStandIn($('ticker'), usingStandInEvents);
 }
 let eventsTimer = null;
+let guardedPollEvents;
 async function pollEvents() {
   const data = await ghGet(`/orgs/${GH_ORG}/events`, 'mc5.gh.events');
   if (Array.isArray(data) && data.length) applyEvents(data, false);
   else if (!tickerEvents.length) applyEvents([nextStandInEvent()], true);
   const cached = lsGet('mc5.gh.events');
   const delaySec = Math.max(Number(cached?.pollSeconds) || 60, 60);
-  eventsTimer = setTimeout(pollEvents, delaySec * 1000);
+  eventsTimer = setTimeout(guardedPollEvents, delaySec * 1000);
 }
+guardedPollEvents = guardRefresh(pollEvents);
 onDispose(() => clearTimeout(eventsTimer));
 // Keeps comets/ticker flowing between real polls when no live source has answered yet — the
 // hero must never sit static for a full 60s poll interval on first load or while offline.
@@ -268,6 +272,7 @@ async function pollReleases(topRepos, standIn) {
 }
 let repoLayoutHook = () => {};
 let reposTimer = null;
+let guardedPollRepos;
 async function pollRepos() {
   const data = await ghGet(`/orgs/${GH_ORG}/repos?per_page=100&sort=pushed&type=public`, 'mc5.gh.repos');
   const live = Array.isArray(data) ? data.filter((r) => !r.private) : [];
@@ -280,8 +285,9 @@ async function pollRepos() {
   });
   repoLayoutHook(sceneState.repos);
   await pollReleases(top, standIn);
-  reposTimer = setTimeout(pollRepos, 3600_000);
+  reposTimer = setTimeout(guardedPollRepos, 3600_000);
 }
+guardedPollRepos = guardRefresh(pollRepos);
 onDispose(() => clearTimeout(reposTimer));
 
 /* ------------------------------------ infra (stand-in, animated) ------------------------------*/
@@ -472,10 +478,10 @@ onDispose(() => clearInterval(clockId));
 // rotator's probe window.
 loop(0, (now) => drawHero(now)); // uncapped: native refresh rate, adaptive quality steps it down
 fitCanvas($('apps'), $('appgrid'), drawAppGrid);
-await refreshApps().catch((e) => console.warn('refresh', e));
-const appsRefreshId = setInterval(() => refreshApps().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+await guardedRefreshApps().catch((e) => console.warn('refresh', e));
+const appsRefreshId = setInterval(() => guardedRefreshApps().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
 onDispose(() => clearInterval(appsRefreshId));
-pollEvents();
-pollRepos();
+guardedPollEvents();
+guardedPollRepos();
 // Nightly reload keeps a 24/7 kiosk's memory flat.
 setTimeout(() => location.reload(), 24 * 3600 * 1000);

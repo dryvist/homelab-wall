@@ -8,6 +8,7 @@
 // https://github.com/jasondavies/d3-cloud (v2 README, "Canvas Rendering").
 import CloudLayout from '/vendor/d3-cloud/index.js';
 import { lastGoodGet, lastGoodSet } from '/lib/lastGood.js';
+import { guardRefresh } from '/lib/refresh.js';
 import { esc, loop, onDispose, setState, adaptiveDpr, loadConfig } from '/lib/stage.js';
 
 const $ = (id) => document.getElementById(id);
@@ -740,8 +741,9 @@ const probes = await Promise.allSettled(FACES.map(([face, weight]) => probeFace(
 probes.forEach((probe, k) => {
   if (probe.status === 'fulfilled' && probe.value?.length) loadedFaces.add(`${FACES[k][1]}|${FACES[k][0].name}`);
 });
-await refresh().catch((e) => console.warn('refresh', e));
-const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+const guardedRefresh = guardRefresh(refresh);
+await guardedRefresh().catch((e) => console.warn('refresh', e));
+const refreshId = setInterval(() => guardedRefresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
 onDispose(() => clearInterval(refreshId));
 
 const tickClock = () => {

@@ -1,4 +1,5 @@
 import { loadConfig, onDispose, signalReady } from '../lib/stage.js';
+import { guardRefresh } from '../lib/refresh.js';
 import { loadBenchmarks, refreshFreshness, retainMeasurements } from './data.js';
 import { renderBenchmarks } from './render.js';
 
@@ -44,6 +45,7 @@ async function start() {
       : latest.stale.size ? 'Telemetry stale · readings older than 5 minutes or measurement time unavailable'
       : `Last checked ${new Date(latest.checkedAt).toLocaleTimeString()} · ${delay / 1000}s refresh`;
   }
+  let guardedRefresh;
   async function refresh() {
     try {
       const raw = await loadBenchmarks();
@@ -54,11 +56,12 @@ async function start() {
       console.error('MC7 refresh failed', error);
       status.textContent = 'Telemetry refresh failed · retrying';
     } finally {
-      if (!stopped) timer = setTimeout(refresh, delay);
+      if (!stopped) timer = setTimeout(guardedRefresh, delay);
     }
   }
+  guardedRefresh = guardRefresh(refresh);
   freshnessTimer = setInterval(update, 1000);
-  refresh();
+  guardedRefresh();
 }
 start();
 

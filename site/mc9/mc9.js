@@ -1,4 +1,5 @@
 import { query, range } from '/lib/prom.js';
+import { guardRefresh } from '../lib/refresh.js';
 import { Q } from '/lib/queries.js';
 import { loadConfig, loop, observeCanvas, onDispose } from '/lib/stage.js';
 import { shapeNodes, ageLabel, refreshNode, withTimeout } from './model.js';
@@ -117,7 +118,8 @@ loop(20, (ms) => draw(ms));
 const clockTimer = setInterval(renderLabels, 1000);
 onDispose(() => { stopped = true; clearTimeout(pollTimer); clearInterval(clockTimer); });
 
-async function poll(refresh) {
+let guardedPoll;
+async function poll(delay) {
   const now = Date.now() / 1000;
   const historyDue = now - historyAt >= 300;
   const keys = [...new Set(nodes.map((n) => n.signal).filter(Boolean))];
@@ -137,8 +139,10 @@ async function poll(refresh) {
   if (historyDue) historyAt = now;
   nodes = shapeNodes(feeds, nodes);
   renderLabels();
-  pollTimer = setTimeout(() => poll(refresh), refresh);
+  pollTimer = setTimeout(guardedPoll, delay);
 }
 
 const cfg = await loadConfig().catch(() => ({}));
-poll(Math.max(1000, (Number(cfg.refreshSeconds) || 15) * 1000));
+const refreshDelay = Math.max(1000, (Number(cfg.refreshSeconds) || 15) * 1000);
+guardedPoll = guardRefresh(() => poll(refreshDelay));
+guardedPoll();

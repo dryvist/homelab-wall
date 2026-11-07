@@ -1,6 +1,7 @@
 // Mission Control 1: estate overview, driven by live Prometheus data.
 import * as THREE from 'three';
 import { query, range, settle, shortHost } from '/lib/prom.js';
+import { guardRefresh } from '/lib/refresh.js';
 import { Q } from '/lib/queries.js';
 import { listedModels } from '/lib/modelPerf.js';
 import {
@@ -617,8 +618,9 @@ loop(30, (now, dt) => {
   drawTopo(now, dt); drawHex(now);
   if (now - lastNodes > 100) { drawNodes(); lastNodes = now; }
 });
-await refresh().catch((e) => console.warn('refresh', e));
-const refreshId = setInterval(() => refresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
+const guardedRefresh = guardRefresh(refresh);
+await guardedRefresh().catch((e) => console.warn('refresh', e));
+const refreshId = setInterval(() => guardedRefresh().catch((e) => console.warn('refresh', e)), (cfg.refreshSeconds || 15) * 1000);
 onDispose(() => clearInterval(refreshId));
 // Nightly reload keeps a 24/7 kiosk's memory flat.
 setTimeout(() => location.reload(), 24 * 3600 * 1000);
