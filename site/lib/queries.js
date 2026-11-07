@@ -79,7 +79,8 @@ export const Q = {
   mc8InputSourceTime: 'max by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (tlast_over_time(litellm_input_tokens_metric_total{job="llm_router"}[5m]))',
   mc8OutputSourceTime: 'max by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (tlast_over_time(litellm_output_tokens_metric_total{job="llm_router"}[5m]))',
   mc8InFlight: 'sum(litellm_in_flight_requests{job="llm_router"})',
-  mc8TtftP95: 'histogram_quantile(0.95, sum by (le) (rate(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router"}[5m])))',
+  // increase() counts a new series' first small bucket value, which rate() skips, so an empty result means no requests.
+  mc8TtftP95: 'histogram_quantile(0.95, sum by (le) (increase(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router"}[5m])))',
   mc8Failures: 'sum by (model, api_provider) (increase(litellm_deployment_failure_responses_total{job="llm_router"}[1m]))',
   mc8Fallbacks: 'sum by (model, api_provider) (increase(litellm_deployment_failed_fallbacks_total{job="llm_router"}[1m]))',
   // Raw-series last sample times for the readings above, grouped like each reading.

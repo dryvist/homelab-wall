@@ -30,6 +30,14 @@ test('empty data remains pending and draws no sample routes or numeric heroes', 
   await expect(page.locator('.reading')).toHaveText(['Pending', 'Pending', 'Pending', 'Pending']);
 });
 
+test('an empty TTFT result reads Idle while its histogram sample time is fresh', async ({ page }) => {
+  await mockMc8(page, { idleTtft: true });
+  await page.goto('/mc8/');
+  await expect(page.locator('#ttft')).toHaveText('Idle');
+  await expect(page.locator('[data-panel]:has(#ttft) .status')).toHaveText('Idle · no samples in the trailing 5 minutes');
+  await expect(page.locator('#in-flight')).toHaveText('7');
+});
+
 test('a failed first poll stays pending', async ({ page }) => {
   await mockMc8(page, { fail: () => true });
   await page.goto('/mc8/');
