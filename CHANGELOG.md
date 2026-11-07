@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.2](https://github.com/dryvist/homelab-wall/compare/v0.24.1...v0.24.2) (2026-11-07)
+
+
+### Bug Fixes
+
+* **site:** generate the three.js copy at build time ([#176](https://github.com/dryvist/homelab-wall/issues/176)) ([5f27380](https://github.com/dryvist/homelab-wall/commit/5f2738012c99d09e2462a97736e83241edbd3bc1))
+
 ## [0.24.1](https://github.com/dryvist/homelab-wall/compare/v0.24.0...v0.24.1) (2026-11-07)
 
 
