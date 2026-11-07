@@ -4,3 +4,4 @@ playwright-report/
 .direnv/
 .worktrees/
 site/config.json
+site/vendor/three/
