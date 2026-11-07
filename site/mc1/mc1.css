@@ -4,13 +4,12 @@
 #stage{display:grid;grid-template-columns:minmax(0,23fr) minmax(0,48fr) minmax(0,29fr);grid-template-rows:minmax(0,8fr) minmax(0,67fr) minmax(0,25fr) 36px;
   gap:var(--gap);padding:var(--pad-y) var(--pad-x);box-sizing:border-box;
   background:radial-gradient(1200px 700px at 50% 45%,#0a1a2a 0%,var(--void) 70%)}
-#activity-ribbon{grid-column:1/-1;grid-row:4;position:relative;z-index:1}
+#activity-ribbon{grid-column:1/-1;grid-row:4;position:relative;z-index:2}
 #stage::after{content:"";position:absolute;inset:0;pointer-events:none;
   background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}
-/* Every grid cell gets an explicit, content-independent size (contain:size) and clips anything
-   that would otherwise overflow it — no cell's box can be grown by what's drawn inside it. */
-.panel{position:relative;min-width:0;min-height:0;overflow:hidden;contain:layout size;
-  background:linear-gradient(180deg,rgba(12,26,40,.78),rgba(6,12,20,.78));border:1px solid var(--edge);
+/* Panel grid cells have content-independent sizes; the topology cell overrides clipping for its overlays. */
+.panel{position:relative;z-index:2;min-width:0;min-height:0;overflow:hidden;contain:layout size;
+  background:rgba(6,12,20,.56);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);border:1px solid var(--edge);
   clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
 .panel>h2{margin:0;padding:var(--pad-y) var(--pad-x) calc(var(--pad-y)*.75);font:600 var(--fs-sm)/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);
   display:flex;justify-content:space-between;border-bottom:1px solid var(--grid)}
@@ -21,7 +20,7 @@
 .num{font-variant-numeric:tabular-nums}
 
 /* header */
-header{grid-column:1/-1;min-width:0;min-height:0;overflow:hidden;display:flex;align-items:center;gap:var(--gap);padding:0 var(--pad-x)}
+header{grid-column:1/-1;position:relative;z-index:2;min-width:0;min-height:0;overflow:hidden;display:flex;align-items:center;gap:var(--gap);padding:0 var(--pad-x)}
 .brand{font:700 var(--fs-xl)/1 var(--disp);letter-spacing:.14em;color:#fff;text-shadow:0 0 18px rgba(62,230,255,.55);white-space:nowrap}
 .brand small{display:block;font:400 var(--fs-xs)/1.6 var(--mono);letter-spacing:.3em;color:var(--dim)}
 .kpis{display:flex;gap:var(--gap);flex:1;justify-content:center;min-width:0;overflow:hidden}
@@ -35,12 +34,12 @@ header{grid-column:1/-1;min-width:0;min-height:0;overflow:hidden;display:flex;al
 
 /* nodes */
 #nodes{grid-row:2;min-width:0;min-height:0;display:flex;flex-direction:column}
-#nodes .list{flex:1;display:grid;grid-template-rows:repeat(5,1fr);gap:6px;padding:8px 10px}
-.node{display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:auto 1fr auto;gap:2px 6px;padding:8px 10px;
+#nodes .list{flex:1;min-height:0;display:grid;grid-auto-rows:minmax(0,1fr);gap:4px;padding:6px}
+.node{min-width:0;min-height:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:auto 1fr auto;gap:1px;padding:4px 3px;
   border-left:2px solid var(--cyan);background:rgba(62,230,255,.03)}
 .node .nm{grid-column:1/-1;display:flex;justify-content:space-between;font:600 14px/1.2 var(--disp);letter-spacing:.12em}
 .node .nm em{font:400 10px var(--mono);color:var(--dim);font-style:normal;letter-spacing:.05em}
-.node canvas.g{width:100%;height:74px}
+.node canvas.g{width:100%;height:100%;min-height:0;object-fit:contain}
 .node.mac{border-left-color:var(--mag);background:rgba(255,79,216,.05)}
 .node.mac .nm{color:#ffc4f1}
 /* A node that dropped out of a poll keeps its card (never removed) but dims and its subtitle
@@ -49,22 +48,24 @@ header{grid-column:1/-1;min-width:0;min-height:0;overflow:hidden;display:flex;al
 .node.stale .nm em{color:var(--amber)}
 .node canvas.sp{grid-column:1/-1;width:100%;height:18px}
 
-/* topology */
-#topo{grid-row:2;grid-column:2;overflow:hidden}
-#topo canvas#gl{position:absolute;inset:0;width:100%;height:100%}
-#labels{position:absolute;inset:0;pointer-events:none}
+/* Full-viewport scene behind the transparent topology panel and glass panels. */
+#gl{position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;z-index:0;display:block}
+#labels{position:fixed;inset:0;z-index:1;pointer-events:none}
+#topo{grid-row:2;grid-column:2;z-index:2;overflow:visible;background:none;border:0;box-shadow:none;clip-path:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+#topo::before{display:none}
+#topo>h2{z-index:3;border-bottom:0}
 .vl{position:absolute;transform:translate(-50%,-140%);white-space:nowrap;text-align:center;font:600 12px/1.25 var(--disp);letter-spacing:.16em;
   text-shadow:0 0 8px currentColor}
 .vl small{display:block;font:400 10px var(--mono);letter-spacing:.04em;color:var(--ink);text-shadow:none;opacity:.8}
 .ovl{position:absolute;font-size:10px;color:var(--dim);letter-spacing:.14em}
 #wan{top:40px;left:14px;width:300px}
-#wan canvas{width:300px;height:70px;display:block}
 #wan b{color:var(--ink);font-weight:600}
+#wan [data-panel-message]{display:block;margin-top:3px}
+#wan[data-state="error"] [data-panel-message]{color:var(--red)}
 #vlans{top:118px;left:14px;width:300px;line-height:1.8}
 #vlans b{color:var(--ink);font-weight:600}
-/* Per-VLAN activity strip: continuously redrawn (site/lib/liveJitter.js) so the panel never
-   sits frozen between real samples, without perturbing #vlans' own exact rate text. */
-#vlanpulse{top:210px;left:14px;width:140px;height:14px;opacity:.7}
+#vlans [data-panel-message]{display:block;margin-top:3px}
+#vlans[data-state="error"] [data-panel-message]{color:var(--red)}
 #fstats{top:40px;right:14px;text-align:right;line-height:1.8}
 #fstats b{color:#fff;font:600 16px var(--disp);margin-left:8px}
 .lr{display:grid;grid-template-columns:12px 1fr 58px 56px 58px;gap:6px;align-items:center;font-size:11px;color:var(--ink);line-height:1.7}
@@ -73,8 +74,7 @@ header{grid-column:1/-1;min-width:0;min-height:0;overflow:hidden;display:flex;al
 .lr canvas{width:58px;height:14px}
 
 /* apps — #hex is taken out of flow so its backing-store resolution can never feed back into
-   the panel's own layout size (the D-mc1-1 bug: a canvas sized from its own container, sizing
-   its container, sizing itself, forever). Same pattern already used by #topo canvas#gl. */
+   the panel's own layout size. */
 #apps{grid-row:2;grid-column:3}
 #hex{position:absolute;inset:0;width:100%;height:100%}
 
@@ -85,30 +85,11 @@ header{grid-column:1/-1;min-width:0;min-height:0;overflow:hidden;display:flex;al
 .st .bar div{position:absolute;inset:0 auto 0 0}
 .st .v{text-align:right;color:var(--dim)}
 .st .v b{color:var(--ink);font-weight:600}
+.st.more{grid-column:1/-1;display:block;padding-left:14px;color:var(--dim)}
 #storage .rows{padding-top:6px}
 
 /* firewall */
 #fw{grid-row:3;grid-column:2;display:flex;flex-direction:column}
-.fwsplit{flex:1;display:grid;grid-template-columns:1fr 1fr;min-height:0}
-.fwcol{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--grid)}
-.fwcol h3{margin:0;padding:8px 14px 6px;font:600 12px/1 var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);display:flex;justify-content:space-between;border-bottom:1px solid var(--grid)}
-.fwcol h3.bh{color:var(--red);text-shadow:0 0 10px rgba(255,59,92,.6)}
-.fwcol h3 span{color:var(--dim);letter-spacing:.1em}
-.fwrows{flex:1;overflow:hidden;font-size:12px;padding:4px 0;display:flex;flex-direction:column;justify-content:flex-end}
-.br{display:grid;grid-template-columns:70px 30px 150px 132px 1fr 96px;gap:8px;padding:2px 12px;white-space:nowrap;animation:inb .6s ease-out;
-  background:linear-gradient(90deg,rgba(255,59,92,.13),transparent 70%)}
-.br .f{font-size:17px;line-height:1;font-family:"Apple Color Emoji","Noto Color Emoji","Segoe UI Emoji",sans-serif}
-.br .cc{color:#ff9ab0} .br .why{color:var(--red);font-weight:600} .br .d{color:var(--dim)}
-@keyframes inb{from{background:rgba(255,59,92,.55);transform:translateX(-14px);opacity:0}to{opacity:1}}
-#wanflags{font-size:18px;letter-spacing:4px;margin-top:3px;font-family:"Apple Color Emoji","Noto Color Emoji","Segoe UI Emoji",sans-serif}
-#blkcountries{display:flex;gap:10px;margin-top:6px}
-.fr{display:grid;grid-template-columns:70px 52px 40px 1fr 118px 62px;gap:8px;padding:2px 12px;white-space:nowrap;animation:in .6s ease-out}
-.fr .a{font-weight:600}
-.fr.allow .a{color:var(--green)} .fr.block .a{color:var(--red)} .fr.drop .a{color:var(--amber)}
-.fr.block{background:linear-gradient(90deg,rgba(255,59,92,.12),transparent 60%)}
-.fr .d{color:var(--dim)}
-@keyframes in{from{background:rgba(62,230,255,.25);transform:translateX(-12px);opacity:0}to{opacity:1}}
-@media (prefers-reduced-motion:reduce){.fr,.br{animation:none}}
 
 /* llm fabric — its own grid cell (D7): no longer an overlay on top of the topology panel */
 #llm{grid-row:3;grid-column:3;display:flex;flex-direction:column;overflow:hidden;
