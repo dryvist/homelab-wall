@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.2](https://github.com/dryvist/homelab-wall/compare/v0.20.1...v0.20.2) (2026-11-07)
+
+
+### Bug Fixes
+
+* **test:** restore the e2e gate ([#148](https://github.com/dryvist/homelab-wall/issues/148)) ([816161c](https://github.com/dryvist/homelab-wall/commit/816161ca3e0480fc37c32e783e338b01b941a96c))
+
 ## [0.20.1](https://github.com/dryvist/homelab-wall/compare/v0.20.0...v0.20.1) (2026-11-07)
 
 
