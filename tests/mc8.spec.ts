@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockMc8, mc8Answer } from './mc8.fixture';
+import { highCardinalityRows, mockMc8, mc8Answer } from './mc8.fixture';
 import { Q } from '../site/lib/queries.js';
 
 test.beforeEach(() => { test.skip(!!process.env.WALL_URL, 'Fixture-only switchboard checks'); });
@@ -19,7 +19,77 @@ test('measured routes, provider banks and hero readings render without page faul
   await expect(page.locator('#route-state')).toHaveText('130 tokens/s');
   expect(await page.locator('[data-source="stand-in"]').count()).toBe(0);
   expect(errors).toEqual([]);
+  expect(await page.evaluate(() => document.scrollingElement!.scrollHeight)).toBeLessThanOrEqual(await page.evaluate(() => innerHeight));
   await page.screenshot({ path: test.info().outputPath('mc8.png'), fullPage: true });
+});
+
+test('high-cardinality routes fit one screen and keep collapsed terminal routes visible', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 720 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await mockMc8(page, { rows: highCardinalityRows });
+  await page.goto('/mc8/');
+  await expect(page.locator('#switchboard')).toHaveAttribute('data-state', 'ok');
+  await page.evaluate(() => document.fonts.ready);
+
+  expect(await page.evaluate(() => document.scrollingElement!.scrollHeight)).toBeLessThanOrEqual(await page.evaluate(() => innerHeight));
+  await expect(page.locator('#callers .more')).toBeVisible();
+  await expect(page.locator('#models .more')).toBeVisible();
+  await expect(page.locator('#callers .terminal').first()).toContainText('caller-20');
+
+  const callerMore = page.locator('#callers .more strong');
+  const callerCount = Number((await callerMore.innerText()).match(/^\+(\d+) more$/)?.[1]);
+  const visibleCallers = await page.locator('#callers .terminal:not(.more)').count();
+  expect(Number.isInteger(callerCount)).toBe(true);
+  expect(callerCount + visibleCallers).toBe(20);
+
+  const modelMore = page.locator('#models .more strong');
+  const modelCount = Number((await modelMore.innerText()).match(/^\+(\d+) more$/)?.[1]);
+  const visibleModels = await page.locator('#models .terminal:not(.more)').count();
+  expect(Number.isInteger(modelCount)).toBe(true);
+  expect(modelCount + visibleModels).toBe(12);
+
+  const endpoints = await page.locator('#wires').evaluate((node) => {
+    const canvas = node as HTMLCanvasElement;
+    const bounds = canvas.getBoundingClientRect();
+    const scale = canvas.width / bounds.width;
+    const ctx = canvas.getContext('2d')!;
+    const endpointPixels = (selector: string, side: 'left' | 'right') => {
+      const target = document.querySelector(selector)!.getBoundingClientRect();
+      const x = Math.round(((side === 'left' ? target.left : target.right) - bounds.left) * scale);
+      const y = Math.round((target.top + target.height / 2 - bounds.top) * scale);
+      const left = Math.max(0, x - 4), top = Math.max(0, y - 4);
+      const width = Math.min(canvas.width - left, 9), height = Math.min(canvas.height - top, 9);
+      const pixels = ctx.getImageData(left, top, width, height).data;
+      let visible = 0;
+      for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) visible++;
+      return visible;
+    };
+    return {
+      callers: endpointPixels('#callers .more', 'right'),
+      models: endpointPixels('#models .more', 'left'),
+    };
+  });
+  expect(endpoints.callers).toBeGreaterThan(0);
+  expect(endpoints.models).toBeGreaterThan(0);
+
+  const alpha = () => page.locator('#wires').evaluate((node) => {
+    const canvas = node as HTMLCanvasElement;
+    const pixels = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+    let total = 0;
+    for (let i = 3; i < pixels.length; i += 4) total += pixels[i];
+    return total;
+  });
+  const beforeFocus = await alpha();
+  await page.locator('#callers .more').focus();
+  expect(await alpha()).not.toBe(beforeFocus);
+});
+
+test('a failure on a collapsed model shows on the "+N more" row', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 720 });
+  await mockMc8(page, { rows: highCardinalityRows, failure: true, fallback: true });
+  await page.goto('/mc8/');
+  await expect(page.locator('#models .more .failure-marker')).toHaveText('Failures · last minute · Failed fallback · last minute');
+  expect(await page.locator('#models').evaluate((node) => node.scrollHeight <= node.clientHeight)).toBe(true);
 });
 
 test('empty data remains pending and draws no sample routes or numeric heroes', async ({ page }) => {

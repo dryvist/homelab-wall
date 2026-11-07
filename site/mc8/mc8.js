@@ -1,7 +1,7 @@
 import { query } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import { esc, loop, onDispose, adaptiveDpr, loadConfig, signalReady } from '/lib/stage.js';
-import { BANKS, shapeRates, retain, modelKey, fresh, shareState, withSourceTimes, increased, bounded, windowAge, windowLabel, refreshMs, REQUEST_TIMEOUT_MS, ZERO_WHEN_EMPTY, IDLE_WHEN_EMPTY, feedValue } from './data.js';
+import { BANKS, shapeRates, splitTopByRate, retain, modelKey, fresh, shareState, withSourceTimes, increased, bounded, windowAge, windowLabel, refreshMs, REQUEST_TIMEOUT_MS, ZERO_WHEN_EMPTY, IDLE_WHEN_EMPTY, feedValue } from './data.js';
 
 const $ = (id) => document.getElementById(id);
 const board = $('switchboard'), canvas = $('wires'), ctx = canvas.getContext('2d');
@@ -15,7 +15,7 @@ const sourceTimes = {
   mc8InputRate: 'mc8InputSourceTime', mc8OutputRate: 'mc8OutputSourceTime', mc8InFlight: 'mc8InFlightSourceTime',
   mc8SpendCents: 'mc8SpendSourceTime', mc8TtftP95: 'mc8TtftSourceTime', mc8Failures: 'mc8FailuresSourceTime', mc8Fallbacks: 'mc8FallbacksSourceTime',
 };
-let shaped = shapeRates([], []), wires = [], selected = null;
+let shaped = shapeRates([], []), displayed = { callers: [], models: [], routes: [], hidden: [] }, wires = [], selected = null;
 
 function age(at) {
   if (at == null) return 'STALE: measurement time unavailable';
@@ -60,6 +60,70 @@ function updateUnclassified() {
   id.textContent = `unclassified ${number(shaped.unclassifiedShare)}%${status}`;
 }
 
+function moreTerminal(kind, more) {
+  return { id: `__more_${kind}__`, name: `+${more.count} more`, rate: more.rate, more: true, bank: 'unknown', metricId: null };
+}
+
+function callerMarkup(split) {
+  const rows = [...split.visible, ...(split.more ? [moreTerminal('callers', split.more)] : [])];
+  return rows.length ? rows.map((caller) => terminal(caller, 'caller')).join('') : '<p class="no-feed">No caller rates yet</p>';
+}
+
+function modelMarkup(split) {
+  const groups = Object.entries(BANKS).map(([bank, style]) => {
+    const models = split.visible.filter((model) => model.bank === bank);
+    return models.length
+      ? `<section class="bank" style="--bank:${style.color}"><h3>${style.title}</h3>${models.map((model) => terminal(model, 'model')).join('')}</section>`
+      : '';
+  }).join('');
+  const more = split.more ? terminal(moreTerminal('models', split.more), 'model') : '';
+  return groups + more || '<p class="no-feed">No measured routes</p>';
+}
+
+// Render candidate splits and use the column's real scroll box to find the largest one that fits.
+function fitRows(container, rows, markup, mark = () => {}) {
+  if (!rows.length) {
+    const split = splitTopByRate(rows, 1);
+    container.innerHTML = markup(split);
+    return split;
+  }
+  let best = null;
+  let low = 1, high = rows.length;
+  while (low <= high) {
+    const limit = Math.floor((low + high) / 2);
+    const split = splitTopByRate(rows, limit);
+    container.innerHTML = markup(split);
+    mark(split);
+    if (container.scrollHeight <= container.clientHeight) {
+      best = split;
+      low = limit + 1;
+    } else {
+      high = limit - 1;
+    }
+  }
+  const split = best || splitTopByRate(rows, 1);
+  container.innerHTML = markup(split);
+  return split;
+}
+
+function compactRoutes(routes, callers, models) {
+  const callerIds = new Set(callers.map((caller) => caller.id));
+  const modelIds = new Set(models.map((model) => model.id));
+  const moreCaller = callers.find((caller) => caller.more)?.id;
+  const moreModel = models.find((model) => model.more)?.id;
+  const compacted = new Map();
+  for (const route of routes) {
+    const caller = callerIds.has(route.caller) ? route.caller : moreCaller;
+    const model = modelIds.has(route.model) ? route.model : moreModel;
+    if (!caller || !model) continue;
+    const id = JSON.stringify([caller, model]);
+    const current = compacted.get(id);
+    if (current) current.rate += route.rate;
+    else compacted.set(id, { id, caller, model, rate: route.rate });
+  }
+  return [...compacted.values()];
+}
+
 function render() {
   const ready = ['mc8InputRate', 'mc8OutputRate'].every((key) => feeds[key]?.rows.length);
   shaped = ready ? shapeRates(feeds.mc8InputRate.rows, feeds.mc8OutputRate.rows) : shapeRates([], []);
@@ -79,21 +143,43 @@ function render() {
   reading('ttft', ['mc8TtftP95'], scalar('mc8TtftP95') == null ? null : scalar('mc8TtftP95') * 1000, ' ms', 'Router histogram · trailing 5 minutes');
   board.dataset.state = !ready ? 'pending' : stateText(['mc8InputRate', 'mc8OutputRate']).startsWith('STALE') ? 'stale' : 'ok';
   $('route-state').textContent = !ready ? 'Pending token rates' : shaped.total === 0 ? 'Idle' : `${number(shaped.total)} tokens/s`;
-  $('callers').innerHTML = shaped.callers.length ? shaped.callers.map((c) => terminal(c, 'caller')).join('') : '<p class="no-feed">No caller rates yet</p>';
-  $('models').innerHTML = Object.entries(BANKS).map(([bank, style]) => {
-    const models = shaped.models.filter((m) => m.bank === bank);
-    return `<section class="bank" style="--bank:${style.color}"><h3>${style.title}</h3>${models.length ? models.map((m) => terminal(m, 'model')).join('') : '<p class="no-feed">No measured routes</p>'}</section>`;
-  }).join('');
+  const callers = $('callers'), models = $('models');
+  const callerSplit = fitRows(callers, shaped.callers, callerMarkup);
+  const collapsed = (split) => shaped.models.filter((model) => !split.visible.includes(model));
+  const modelSplit = fitRows(models, shaped.models, modelMarkup, (split) => markModels(collapsed(split)));
+  displayed.callers = [...callerSplit.visible, ...(callerSplit.more ? [moreTerminal('callers', callerSplit.more)] : [])];
+  displayed.models = [...modelSplit.visible, ...(modelSplit.more ? [moreTerminal('models', modelSplit.more)] : [])];
+  displayed.hidden = collapsed(modelSplit);
+  displayed.routes = compactRoutes(shaped.routes, displayed.callers, displayed.models);
+  callers.innerHTML = callerMarkup(callerSplit);
+  models.innerHTML = modelMarkup(modelSplit);
   updateStatus();
   measure();
 }
 
 function terminal(node, kind) {
-  const destinations = shaped.routes.filter((r) => kind === 'caller' ? r.caller === node.id : r.model === node.id).map((r) => {
-    const other = (kind === 'caller' ? shaped.models : shaped.callers).find((n) => n.id === (kind === 'caller' ? r.model : r.caller));
+  const destinations = displayed.routes.filter((r) => kind === 'caller' ? r.caller === node.id : r.model === node.id).map((r) => {
+    const other = (kind === 'caller' ? displayed.models : displayed.callers).find((n) => n.id === (kind === 'caller' ? r.model : r.caller));
     return `${other.name}: ${number(r.rate)} tokens/s`;
   }).join('; ');
-  return `<div class="terminal" tabindex="0" data-kind="${kind}" data-id="${esc(node.id)}" title="${esc(destinations)}"><div><strong>${esc(node.name)}</strong>${node.team ? `<small>${esc(node.team)}</small>` : ''}${kind === 'model' ? '<small class="failure-marker"></small>' : ''}</div><span class="rate">${node.rate == null ? 'No token rate' : `${number(node.rate)} t/s`}</span></div>`;
+  return `<div class="terminal${node.more ? ' more' : ''}" tabindex="0" data-kind="${kind}" data-id="${esc(node.id)}" title="${esc(destinations)}"><div><strong>${esc(node.name)}</strong>${node.team ? `<small>${esc(node.team)}</small>` : ''}${kind === 'model' ? '<small class="failure-marker"></small>' : ''}</div><span class="rate">${node.rate == null ? 'No token rate' : `${number(node.rate)} t/s`}</span></div>`;
+}
+
+// A "+N more" row carries the markers of the models collapsed into it.
+function markModels(hidden) {
+  for (const node of document.querySelectorAll('[data-kind="model"]')) {
+    const more = node.classList.contains('more');
+    const models = more ? hidden : shaped.models.filter((m) => m.id === node.dataset.id);
+    const failedModel = models.find((m) => increased(feeds.mc8Failures, m.metricId));
+    const fallbackModel = models.find((m) => increased(feeds.mc8Fallbacks, m.metricId));
+    const failed = Boolean(failedModel), fallback = Boolean(fallbackModel);
+    const failureText = failed ? `Failures · ${windowLabel(windowAge(feeds.mc8Failures, failedModel.metricId))}` : '';
+    const fallbackText = fallback ? `Failed fallback · ${windowLabel(windowAge(feeds.mc8Fallbacks, fallbackModel.metricId))}` : '';
+    const marker = node.querySelector('.failure-marker');
+    marker.textContent = more ? [failureText, fallbackText].filter(Boolean).join(' · ') : failureText || fallbackText;
+    marker.classList.toggle('failure', failed);
+    marker.classList.toggle('fallback', !failed && fallback);
+  }
 }
 
 function updateStatus() {
@@ -103,16 +189,7 @@ function updateStatus() {
   $('failure-status').textContent = state === 'Live' ? 'Failure flashes: increases in the last minute' : `Failure telemetry: ${state}`;
   updateUnclassified();
   board.dataset.state = !shaped.routes.length ? 'pending' : stateText(['mc8InputRate', 'mc8OutputRate']).startsWith('STALE') ? 'stale' : 'ok';
-  for (const node of document.querySelectorAll('[data-kind="model"]')) {
-    const model = shaped.models.find((m) => m.id === node.dataset.id);
-    const failed = increased(feeds.mc8Failures, model.metricId);
-    const fallback = increased(feeds.mc8Fallbacks, model.metricId);
-    const marker = node.querySelector('.failure-marker');
-    marker.textContent = failed ? `Failures · ${windowLabel(windowAge(feeds.mc8Failures, model.metricId))}`
-      : fallback ? `Failed fallback · ${windowLabel(windowAge(feeds.mc8Fallbacks, model.metricId))}` : '';
-    marker.classList.toggle('failure', failed);
-    marker.classList.toggle('fallback', !failed && fallback);
-  }
+  markModels(displayed.hidden);
   for (const [id, keys] of [['local-share', ['mc8InputRate', 'mc8OutputRate']], ['in-flight', ['mc8InFlight']], ['spend', ['mc8SpendCents']], ['ttft', ['mc8TtftP95']]]) {
     const panel = $(id).closest('[data-panel]');
     if (panel.dataset.state !== 'pending' && stateText(keys).startsWith('STALE')) {
@@ -132,10 +209,11 @@ function measure() {
     return [node.dataset.kind + node.dataset.id, { x: (node.dataset.kind === 'caller' ? rect.right : rect.left) - box.left, y: rect.top + rect.height / 2 - box.top }];
   }));
   const hub = $('hub').getBoundingClientRect();
-  wires = shaped.routes.filter((r) => r.rate > 0).map((r) => ({ ...r,
+  wires = displayed.routes.filter((r) => r.rate > 0).map((r) => ({ ...r,
     from: positions.get('caller' + r.caller), to: positions.get('model' + r.model),
     mid: { x: hub.left + hub.width / 2 - box.left, y: hub.top + hub.height / 2 - box.top },
-    color: BANKS[shaped.models.find((m) => m.id === r.model).bank].color,
+    color: displayed.models.find((m) => m.id === r.model)?.more ? '#9bacbf'
+      : BANKS[displayed.models.find((m) => m.id === r.model)?.bank]?.color || '#9bacbf',
   }));
   draw(performance.now());
 }
@@ -147,8 +225,10 @@ function draw(now) {
     const { from: a, to: b, mid: c } = wire;
     if (!a || !b) continue;
     const active = !selected || wire[selected.kind] === selected.id;
-    const model = shaped.models.find((m) => m.id === wire.model).metricId;
-    const failed = increased(feeds.mc8Failures, model), fallback = increased(feeds.mc8Fallbacks, model);
+    const model = displayed.models.find((m) => m.id === wire.model);
+    const behind = model?.more ? displayed.hidden : model ? [model] : [];
+    const failed = behind.some((m) => increased(feeds.mc8Failures, m.metricId));
+    const fallback = behind.some((m) => increased(feeds.mc8Fallbacks, m.metricId));
     const flash = motion.matches || Math.floor(now / 450) % 2 === 0;
     ctx.strokeStyle = wire.color;
     ctx.globalAlpha = (active ? .65 : .06) * (board.dataset.state === 'stale' ? .35 : 1);
@@ -207,10 +287,11 @@ async function refresh() {
   } finally { refreshing = false; }
 }
 
-const observer = new ResizeObserver(measure);
+const observer = new ResizeObserver(render);
 observer.observe($('diagram'));
 onDispose(() => observer.disconnect());
 render();
+document.fonts.ready.then(render);
 signalReady();
 loop(30, (now) => { if (!motion.matches) draw(now); });
 const clock = setInterval(updateStatus, 1000);
