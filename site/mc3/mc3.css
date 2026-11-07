@@ -71,6 +71,12 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
 .ar i{width:7px;height:7px;border-radius:50%;box-shadow:0 0 6px currentColor}
 .ar span{color:var(--ink);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .ar b{color:var(--dim);font-weight:600}
+/* Long fleets switch to two compact columns so the readings and request feed below remain visible. */
+.applist:has(> .ar:nth-child(n+7)){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:min-content;
+  align-content:start;gap:2px clamp(6px,.8vmin,10px)}
+.applist:has(> .ar:nth-child(n+7)) .ar{grid-template-columns:7px minmax(0,1fr) auto;gap:5px;
+  font-size:clamp(8px,.8vmin,10px);line-height:1}
+.applist:has(> .ar:nth-child(n+7)) .ar i{width:6px;height:6px}
 
 /* Dense fill for the rest of the fleet-health column, below the 3 app rows: req/min, a GPU/VRAM
    gauge, per-model sparklines of each card's large number, and the request feed. cxGpu and the

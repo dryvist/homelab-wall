@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import { Q } from '../site/lib/queries.js';
+import { sampleAppScore } from '../site/lib/sampleData.js';
 import { mockFeeds, recentRows, type FeedOpts } from './fixture';
 
 // mc3-specific contract: the request feed is real metadata rows from GET /api/llm/recent (never
@@ -130,6 +131,63 @@ test('mc3: only recently used models are listed, busiest first', async ({ page }
   await expect(page.locator('#modeltab')).not.toContainText('model-unused');
   await expect(page.locator('#subtitle')).toContainText('4 MODELS');
   await expect(page.locator('[data-panel="cores"]')).toHaveAttribute('data-state', 'ok');
+  expect(faults).toEqual([]);
+});
+
+test('mc3: a 35-service fleet keeps its list and readings inside the panel', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+  const faults = watchFaults(page);
+  await mockFeeds(page);
+  await page.route('**/api/prom/**', (route: Route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('query') !== Q.aiAppScore) return route.fallback();
+    const now = Date.now() / 1000;
+    const result = Array.from({ length: 35 }, (_, index) => ({
+      metric: { name: `ai-service-${String(index + 1).padStart(2, '0')}` },
+      value: [now, String(sampleAppScore(index))],
+    }));
+    return route.fulfill({ json: { status: 'success', data: { resultType: 'vector', result } } });
+  });
+  await page.goto('/mc3/?gl=2d');
+  await awaitReady(page, '2d');
+  await expect(page.locator('#reqfeed')).toHaveAttribute('data-feed', 'live');
+  await expect(page.locator('#applist .ar')).toHaveCount(35);
+
+  const layout = await page.evaluate(() => {
+    const panel = document.querySelector<HTMLElement>('#apps')!.getBoundingClientRect();
+    const rows = [...document.querySelectorAll<HTMLElement>('#applist .ar')];
+    const lastBelow = document.querySelector<HTMLElement>('#coreextra > :last-child')!.getBoundingClientRect();
+    const lastFeedRow = document.querySelector<HTMLElement>('#reqfeed > :last-child')!.getBoundingClientRect();
+    return {
+      panelTop: panel.top,
+      panelBottom: panel.bottom,
+      rowTops: rows.map((row) => row.getBoundingClientRect().top),
+      rowBottoms: rows.map((row) => row.getBoundingClientRect().bottom),
+      belowTop: lastBelow.top,
+      belowBottom: lastBelow.bottom,
+      feedRowTop: lastFeedRow.top,
+      feedRowBottom: lastFeedRow.bottom,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      documentWidth: document.documentElement.scrollWidth,
+      documentHeight: document.documentElement.scrollHeight,
+    };
+  });
+
+  expect(layout.rowBottoms).toHaveLength(35);
+  for (const [index, bottom] of layout.rowBottoms.entries()) {
+    expect(bottom, `fleet row ${index + 1} bottom inside panel`).toBeLessThanOrEqual(layout.panelBottom);
+    expect(bottom, `fleet row ${index + 1} bottom inside viewport`).toBeLessThanOrEqual(layout.viewportHeight);
+    expect(layout.rowTops[index], `fleet row ${index + 1} top inside panel`).toBeGreaterThanOrEqual(layout.panelTop);
+  }
+  expect(layout.belowTop).toBeGreaterThanOrEqual(layout.panelTop);
+  expect(layout.belowBottom).toBeLessThanOrEqual(layout.panelBottom);
+  expect(layout.belowBottom).toBeLessThanOrEqual(layout.viewportHeight);
+  expect(layout.feedRowBottom).toBeLessThanOrEqual(layout.panelBottom);
+  expect(layout.feedRowBottom).toBeLessThanOrEqual(layout.viewportHeight);
+  expect(layout.feedRowTop).toBeGreaterThanOrEqual(layout.panelTop);
+  expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
+  expect(layout.documentHeight).toBeLessThanOrEqual(layout.viewportHeight);
   expect(faults).toEqual([]);
 });
 
