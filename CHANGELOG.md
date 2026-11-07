@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.2](https://github.com/dryvist/homelab-wall/compare/v0.22.1...v0.22.2) (2026-11-07)
+
+
+### Bug Fixes
+
+* **wall:** time out queries and skip overlapping refreshes ([#163](https://github.com/dryvist/homelab-wall/issues/163)) ([d521094](https://github.com/dryvist/homelab-wall/commit/d521094044655ab4f8d5d809f1c25f7bddbad139))
+
 ## [0.22.1](https://github.com/dryvist/homelab-wall/compare/v0.22.0...v0.22.1) (2026-11-07)
 
 
