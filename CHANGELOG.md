@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/dryvist/homelab-wall/compare/v0.17.0...v0.18.0) (2026-11-07)
+
+
+### Features
+
+* **mc9:** add the agent constellation page ([#135](https://github.com/dryvist/homelab-wall/issues/135)) ([5ce37ff](https://github.com/dryvist/homelab-wall/commit/5ce37ff4311d3abbcc428a2fbad2cd3b9889c4d0))
+
 ## [0.17.0](https://github.com/dryvist/homelab-wall/compare/v0.16.0...v0.17.0) (2026-11-06)
 
 
