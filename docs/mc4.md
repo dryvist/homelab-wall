@@ -31,10 +31,12 @@ The page reads Prometheus vectors through `site/lib/prom.js` and `site/lib/queri
 - `media_qbit_*`: qBittorrent download rate, upload rate, DHT nodes and connection status.
 - `media_torrent_*`: torrent progress, download and upload rates, share ratios and item state labels.
 - `node_filesystem_size_bytes` and `node_filesystem_avail_bytes`: `/data` total and available capacity, each reduced with `max` across guests.
-- `media_library_item_bytes`: library bytes summed by app; radarr supplies Movies and sonarr supplies TV, with Other as the unused remainder.
+- `media_library_item_bytes`: library bytes summed by app. Radarr supplies Movies and sonarr supplies TV;
+  Other is the unused remainder.
 - `media_plex_active_sessions` and `media_plex_session`: active session count, decision labels and now-playing details.
 - `media_arr_queue_records` and `media_arr_health_issues`: per-app queue and issue counts where series exist.
-- `node_network_up` for `wg0`, `download_vpn_wg_last_handshake_timestamp_seconds`, `download_vpn_killswitch_ok` and `download_vpn_port_forward_active`: VPN line status.
+- `node_network_up` for `wg0`, `download_vpn_wg_last_handshake_timestamp_seconds`,
+  `download_vpn_killswitch_ok` and `download_vpn_port_forward_active`: VPN line status.
 - `media_plex_recently_added_timestamp_seconds`: title timestamps used to select the eight newest additions and calculate their ages.
 
 Rates use binary `MiB/s`; storage uses binary `TiB`.
