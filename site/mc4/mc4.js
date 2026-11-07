@@ -81,10 +81,13 @@ const metricValue = (panel, key, format, rows = panel.values[key]) => {
 const mibRate = (value) => `${(value / BYTES_PER_MIB).toFixed(1)} MiB/s`;
 const integer = (value) => Math.round(value).toLocaleString();
 
+const SEEDING_STATES = new Set(['uploading', 'stalledUP', 'forcedUP', 'queuedUP', 'checkingUP']);
+const DOWNLOADING_STATES = new Set(['downloading', 'stalledDL', 'metaDL', 'forcedDL', 'queuedDL', 'checkingDL', 'allocating']);
+
 function renderQbit(panel) {
   const progress = panel.values.torrentProgress || [];
-  const downloading = progress.filter((row) => row.labels.state === 'downloading').length;
-  const seeding = progress.filter((row) => row.labels.state === 'seeding').length;
+  const downloading = progress.filter((row) => DOWNLOADING_STATES.has(row.labels.state)).length;
+  const seeding = progress.filter((row) => SEEDING_STATES.has(row.labels.state)).length;
   const shares = panel.values.torrentShareRatio || [];
   const averageShare = shares.length ? shares.reduce((total, row) => total + row.value, 0) / shares.length : null;
   const connections = panel.values.qbitConnection || [];
@@ -136,10 +139,10 @@ function renderTorrents(panel) {
       ? mibRate(rate) : panel.failed.has('torrentDownload') || panel.failed.has('torrentUpload') ? 'ERROR' : 'NO DATA';
     const hasProgress = Number.isFinite(torrent.progress);
     const progress = hasProgress ? clamp(torrent.progress * 100, 0, 100) : null;
-    const color = torrent.state === 'seeding' ? 'var(--cyan)' : 'var(--green)';
+    const color = SEEDING_STATES.has(torrent.state) ? 'var(--cyan)' : 'var(--green)';
     const progressText = hasProgress ? `${Math.round(progress)}%` : 'NO PROGRESS';
     const bar = hasProgress ? `<div class="tbar"><i style="width:${progress.toFixed(0)}%;background:${color}"></i></div>` : '';
-    return `<div class="trow"><span class="tn" title="${esc(torrent.name)}">${torrent.state === 'seeding' ? '▲' : '▼'} ${esc(torrent.name)}</span><span class="tr" style="color:${color}">${rateText}</span><span class="tpct">${progressText}</span>${bar}</div>`;
+    return `<div class="trow"><span class="tn" title="${esc(torrent.name)}">${SEEDING_STATES.has(torrent.state) ? '▲' : '▼'} ${esc(torrent.name)}</span><span class="tr" style="color:${color}">${rateText}</span><span class="tpct">${progressText}</span>${bar}</div>`;
   }).join('');
   const overflow = torrents.length > 5 ? `<div class="tmore">+${torrents.length - 5} more</div>` : '';
   const body = torrents.length

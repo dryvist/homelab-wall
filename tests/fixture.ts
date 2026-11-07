@@ -91,19 +91,19 @@ export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
   if (q === Q.mc4QbitDhtNodes) return vec([[{}, 432]]);
   if (q === Q.mc4QbitConnection) return vec([[{ status: 'connected' }, 1]]);
   if (q === Q.mc4TorrentProgress) return vec(MC4_TORRENT_TITLES.map((name, i) => [
-    { name, state: i % 5 === 0 ? 'seeding' : 'downloading', category: name.endsWith('.iso') ? 'linux' : 'movies' },
+    { name, state: i % 5 === 0 ? 'stalledUP' : 'stalledDL', category: name.endsWith('.iso') ? 'linux' : 'movies' },
     i % 5 === 0 ? 1 : Math.max(0.12, 0.94 - i * 0.035),
   ]));
   if (q === Q.mc4TorrentDownloadRate) return vec(MC4_TORRENT_TITLES.map((name, i) => [
-    { name, state: i % 5 === 0 ? 'seeding' : 'downloading', category: name.endsWith('.iso') ? 'linux' : 'movies' },
+    { name, state: i % 5 === 0 ? 'stalledUP' : 'stalledDL', category: name.endsWith('.iso') ? 'linux' : 'movies' },
     (MC4_TORRENT_TITLES.length - i) * 0.65 * 1024 ** 2,
   ]));
   if (q === Q.mc4TorrentUploadRate) return vec(MC4_TORRENT_TITLES.map((name, i) => [
-    { name, state: i % 5 === 0 ? 'seeding' : 'downloading', category: name.endsWith('.iso') ? 'linux' : 'movies' },
+    { name, state: i % 5 === 0 ? 'stalledUP' : 'stalledDL', category: name.endsWith('.iso') ? 'linux' : 'movies' },
     (i % 4) * 0.12 * 1024 ** 2,
   ]));
   if (q === Q.mc4TorrentShareRatio) return vec(MC4_TORRENT_TITLES.map((name, i) => [
-    { name, state: i % 5 === 0 ? 'seeding' : 'downloading', category: name.endsWith('.iso') ? 'linux' : 'movies' },
+    { name, state: i % 5 === 0 ? 'stalledUP' : 'stalledDL', category: name.endsWith('.iso') ? 'linux' : 'movies' },
     0.4 + i * 0.18,
   ]));
   if (q === Q.mc4LibraryDiskTotal) return vec([[{}, 48 * 1024 ** 4]]);
