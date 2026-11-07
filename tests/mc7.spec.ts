@@ -57,14 +57,13 @@ test('MC7 keeps held values through a failed poll, marks them STALE once the sou
   await page.route('**/api/prom/**', (r) => {
     const expr = new URL(r.request().url()).searchParams.get('query');
     if (state !== 'ok' && expr === Q.engineDecode) return r.fulfill({ status: 500 });
-    if (state === 'aged' && expr === Q.engineDecodeSourceAge) {
-      return r.fulfill({ json: { status: 'success', data: { result: [{ metric: { backend: 'vllm', model: 'engine-large' }, value: [1, String(Date.now() / 1000 - 301)] }] } } });
-    }
     if (state === 'gap' && [Q.engineDecode, Q.engineKvPercent].includes(expr!)) {
       return r.fulfill({ json: { status: 'success', data: { result: [{ metric: { backend: 'vllm', model: 'engine-large' }, value: [1, 'NaN'] }] } } });
     }
     return r.fallback();
   });
+  // A held reading keeps its last measured time, so it ages only as the page clock moves on.
+  await page.clock.install();
   await page.goto('/mc7/');
   const decode = page.locator('.card[data-backend="vllm"] [data-metric="engineDecode"]');
   await expect(decode).toHaveText('120.0');
@@ -74,6 +73,7 @@ test('MC7 keeps held values through a failed poll, marks them STALE once the sou
   await expect(page.locator('canvas').first()).toHaveAttribute('data-samples', '41');
   await expect(page.locator('canvas').first()).toHaveAttribute('data-state', 'stale');
   state = 'aged';
+  await page.clock.fastForward('05:01');
   await expect(decode).toHaveText(/^120\.0 · STALE 5m \d+s$/);
   state = 'gap';
   await expect(decode).toHaveText('NO DATA');
