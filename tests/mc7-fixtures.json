@@ -259,6 +259,12 @@
         "model": "model-coder"
       },
       "value": 1
+    },
+    {
+      "labels": {
+        "model": "model-embed"
+      },
+      "value": 1
     }
   ]
 }

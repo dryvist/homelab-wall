@@ -23,6 +23,20 @@ for (const snapshot of [false, true]) {
     for (const [key, value] of Object.entries({ routerTtftP50: '200ms', routerTtftP95: '800ms', routerE2eP95: '4.0s', routerOutput: '38.0' })) {
       await expect(router.locator(`[data-metric="${key}"]`)).toHaveText(value);
     }
+    await expect(page.locator('#engines .card')).toHaveCount(2);
+    const routerCards = page.locator('#routers .card');
+    await expect(routerCards).toHaveCount(3);
+    const layout = await page.evaluate(() => ({
+      scrollHeight: document.scrollingElement!.scrollHeight,
+      viewportHeight: innerHeight,
+      cardBounds: [...document.querySelectorAll('#engines .card, #routers .card')].map((card) => {
+        const { top, bottom } = card.getBoundingClientRect();
+        return { top, bottom };
+      }),
+    }));
+    expect(layout.scrollHeight).toBeLessThanOrEqual(layout.viewportHeight);
+    expect(layout.cardBounds).toHaveLength(5);
+    expect(layout.cardBounds.every(({ top, bottom }) => top >= 0 && bottom <= layout.viewportHeight)).toBe(true);
     const llama = page.locator('.card[data-backend="llamacpp"]');
     await expect(llama.locator('h3')).toHaveText('engine-embed · llama.cpp');
     await expect(llama.locator('[data-metric="engineDecode"]')).toHaveText('25.0');
