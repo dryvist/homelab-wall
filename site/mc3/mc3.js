@@ -21,11 +21,11 @@ const cfg = await loadConfig();
 // anchor's place on the ellipse around the hub, in screen degrees (0 = right, 90 = down). layoutAnchors
 // turns it into a CSS-px point, and the 3D scene and the 2D fallback both draw from those points.
 const ANCHOR_DEFS = [
-  { id: 'gpu-primary', kind: 'gpu', angle: 200 },
-  { id: 'gpu-secondary', kind: 'gpu', angle: 250 },
-  { id: 'mac-primary', kind: 'mac', angle: 290 },
-  { id: 'mac-secondary', kind: 'mac', angle: 340 },
-  { id: 'cloud', kind: 'cloud', angle: 90 },
+  { id: 'gpu-primary', kind: 'gpu', angle: 160 },
+  { id: 'gpu-secondary', kind: 'gpu', angle: 110 },
+  { id: 'mac-primary', kind: 'mac', angle: 70 },
+  { id: 'mac-secondary', kind: 'mac', angle: 20 },
+  { id: 'cloud', kind: 'cloud', angle: 300 },
 ];
 // Label box under each node: LABEL_W wide, LABEL_TOP below the node's centre (.alab in mc3.css), LABEL_H tall.
 const LABEL_W = 320, LABEL_TOP = 40, LABEL_H = 84, EDGE = 16;
