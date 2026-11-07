@@ -12,9 +12,11 @@ test('constellation shows real rates, idle nodes, satellites, and pending source
   await expect(page.locator('[data-node="codex"] .rate')).toHaveText('12 output tokens/s');
   await expect(page.locator('[data-node="codex-subagents"] .rate')).toHaveText('4 output tokens/s');
   await expect(page.locator('[data-node="memory"]')).toHaveAttribute('data-state', 'idle');
-  await expect(page.locator('[data-node="spans"] .rate')).toHaveText('Pending · no activity data');
-  await expect(page.locator('[data-node="gateway"]')).toHaveAttribute('data-state', 'pending');
-  await expect(page.locator('#status')).toHaveText('6 signals reporting · 3 pending');
+  await expect(page.locator('[data-node="spans"]')).toHaveAttribute('data-state', 'no-feed');
+  await expect(page.locator('[data-node="spans"] .rate')).toHaveText('No feed');
+  await expect(page.locator('[data-node="gateway"] .rate')).toHaveText('2 active agents');
+  await expect(page.locator('[data-node="cron"]')).toHaveAttribute('data-state', 'idle');
+  await expect(page.locator('#status')).toHaveText('8 signals reporting · 0 pending · 1 no feed');
   await expect(page.locator('body')).not.toContainText(/session_id|user_id|agent_name|session_source/);
   await expect.poll(() => page.locator('#sky').evaluate((el) => (el as HTMLCanvasElement).toDataURL().length)).toBeGreaterThan(2000);
   await page.screenshot({ path: testInfo.outputPath('mc9.png') });
@@ -24,12 +26,12 @@ test('constellation shows real rates, idle nodes, satellites, and pending source
 test('empty and failed initial feeds never fabricate a rate', async ({ page }) => {
   await mockMC9(page, { empty: true });
   await page.goto('/mc9/');
-  await expect(page.locator('.node[data-state="pending"]')).toHaveCount(9);
-  await expect(page.locator('.rate')).toHaveText(Array(9).fill('Pending · no activity data'));
+  await expect(page.locator('.node[data-state="pending"]')).toHaveCount(8);
+  await expect(page.locator('.rate')).toHaveText([...Array(8).fill('Pending · no activity data'), 'No feed']);
   await mockMC9(page, { fail: true });
   await page.reload();
-  await expect(page.locator('#status')).toHaveText('0 signals reporting · 9 pending');
-  await expect(page.locator('.node[data-state="pending"]')).toHaveCount(9);
+  await expect(page.locator('#status')).toHaveText('0 signals reporting · 8 pending · 1 no feed');
+  await expect(page.locator('.node[data-state="pending"]')).toHaveCount(8);
 });
 
 test('failed polls retain the last measured rate and label it stale', async ({ page }) => {

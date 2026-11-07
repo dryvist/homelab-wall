@@ -1,8 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import { Q } from '../site/lib/queries.js';
-import { sampleAppScore } from '../site/lib/sampleData.js';
-import { mockFeeds, recentRows, type FeedOpts } from './fixture';
+import { mockFeeds, recentRows, sampleAppScore, type FeedOpts } from './fixture';
 
 // mc3-specific contract: the request feed is real metadata rows from GET /api/llm/recent (never
 // message content, never fabricated rows), the GPU tile reads Q.acceleratorBusy, and the hero
@@ -93,10 +92,8 @@ for (const mode of ['2d', '3d'] as const) {
     await expect(page.locator('#reqfeed')).toContainText('2.5k ch');
     await expect(page.locator('#reqfeed')).not.toContainText('tok');
 
-    // The GPU tile shows the fixture's accelerator:busy_percent:avg5m mean (36/64/20 -> 40%), not a
-    // stand-in derivation, and carries no stand-in marker.
+    // The GPU tile shows the fixture's accelerator:busy_percent:avg5m mean (36/64/20 -> 40%).
     await expect(page.locator('#cxGpu')).toHaveText('40%');
-    await expect(page.locator('#cxGpu')).not.toHaveAttribute('data-source', 'stand-in');
 
     expect(faults).toEqual([]);
   });
@@ -128,8 +125,10 @@ test('mc3: a missing /api/llm/recent renders an explicit NO FEED state with no i
   await expect(page.locator('#reqfeed')).toHaveAttribute('data-feed', 'none');
   await expect(page.locator('#reqfeed')).toContainText('NO FEED');
   await expect(page.locator('#reqfeed .cfrow')).toHaveCount(1);
-  // The GPU query succeeds with no series here: the tile is explicit, not 0%.
-  await expect(page.locator('#cxGpu')).toHaveText('NO FEED');
+  // The GPU query succeeds with no series here: the tile shows no value and says why, never 0%.
+  await expect(page.locator('#cxGpu')).toHaveText('—');
+  await expect(page.locator('#cxGpu')).toHaveAttribute('data-feed', 'empty');
+  await expect(page.locator('#cxGpuMessage')).toHaveText('NO DATA');
   // The 404 itself is the feed being absent — pollFeed turns it into the state above; nothing
   // else may fault (no pageerror, no other request failure).
   // Chromium also logs the 404 as a generic console resource error.
@@ -146,9 +145,27 @@ test('mc3: only recently used models are listed, busiest first', async ({ page }
   await awaitReady(page, '2d');
   await expect(page.locator('#modeltab .mch b')).toHaveText(['model-coder', 'model-large', 'model-small', 'model-mini']);
   await expect(page.locator('#modeltab')).not.toContainText('model-unused');
-  await expect(page.locator('#subtitle')).toContainText('4 MODELS');
+  await expect(page.locator('#subtitle')).toContainText('local 2 · cloud 2 MODELS');
+  await expect(page.locator('#coresum')).toHaveText('local 2/2 · cloud 1/2 UP');
+  await expect(page.locator('.kpi', { hasText: 'tokens today' }).locator('b')).toHaveText('local 88.50M · cloud 10.30M');
+  await expect(page.locator('.kpi', { hasText: 'requests/min' }).locator('b')).toHaveText('local 88 · cloud 11');
+  await expect(page.locator('#cxReqMin')).toHaveText('local 88 · cloud 11');
+  await expect(page.locator('.kpi', { hasText: 'models up' }).locator('b')).toHaveText('local 2/2 · cloud 1/2 UP');
   await expect(page.locator('[data-panel="cores"]')).toHaveAttribute('data-state', 'ok');
   expect(faults).toEqual([]);
+});
+
+test('mc3: failed split queries leave each side as —', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+  const faults = watchFaults(page);
+  await mockFeeds(page, { failQuery: (q) => [Q.llmTokensToday, Q.llmReqPerMin, Q.llmLocalModels].includes(q) });
+  await page.goto('/mc3/?gl=2d');
+  await awaitReady(page, '2d');
+  await expect(page.locator('.kpi', { hasText: 'tokens today' }).locator('b')).toHaveText('local — · cloud —');
+  await expect(page.locator('.kpi', { hasText: 'requests/min' }).locator('b')).toHaveText('local — · cloud —');
+  await expect(page.locator('.kpi', { hasText: 'models up' }).locator('b')).toHaveText('local — · cloud — UP');
+  await expect(page.locator('#cxReqMin')).toHaveText('local — · cloud —');
+  expect(faults.filter((f) => !(f.startsWith('500 ') && f.includes('/api/prom/')) && !f.includes('status of 500'))).toEqual([]);
 });
 
 test('mc3: a 35-service fleet keeps its list and readings inside the panel', async ({ page }) => {
@@ -218,20 +235,19 @@ test('mc3: a failed used-models query lists every deployment and marks the panel
   await expect(page.locator('#modeltab .mc')).toHaveCount(5);
   await expect(page.locator('#modeltab')).toContainText('model-unused');
   await expect(page.locator('[data-panel="cores"]')).toHaveAttribute('data-state', 'error');
-  await expect(page.locator('[data-panel="cores"]')).toHaveAttribute('data-source', 'live');
   // Only the forced 500 from the query under test is expected; anything else is a fault.
   expect(faults.filter((f) => !(f.startsWith('500 ') && f.includes('/api/prom/')) && !f.includes('status of 500'))).toEqual([]);
 });
 
 // The fleet list shows only AI-category services, and the accelerator anchors are always drawn:
-// four device roles plus the cloud node, each named from its device labels (the vendor word
+// four device roles plus the cloud node, each named from its device labels (the prefix
 // dropped, the role tag added where two anchors read alike). A model sits on the anchor whose host
 // its serving URL names. Each anchor's request beads are counted on its label, on both render paths.
 const ANCHOR_NAMES = {
-  'gpu-primary': 'GPU 1',
-  'gpu-secondary': 'GPU 2',
-  'mac-primary': 'Example Chip 3 · PRIMARY',
-  'mac-secondary': 'Example Chip 3 · SECONDARY',
+  'gpu-primary': 'GPU-A',
+  'gpu-secondary': 'GPU-B',
+  'mac-primary': 'DEVICE-A · PRIMARY',
+  'mac-secondary': 'DEVICE-A · SECONDARY',
   cloud: 'cloud',
 } as const;
 
@@ -249,7 +265,7 @@ const ATTACHMENT_CASES: Array<{ name: string; feeds: FeedOpts; active: string[];
   // Two local requests against one router in-flight request: the device share is drawn, cloud clamps to zero.
   { name: 'local total exceeds router in-flight', feeds: { inflight: 1, vllmRunning: 2 }, active: ['2', '0', '0', '0', '0'], models: ['1', '1', '0', '0', '2'] },
   // Neither local host matches a device, so their live requests stay on cloud with the rest.
-  { name: 'unmatched hosts have live requests', feeds: { emptyQuery: (q) => DEVICE_QUERIES.some((d) => q.includes(d)), inflight: 5, vllmRunning: 2, llamaRunning: 1 }, active: ['0', '0', '0', '0', '5'], models: ['0', '0', '0', '0', '4'] },
+  { name: 'unmatched hosts remain local while cloud subtracts every local request', feeds: { emptyQuery: (q) => DEVICE_QUERIES.some((d) => q.includes(d)), inflight: 5, vllmRunning: 2, llamaRunning: 1 }, active: ['0', '0', '0', '0', '2'], models: ['0', '0', '0', '0', '4'] },
 ];
 
 for (const mode of ['2d', '3d'] as const) {
@@ -271,7 +287,7 @@ for (const mode of ['2d', '3d'] as const) {
     for (const [id, name] of Object.entries(ANCHOR_NAMES)) {
       await expect(page.locator(`#anchors [data-accel="${id}"] .an`)).toHaveText(name);
     }
-    // gpu-secondary reads 64% busy. mac-secondary has no busy series: no data, and it dims.
+    // GPU-B reads 64% busy. The second device has no busy series, so it dims.
     await expect(page.locator('#anchors [data-accel="gpu-secondary"] .ab')).toHaveText('64% busy');
     await expect(page.locator('#anchors [data-accel="mac-secondary"] .ab')).toHaveText('no data');
     await expect(page.locator('#anchors [data-accel="mac-secondary"]')).toHaveClass(/dim/);
@@ -280,7 +296,7 @@ for (const mode of ['2d', '3d'] as const) {
     await expect(page.locator('#anchors [data-accel="gpu-secondary"]')).toHaveAttribute('data-models', '1');
     await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveAttribute('data-models', '2');
     await expect(page.locator('#modeltab .mc').filter({ hasText: 'model-large' }).locator('.mcat')).toHaveText(ANCHOR_NAMES['gpu-primary']);
-    await expect(page.locator('.kpi', { hasText: 'active' }).locator('b')).toContainText('3');
+    await expect(page.locator('.kpi', { hasText: 'active' }).locator('b')).toHaveText('local 0 · cloud 3');
     expect(faults).toEqual([]);
   });
 
@@ -345,11 +361,11 @@ for (const mode of ['2d', '3d'] as const) {
     const faults = watchFaults(page);
     await mockFeeds(page, {
       extraApiBase: [
-        // model-mini: a local URL on the second Mac, then a hosted URL written last.
-        { litellm_model_name: 'model-mini', api_base: 'http://[2001:db8::2]:8000/v1', api_provider: 'local' },
-        { litellm_model_name: 'model-mini', api_base: 'https://api.example.test/v1', api_provider: 'openrouter' },
-        // model-large: a second local URL on the first Mac. gpu-primary comes first in anchor order, so it keeps the model.
-        { litellm_model_name: 'model-large', api_base: 'http://[2001:db8::1]:8000/v1', api_provider: 'local' },
+        // model-mini: a local URL on the second device, then a cloud URL written last.
+        { litellm_model_name: 'model-mini', api_base: 'http://device-b:8000/v1', api_provider: 'local' },
+        { litellm_model_name: 'model-mini', api_base: 'https://cloud-endpoint/v1', api_provider: 'provider-b' },
+        // model-large: a second local URL on the first device role, which comes first in anchor order.
+        { litellm_model_name: 'model-large', api_base: 'http://device-a:8000/v1', api_provider: 'local' },
       ],
     });
     await page.goto(`/mc3/?gl=${mode}`);
@@ -369,7 +385,7 @@ for (const mode of ['2d', '3d'] as const) {
     if (mode === '3d') test.slow();
     const faults = watchFaults(page);
     await mockFeeds(page, {
-      extraApiBase: [{ litellm_model_name: 'model-small', api_base: 'https://api.example.test/v1', api_provider: 'openai' }],
+      extraApiBase: [{ litellm_model_name: 'model-small', api_base: 'https://cloud-endpoint/v1', api_provider: 'provider-a' }],
     });
     await page.goto(`/mc3/?gl=${mode}`);
     await awaitReady(page, mode);
@@ -381,7 +397,7 @@ for (const mode of ['2d', '3d'] as const) {
     expect(faults).toEqual([]);
   });
 
-  // The second gpu-secondary host (gpu-host-c) gets a serving URL and a local server, written in upper case.
+  // The second GPU-B host (gpu-c) gets a serving URL and a local server, written in upper case.
   // Both models map to gpu-secondary, and its request count adds up across both hosts.
   test(`mc3 ${mode}: a device's models and requests aggregate every host that reports it`, async ({ page }) => {
     test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
@@ -390,8 +406,8 @@ for (const mode of ['2d', '3d'] as const) {
     await mockFeeds(page, {
       inflight: 10,
       llamaRunning: 3,
-      extraLocal: [['GPU-HOST-C.example.test:8001', 2]],
-      extraApiBase: [{ litellm_model_name: 'model-small', api_base: 'http://gpu-host-c.example.test:8001/v1', api_provider: 'local' }],
+      extraLocal: [['GPU-C:8001', 2]],
+      extraApiBase: [{ litellm_model_name: 'model-small', api_base: 'http://gpu-c:8001/v1', api_provider: 'local' }],
     });
     await page.goto(`/mc3/?gl=${mode}`);
     await awaitReady(page, mode);
@@ -444,8 +460,8 @@ for (const mode of ['2d', '3d'] as const) {
     await mockFeeds(page, {
       inflight: 0,
       extraApiBase: [
-        { litellm_model_name: 'model-mini', api_base: 'http://gpu-host-a.example.test:8000/v1', api_provider: 'local' },
-        { litellm_model_name: 'model-small', api_base: 'http://gpu-host-b.example.test:8080/v1', api_provider: 'local' },
+        { litellm_model_name: 'model-mini', api_base: 'http://gpu-a:8000/v1', api_provider: 'local' },
+        { litellm_model_name: 'model-small', api_base: 'http://gpu-b:8080/v1', api_provider: 'local' },
       ],
     });
     await page.goto(`/mc3/?gl=${mode}`);
@@ -456,22 +472,20 @@ for (const mode of ['2d', '3d'] as const) {
     expect(faults).toEqual([]);
   });
 
-  // Bracketed IPv6 hosts (documentation-range 2001:db8::/32) are read whole: a local server on one IPv6
-  // device and a serving URL on the other each attach to their own device.
-  test(`mc3 ${mode}: bracketed IPv6 hosts stay distinct for requests and serving URLs`, async ({ page }) => {
+  // Host matching ignores port and letter case for local readings and serving URLs.
+  test(`mc3 ${mode}: local readings and serving URLs match neutral device hosts`, async ({ page }) => {
     test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
     if (mode === '3d') test.slow();
     const faults = watchFaults(page);
     await mockFeeds(page, {
       inflight: 2,
-      extraLocal: [['[2001:db8::1]:8000', 2]],
-      extraApiBase: [{ litellm_model_name: 'model-small', api_base: 'http://[2001:db8::2]:8000/v1', api_provider: 'local' }],
+      extraLocal: [['GPU-B:9000', 2]],
+      extraApiBase: [{ litellm_model_name: 'model-small', api_base: 'http://gpu-b:9000/v1', api_provider: 'local' }],
     });
     await page.goto(`/mc3/?gl=${mode}`);
     await awaitReady(page, mode);
-    await expect(page.locator('#anchors [data-accel="mac-primary"]')).toHaveAttribute('data-active', '2');
-    await expect(page.locator('#anchors [data-accel="mac-secondary"]')).toHaveAttribute('data-active', '0');
-    await expect(page.locator('#anchors [data-accel="mac-secondary"]')).toHaveAttribute('data-models', '1');
+    await expect(page.locator('#anchors [data-accel="gpu-secondary"]')).toHaveAttribute('data-active', '2');
+    await expect(page.locator('#anchors [data-accel="gpu-secondary"]')).toHaveAttribute('data-models', '2');
     await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveAttribute('data-active', '0');
     await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveAttribute('data-models', '1');
     expect(faults).toEqual([]);
@@ -497,7 +511,7 @@ for (const mode of ['2d', '3d'] as const) {
     });
   }
 
-  // The base fixture writes model-coder's serving host in mixed case and reports host-b from two
+  // The base fixture writes model-coder's serving host in mixed case and reports gpu-b from two
   // exporter ports. Both attach by host, and the repeated device name is listed once.
   test(`mc3 ${mode}: a mixed-case serving host and repeated device rows attach to one anchor`, async ({ page }) => {
     test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
@@ -527,7 +541,7 @@ for (const mode of ['2d', '3d'] as const) {
       await expect(cloud).toHaveAttribute('data-beads', String(inflight));
       if (inflight > 12) await expect(cloud.locator('.badge')).toHaveText(`×${inflight}`);
       else await expect(cloud.locator('.badge')).toHaveCount(0);
-      await expect(page.locator('.kpi', { hasText: 'active' }).locator('b')).toContainText(String(inflight));
+      await expect(page.locator('.kpi', { hasText: 'active' }).locator('b')).toHaveText(`local 0 · cloud ${inflight}`);
       expect(faults).toEqual([]);
     });
   }

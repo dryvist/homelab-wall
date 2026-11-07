@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { shapeRates, splitTopByRate, providerClass, retain, fresh, increased, modelKey } from '../site/mc8/data.js';
+import { shapeRates, splitTopByRate, splitInFlight, providerClass, retain, fresh, increased, modelKey } from '../site/mc8/data.js';
 import { Q } from '../site/lib/queries.js';
 import * as mc8Data from '../site/mc8/data.js';
 
 const row = (value, labels = {}, timestamp = 1) => ({ value, labels, timestamp });
 const billing = (bank) => Object.fromEntries(['local', 'subscription', 'paid', 'free'].map((key) => [`tag_telemetry_billing_class_${key}`, String(key === bank)]));
+const H = 'api_key_alias!="litellm-internal-health-check"';
 test('top-rate split preserves the highest rows and totals collapsed rows', () => {
   const rows = [
     { id: 'c', rate: 3 }, { id: 'a', rate: 9 }, { id: 'e', rate: 1 },
@@ -14,7 +15,7 @@ test('top-rate split preserves the highest rows and totals collapsed rows', () =
   ];
   const split = splitTopByRate(rows, 3);
   assert.deepEqual(split.visible.map((item) => item.id), ['a', 'b']);
-  assert.deepEqual(split.more, { count: 3, rate: 6 });
+  assert.deepEqual(split.more, { count: 3, localCount: 0, cloudCount: 3, localRate: null, cloudRate: 6 });
   assert.equal(splitTopByRate(rows, 5).more, null);
   assert.deepEqual(rows.map((item) => item.id), ['c', 'a', 'e', 'b', 'd']);
 });
@@ -24,11 +25,19 @@ test('rates merge input and output by caller, team, model, and provider', () => 
   const b = { ...a, model: 'model-b', api_provider: 'openrouter', ...billing('paid') };
   const graph = shapeRates([row(60, a), row(30, b)], [row(10, a)]);
   assert.equal(graph.callers.length, 1);
-  assert.equal(graph.callers[0].rate, 100);
-  assert.equal(graph.total, 100);
-  assert.equal(graph.localShare, 70);
+  assert.equal(graph.callers[0].localRate, 70);
+  assert.equal(graph.callers[0].cloudRate, 30);
+  assert.equal(graph.localRate, 70);
+  assert.equal(graph.cloudRate, 30);
   assert.deepEqual(graph.routes.map((r) => r.rate), [70, 30]);
+  assert.deepEqual(graph.routes.map(({ localRate, cloudRate }) => [localRate, cloudRate]), [[70, null], [null, 30]]);
   assert.deepEqual(graph.models.map((m) => m.bank), ['local', 'paid']);
+});
+test('in-flight values use local engines and the clamped router remainder', () => {
+  assert.deepEqual(splitInFlight([row(3)], [row(1), row(2)], [row(1)]), { local: 4, cloud: 0 });
+  assert.deepEqual(splitInFlight([row(5)], [row(2)], [row(1)]), { local: 3, cloud: 2 });
+  assert.deepEqual(splitInFlight(null, [row(2)], [row(1)]), { local: 3, cloud: null });
+  assert.deepEqual(splitInFlight([row(5)], [], [row(1)]), { local: null, cloud: null });
 });
 test('missing identity is explicit, team fallback works, and matching aliases in different teams stay separate', () => {
   const graph = shapeRates([row(1), row(2, { team: 'team-a' }), row(3, { api_key_alias: 'agent', team: 'a' }), row(4, { api_key_alias: 'agent', team: 'b' })], []);
@@ -44,34 +53,26 @@ test('same model on different providers remains distinct; unknown providers are 
   assert.equal(providerClass({ api_provider: 'hosted_vllm' }), 'unknown');
   assert.equal(providerClass({ api_provider: 'openrouter', ...billing('unknown') }), 'unknown');
 });
-test('billing flags, never provider, determine every bank and local share', () => {
+test('billing flags, never provider, determine every bank', () => {
   for (const bank of ['local', 'subscription', 'paid', 'free', 'unknown']) {
     assert.equal(providerClass({ api_provider: 'openai', ...billing(bank) }), bank);
   }
   const labels = { model: 'm', api_provider: 'openai' };
   const graph = shapeRates([row(3, { ...labels, ...billing('local') }), row(7, { ...labels, ...billing('unknown') })], []);
   assert.equal(graph.models.length, 2);
-  assert.equal(graph.localShare, 100);
-  assert.equal(graph.unclassifiedShare, 70);
-  assert.equal(graph.total, 10);
+  assert.equal(graph.unclassifiedShare, 100);
 });
-test('local share excludes unclassified traffic and reports its coverage separately', () => {
+test('unclassified share is measured within cloud traffic only', () => {
   const graph = shapeRates([row(3, billing('local')), row(1, billing('paid'))], [row(6)]);
-  assert.equal(graph.localShare, 75);
-  assert.equal(graph.unclassifiedShare, 60);
-  const unknown = shapeRates([row(10)], []);
-  assert.equal(unknown.localShare, null);
-  assert.equal(unknown.unclassifiedShare, 100);
-  const nonlocal = shapeRates([row(10, billing('paid'))], []);
-  assert.equal(nonlocal.localShare, 0);
-  assert.equal(nonlocal.unclassifiedShare, 0);
+  assert.equal(graph.localRate, 3);
+  assert.equal(graph.cloudRate, 7);
+  assert.ok(Math.abs(graph.unclassifiedShare - (6 / 7) * 100) < 1e-9);
+  assert.equal(shapeRates([row(10, billing('paid'))], []).unclassifiedShare, 0);
 });
 test('idle is measured zero; empty, NaN, infinity and negative values are never fabricated measurements', () => {
-  assert.equal(shapeRates([], []).localShare, null);
+  assert.equal(shapeRates([], []).localRate, null);
   const graph = shapeRates([row(0), row(NaN), row(Infinity), row(-1)], []);
-  assert.equal(graph.total, 0);
   assert.equal(graph.routes.length, 1);
-  assert.equal(graph.localShare, null);
 });
 test('empty or failed polls retain last good data and time; valid zero recovers', () => {
   assert.equal(retain(null, [], 1).state, 'pending');
@@ -152,11 +153,15 @@ test('a sample a few milliseconds ahead of browser time is clamped and stays fre
   const sample = { value: 1, labels: {}, timestamp: now / 1000 + 0.01 };
   assert.deepEqual(retain(null, [sample], now), { rows: [sample], at: now, state: 'ok' });
 });
-test('spend, in-flight, TTFT and failure freshness read their raw-series sample times', () => {
+test('spend, in-flight, split TTFT and failure freshness read their raw-series sample times', () => {
   assert.equal(Q.mc8SpendSourceTime, 'max(tlast_over_time(litellm_spend_metric_total{job="llm_router"}[5m]))');
   assert.equal(Q.mc8InFlightSourceTime, 'max(tlast_over_time(litellm_in_flight_requests{job="llm_router"}[5m]))');
-  assert.equal(Q.mc8TtftSourceTime, 'max(tlast_over_time(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router"}[5m]))');
-  assert.equal(Q.mc8TtftP95, 'histogram_quantile(0.95, sum by (le) (increase(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router"}[5m])))');
+  assert.equal(Q.mc8TtftLocalSourceTime, `max(tlast_over_time(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",tag_telemetry_billing_class_local="true",${H}}[5m]))`);
+  assert.equal(Q.mc8TtftCloudSourceTime, `max(tlast_over_time(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",tag_telemetry_billing_class_local!="true",${H}}[5m]))`);
+  assert.equal(Q.mc8TtftLocalP95, `histogram_quantile(0.95, sum by (le) (increase(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",tag_telemetry_billing_class_local="true",${H}}[5m])))`);
+  assert.equal(Q.mc8TtftCloudP95, `histogram_quantile(0.95, sum by (le) (increase(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",tag_telemetry_billing_class_local!="true",${H}}[5m])))`);
+  assert.equal(Q.mc8VllmSourceTime, 'max by (instance) (tlast_over_time(vllm:num_requests_running[5m]))');
+  assert.equal(Q.mc8LlamaSourceTime, 'max by (instance) (tlast_over_time(llamacpp:requests_processing[5m]))');
   assert.equal(Q.mc8FailuresSourceTime, 'max by (model, api_provider) (tlast_over_time(litellm_deployment_failure_responses_total{job="llm_router"}[5m]))');
   assert.equal(Q.mc8FallbacksSourceTime, 'max by (model, api_provider) (tlast_over_time(litellm_deployment_failed_fallbacks_total{job="llm_router"}[5m]))');
   // Evaluation time is fresh (1300 s) but the raw sample is 1000 s old: the reading is stale.
@@ -171,9 +176,12 @@ test('spend, in-flight, TTFT and failure freshness read their raw-series sample 
 });
 test('query allow-list is generated from Q and MC8 uses standard histogram buckets', () => {
   assert.deepEqual(JSON.parse(readFileSync(new URL('../site/queries.json', import.meta.url))), Q);
-  assert.match(Q.mc8TtftP95, /histogram_quantile\(0\.95, sum by \(le\)/);
-  assert.match(Q.mc8TtftP95, /litellm_llm_api_time_to_first_token_metric_bucket/);
-  assert.doesNotMatch(Q.mc8TtftP95, /accelerator/);
+  for (const key of ['mc8TtftLocalP95', 'mc8TtftCloudP95']) {
+    assert.match(Q[key], /histogram_quantile\(0\.95, sum by \(le\)/);
+    assert.match(Q[key], /litellm_llm_api_time_to_first_token_metric_bucket/);
+    assert.ok(Q[key].includes('api_key_alias!="litellm-internal-health-check"'));
+    assert.doesNotMatch(Q[key], /accelerator/);
+  }
   for (const key of ['mc8InputRate', 'mc8OutputRate']) {
     for (const bank of ['local', 'subscription', 'paid', 'free']) {
       assert.ok(Q[key].includes(`tag_telemetry_billing_class_${bank}`));
@@ -181,7 +189,7 @@ test('query allow-list is generated from Q and MC8 uses standard histogram bucke
     assert.match(Q[key], /sum by \(api_key_alias, team, model, api_provider,/);
     assert.match(Q[key], /_tokens_metric_total\{job="llm_router",api_key_alias!="litellm-internal-health-check"\}\[5m\]/);
   }
-  for (const key of ['mc8InputRate', 'mc8OutputRate', 'mc8InputSourceTime', 'mc8OutputSourceTime']) {
+  for (const key of ['mc8InputRate', 'mc8OutputRate', 'mc8InputSourceTime', 'mc8OutputSourceTime', 'mc8TtftLocalP95', 'mc8TtftCloudP95', 'mc8TtftLocalSourceTime', 'mc8TtftCloudSourceTime']) {
     assert.ok(Q[key].includes('api_key_alias!="litellm-internal-health-check"'), key);
   }
 });
@@ -215,11 +223,10 @@ test('token-rate freshness follows each raw counter sample time, not the evaluat
   assert.equal(old.at, 1_000_000);
   assert.equal(mc8Data.retain(null, mc8Data.withSourceTimes([row(4, labels, 1000)], []), 1_000_000).state, 'stale');
 });
-test('unclassified share carries its own stale state, independent of local share availability', () => {
+test('unclassified share carries its own stale state', () => {
   const labels = { model: 'm', api_provider: 'openai' };
   const input = (now) => mc8Data.retain(null, mc8Data.withSourceTimes([row(10, labels, 1000)], [{ labels, value: 1000 }]), now);
   const graph = shapeRates([row(10, labels)], [row(0, labels)]);
-  assert.equal(graph.localShare, null);
   assert.equal(graph.unclassifiedShare, 100);
   assert.equal(mc8Data.shareState(input(1_299_000), input(1_299_000), 1_299_000), 'ok');
   assert.equal(mc8Data.shareState(input(1_301_000), input(1_301_000), 1_301_000), 'stale');

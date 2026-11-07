@@ -55,18 +55,17 @@ export const Q = {
   nodeLoad: `node_load1{${NODE}}`,
   nodeTemp: `max by (instance) (node_hwmon_temp_celsius{${NODE}})`,
   nodeUptime: `time() - node_boot_time_seconds{${NODE}}`,
-  // Busy % per accelerator (0-100), averaged over 5m. Its only label is `accelerator` (no
-  // instance), so no reading maps to one node: mc1.js's GPU gauge shows the busiest one and
-  // mc3's GPU tile shows their mean.
+  // Busy % per accelerator (0-100), averaged over 5m.
   acceleratorBusy: 'accelerator:busy_percent:avg5m',
   fsSize: `node_filesystem_size_bytes{${FS}}`,
   fsAvail: `node_filesystem_avail_bytes{${FS}}`,
-  // Per-VLAN firewall event rate (apps PR #2214: a Cribl pipeline on the UniFi syslog source
-  // derives this from the br<N> interface). Empty until that pipeline deploys — mc1.js falls
-  // back to sample VLAN bubbles (site/lib/sampleData.js) until real series exist.
-  vlanFwRate: 'sum by (vlan) (rate(unifi_vlan_fw_events_total[5m]))',
+  pveStorageUsed: 'max by (id) (pve_disk_usage_bytes{id=~"storage/.*"})',
+  wanRxBytes: 'sum by (port) (rate(unpoller_device_wan_receive_bytes_total[5m]))',
+  wanTxBytes: 'sum by (port) (rate(unpoller_device_wan_transmit_bytes_total[5m]))',
+  vlanRxBytes: 'sum by (network, vlan) (rate(unpoller_client_receive_bytes_total[5m]))',
+  vlanTxBytes: 'sum by (network, vlan) (rate(unpoller_client_transmit_bytes_total[5m]))',
   llmState: 'max by (litellm_model_name) (litellm_deployment_state)',
-  llmTokRate: 'sum by (model) (rate(litellm_output_tokens_metric_total[5m]))',
+  llmLocalModels: `group by (model) (increase(litellm_total_tokens_metric_total{tag_telemetry_billing_class_local="true",${REAL_USE}}[4d]) > 0)`,
   // MC1 and MC3 model lists: a model is listed once it served a real request in the last 4d. An
   // hour with no request leaves the percentiles with no row for that model: idle, not an error.
   llmUsed4d: `sum by (model) (increase(${ROUTER_REQUESTS}[4d])) > 0`,
@@ -81,11 +80,11 @@ export const Q = {
   // Unix time of each model's last real request.
   llmLastRequest: `tlast_change_over_time(sum by (model) (${ROUTER_REQUESTS})[4d:1m])`,
   // mc3
-  llmTokensToday: 'sum(increase(litellm_total_tokens_metric_total[24h]))',
-  llmReqPerMin: 'sum(rate(litellm_proxy_total_requests_metric_total[5m])) * 60',
-  // mc3 accelerator anchors. The per-device exporters label each device's product name and host;
-  // a DCGM series with no `accelerator` label belongs to gpu-primary, matching accelerator:busy_percent:avg5m.
+  llmTokensToday: `sum by (tag_telemetry_billing_class_local) (increase(litellm_total_tokens_metric_total{${REAL_USE}}[24h]))`,
+  llmReqPerMin: `sum by (tag_telemetry_billing_class_local) (rate(litellm_proxy_total_requests_metric_total{${REAL_USE}}[5m])) * 60`,
+  // Accelerator inventory rows retain their guest instance and accelerator labels.
   gpuModel: 'group by (accelerator, modelName, instance) (DCGM_FI_DEV_GPU_UTIL)',
+  guestNode: 'group by (name, node) (pve_guest_info)',
   macChip: 'group by (accelerator, chip, instance) (macmon_gpu_usage_ratio)',
   // Each model's serving URL. mc3 matches the URL's host against the host of the device series above.
   llmApiBase: 'max by (litellm_model_name, api_base, api_provider) (litellm_deployment_state)',
@@ -121,12 +120,16 @@ export const Q = {
   mc8OutputSourceTime: `max by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (tlast_over_time(litellm_output_tokens_metric_total{job="llm_router",${REAL_USE}}[5m]))`,
   mc8InFlight: 'sum(litellm_in_flight_requests{job="llm_router"})',
   // increase() also counts a new series' first small bucket value; rate() skips it.
-  mc8TtftP95: 'histogram_quantile(0.95, sum by (le) (increase(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router"}[5m])))',
+  mc8TtftLocalP95: `histogram_quantile(0.95, sum by (le) (increase(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",tag_telemetry_billing_class_local="true",${REAL_USE}}[5m])))`,
+  mc8TtftCloudP95: `histogram_quantile(0.95, sum by (le) (increase(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",tag_telemetry_billing_class_local!="true",${REAL_USE}}[5m])))`,
   mc8Failures: 'sum by (model, api_provider) (increase(litellm_deployment_failure_responses_total{job="llm_router"}[1m]))',
   mc8Fallbacks: 'sum by (model, api_provider) (increase(litellm_deployment_failed_fallbacks_total{job="llm_router"}[1m]))',
   // Raw-series last sample times for the readings above, grouped like each reading.
   mc8InFlightSourceTime: 'max(tlast_over_time(litellm_in_flight_requests{job="llm_router"}[5m]))',
-  mc8TtftSourceTime: 'max(tlast_over_time(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router"}[5m]))',
+  mc8TtftLocalSourceTime: `max(tlast_over_time(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",tag_telemetry_billing_class_local="true",${REAL_USE}}[5m]))`,
+  mc8TtftCloudSourceTime: `max(tlast_over_time(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",tag_telemetry_billing_class_local!="true",${REAL_USE}}[5m]))`,
+  mc8VllmSourceTime: 'max by (instance) (tlast_over_time(vllm:num_requests_running[5m]))',
+  mc8LlamaSourceTime: 'max by (instance) (tlast_over_time(llamacpp:requests_processing[5m]))',
   mc8FailuresSourceTime: 'max by (model, api_provider) (tlast_over_time(litellm_deployment_failure_responses_total{job="llm_router"}[5m]))',
   mc8FallbacksSourceTime: 'max by (model, api_provider) (tlast_over_time(litellm_deployment_failed_fallbacks_total{job="llm_router"}[5m]))',
   // Provider spend series exist only after that provider is used, so router liveness is the freshness signal.

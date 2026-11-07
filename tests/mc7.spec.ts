@@ -62,7 +62,7 @@ for (const mode of ['empty', 'error'] as const) {
       await expect(page.locator(`#${id}`)).toHaveText('NO DATA');
       await expect(page.locator(`#${id}`)).toHaveAttribute('data-state', mode);
     }
-    await expect(page.locator('canvas, .card, [data-source="stand-in"]')).toHaveCount(0);
+    await expect(page.locator('canvas, .card')).toHaveCount(0);
   });
 }
 

@@ -1,19 +1,27 @@
 import { query } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import { esc, loop, onDispose, adaptiveDpr, loadConfig, signalReady } from '/lib/stage.js';
-import { BANKS, shapeRates, splitTopByRate, retain, modelKey, fresh, shareState, withSourceTimes, increased, bounded, windowAge, windowLabel, refreshMs, REQUEST_TIMEOUT_MS, ZERO_WHEN_EMPTY, IDLE_WHEN_EMPTY, feedValue } from './data.js';
+import { BANKS, shapeRates, splitTopByRate, splitInFlight, retain, modelKey, fresh, shareState, withSourceTimes, increased, bounded, windowAge, windowLabel, refreshMs, REQUEST_TIMEOUT_MS, ZERO_WHEN_EMPTY, IDLE_WHEN_EMPTY, feedValue } from './data.js';
 
 const $ = (id) => document.getElementById(id);
 const board = $('switchboard'), canvas = $('wires'), ctx = canvas.getContext('2d');
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const number = (v) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+const classPair = (local, cloud, unit = '') => {
+  const display = (value) => Number.isFinite(value) ? `${number(value)}${unit}` : '—';
+  return `local ${display(local)} · cloud ${display(cloud)}`;
+};
 const feeds = {};
-const keys = ['mc8InputRate', 'mc8OutputRate', 'mc8InputSourceTime', 'mc8OutputSourceTime', 'mc8InFlight', 'mc8SpendCents', 'mc8TtftP95', 'mc8Failures', 'mc8Fallbacks',
-  'mc8InFlightSourceTime', 'mc8SpendSourceTime', 'mc8TtftSourceTime', 'mc8FailuresSourceTime', 'mc8FallbacksSourceTime'];
+const keys = ['mc8InputRate', 'mc8OutputRate', 'mc8InputSourceTime', 'mc8OutputSourceTime', 'mc8InFlight', 'vllmRunning', 'llamaRunning', 'mc8SpendCents', 'mc8TtftLocalP95', 'mc8TtftCloudP95', 'mc8Failures', 'mc8Fallbacks',
+  'mc8InFlightSourceTime', 'mc8VllmSourceTime', 'mc8LlamaSourceTime', 'mc8SpendSourceTime', 'mc8TtftLocalSourceTime', 'mc8TtftCloudSourceTime', 'mc8FailuresSourceTime', 'mc8FallbacksSourceTime'];
 const feedKeys = keys.filter((key) => !key.endsWith('SourceTime'));
+const IN_FLIGHT_KEYS = ['mc8InFlight', 'vllmRunning', 'llamaRunning'];
+const TTFT_KEYS = ['mc8TtftLocalP95', 'mc8TtftCloudP95'];
 const sourceTimes = {
   mc8InputRate: 'mc8InputSourceTime', mc8OutputRate: 'mc8OutputSourceTime', mc8InFlight: 'mc8InFlightSourceTime',
-  mc8SpendCents: 'mc8SpendSourceTime', mc8TtftP95: 'mc8TtftSourceTime', mc8Failures: 'mc8FailuresSourceTime', mc8Fallbacks: 'mc8FallbacksSourceTime',
+  vllmRunning: 'mc8VllmSourceTime', llamaRunning: 'mc8LlamaSourceTime', mc8SpendCents: 'mc8SpendSourceTime',
+  mc8TtftLocalP95: 'mc8TtftLocalSourceTime', mc8TtftCloudP95: 'mc8TtftCloudSourceTime',
+  mc8Failures: 'mc8FailuresSourceTime', mc8Fallbacks: 'mc8FallbacksSourceTime',
 };
 let shaped = shapeRates([], []), displayed = { callers: [], models: [], routes: [], hidden: [] }, wires = [], selected = null;
 
@@ -44,7 +52,8 @@ function reading(id, keys, value, unit, caption, missing = 'Pending') {
   // A held empty reading (a measured zero or idle, then a failed poll) reads Stale. A reading never measured,
   // or a share that cannot be computed, shows its fallback; the panel status carries any staleness.
   const held = keys.some((key) => feeds[key]?.at != null);
-  $(id).textContent = value == null ? (stale && held && missing === 'Pending' ? 'Stale' : missing) : `${number(value)}${unit}`;
+  $(id).textContent = value == null ? (stale && held && missing === 'Pending' ? 'Stale' : missing)
+    : typeof value === 'string' ? value : `${number(value)}${unit}`;
   panel.querySelector('.status').textContent = value == null && missing === 'Pending' && !stale ? 'No measurements yet' : state === 'Live' ? caption : state;
 }
 
@@ -57,11 +66,13 @@ function updateUnclassified() {
     return;
   }
   const status = state === 'ok' ? '' : ` · ${stateText(['mc8InputRate', 'mc8OutputRate'])}`;
-  id.textContent = `unclassified ${number(shaped.unclassifiedShare)}%${status}`;
+  id.textContent = `unclassified cloud ${number(shaped.unclassifiedShare)}%${status}`;
 }
 
 function moreTerminal(kind, more) {
-  return { id: `__more_${kind}__`, name: `+${more.count} more`, rate: more.rate, more: true, bank: 'unknown', metricId: null };
+  const name = kind === 'models' ? `+${more.localCount} local · +${more.cloudCount} cloud` : `+${more.count} more`;
+  return { id: `__more_${kind}__`, name, localRate: more.localRate,
+    cloudRate: more.cloudRate, more: true, bank: 'unknown', metricId: null };
 }
 
 function callerMarkup(split) {
@@ -116,10 +127,14 @@ function compactRoutes(routes, callers, models) {
     const caller = callerIds.has(route.caller) ? route.caller : moreCaller;
     const model = modelIds.has(route.model) ? route.model : moreModel;
     if (!caller || !model) continue;
-    const id = JSON.stringify([caller, model]);
+    const id = JSON.stringify([caller, model, Number.isFinite(route.localRate) ? 'local' : 'cloud']);
     const current = compacted.get(id);
-    if (current) current.rate += route.rate;
-    else compacted.set(id, { id, caller, model, rate: route.rate });
+    if (current) {
+      current.rate += route.rate;
+      for (const bank of ['local', 'cloud']) {
+        if (Number.isFinite(route[`${bank}Rate`])) current[`${bank}Rate`] = (current[`${bank}Rate`] ?? 0) + route[`${bank}Rate`];
+      }
+    } else compacted.set(id, { id, caller, model, rate: route.rate, localRate: route.localRate, cloudRate: route.cloudRate });
   }
   return [...compacted.values()];
 }
@@ -136,13 +151,16 @@ function render() {
     }
   }
   const scalar = (key) => feedValue(feeds[key]);
-  reading('local-share', ['mc8InputRate', 'mc8OutputRate'], shaped.localShare, '%', 'Share of classified input + output tokens', ready ? 'Unavailable' : 'Pending');
+  reading('local-rate', ['mc8InputRate', 'mc8OutputRate'], shaped.localRate, ' t/s', 'Local input + output tokens per second', ready ? 'Unavailable' : 'Pending');
   updateUnclassified();
-  reading('in-flight', ['mc8InFlight'], scalar('mc8InFlight'), '', 'Requests across the router');
+  const inFlight = splitInFlight(feeds.mc8InFlight?.rows, feeds.vllmRunning?.rows, feeds.llamaRunning?.rows);
+  reading('in-flight', IN_FLIGHT_KEYS, classPair(inFlight.local, inFlight.cloud), '', 'Local engines plus the router remainder');
   reading('spend', ['mc8SpendCents'], scalar('mc8SpendCents'), '¢', 'OpenRouter · month to date · UTC');
-  reading('ttft', ['mc8TtftP95'], scalar('mc8TtftP95') == null ? null : scalar('mc8TtftP95') * 1000, ' ms', 'Router histogram · trailing 5 minutes');
+  const localTtft = scalar('mc8TtftLocalP95'), cloudTtft = scalar('mc8TtftCloudP95');
+  reading('ttft', TTFT_KEYS, classPair(localTtft == null ? null : localTtft * 1000,
+    cloudTtft == null ? null : cloudTtft * 1000, ' ms'), '', 'Router histogram · trailing 5 minutes');
   board.dataset.state = !ready ? 'pending' : stateText(['mc8InputRate', 'mc8OutputRate']).startsWith('STALE') ? 'stale' : 'ok';
-  $('route-state').textContent = !ready ? 'Pending token rates' : shaped.total === 0 ? 'Idle' : `${number(shaped.total)} tokens/s`;
+  $('route-state').textContent = !ready ? 'Pending token rates' : `${classPair(shaped.localRate, shaped.cloudRate)} tokens/s`;
   const callers = $('callers'), models = $('models');
   const callerSplit = fitRows(callers, shaped.callers, callerMarkup);
   const collapsed = (split) => shaped.models.filter((model) => !split.visible.includes(model));
@@ -160,9 +178,13 @@ function render() {
 function terminal(node, kind) {
   const destinations = displayed.routes.filter((r) => kind === 'caller' ? r.caller === node.id : r.model === node.id).map((r) => {
     const other = (kind === 'caller' ? displayed.models : displayed.callers).find((n) => n.id === (kind === 'caller' ? r.model : r.caller));
-    return `${other.name}: ${number(r.rate)} tokens/s`;
+    const name = kind === 'caller' && other ? `${other.name} (${BANKS[other.bank]?.title || 'Unclassified'})` : other?.name;
+    return `${name}: ${classPair(r.localRate, r.cloudRate, ' tokens/s')}`;
   }).join('; ');
-  return `<div class="terminal${node.more ? ' more' : ''}" tabindex="0" data-kind="${kind}" data-id="${esc(node.id)}" title="${esc(destinations)}"><div><strong>${esc(node.name)}</strong>${node.team ? `<small>${esc(node.team)}</small>` : ''}${kind === 'model' ? '<small class="failure-marker"></small>' : ''}</div><span class="rate">${node.rate == null ? 'No token rate' : `${number(node.rate)} t/s`}</span></div>`;
+  const rate = kind === 'caller' || node.more
+    ? classPair(node.localRate, node.cloudRate, ' tokens/s')
+    : node.rate == null ? 'No token rate' : `${number(node.rate)} t/s`;
+  return `<div class="terminal${node.more ? ' more' : ''}" tabindex="0" data-kind="${kind}" data-id="${esc(node.id)}" title="${esc(destinations)}"><div><strong>${esc(node.name)}</strong>${node.team ? `<small>${esc(node.team)}</small>` : ''}${kind === 'model' ? '<small class="failure-marker"></small>' : ''}</div><span class="rate${kind === 'caller' || node.more ? ' split' : ''}">${rate}</span></div>`;
 }
 
 // A "+N more" row carries the markers of the models collapsed into it.
@@ -190,7 +212,7 @@ function updateStatus() {
   updateUnclassified();
   board.dataset.state = !shaped.routes.length ? 'pending' : stateText(['mc8InputRate', 'mc8OutputRate']).startsWith('STALE') ? 'stale' : 'ok';
   markModels(displayed.hidden);
-  for (const [id, keys] of [['local-share', ['mc8InputRate', 'mc8OutputRate']], ['in-flight', ['mc8InFlight']], ['spend', ['mc8SpendCents']], ['ttft', ['mc8TtftP95']]]) {
+  for (const [id, keys] of [['local-rate', ['mc8InputRate', 'mc8OutputRate']], ['in-flight', IN_FLIGHT_KEYS], ['spend', ['mc8SpendCents']], ['ttft', TTFT_KEYS]]) {
     const panel = $(id).closest('[data-panel]');
     if (panel.dataset.state !== 'pending' && stateText(keys).startsWith('STALE')) {
       panel.dataset.state = 'stale';

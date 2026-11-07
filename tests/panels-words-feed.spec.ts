@@ -14,9 +14,9 @@ test('mc5 hero canvas renders non-blank and the org-activity ticker shows rows',
 });
 
 // mc6's strip keeps a tile for EVERY source the page knows about: rows per source come and
-// go, but a source absent from this poll renders an explicit NO FEED tile — never omitted,
-// never filled with stand-in words. The fixture answers five sources (user, claude, codex,
-// zcode and the never-heard-of 'minion'), so antigravity and opencode show NO FEED.
+// go, but a source absent from this poll renders an explicit NO FEED tile — never omitted.
+// The fixture answers five sources (user, claude, codex, zcode and the unknown 'minion'), so
+// antigravity and opencode show NO FEED.
 test('mc6 renders a tile for every known source, NO FEED where the feed has no rows', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises the fixture-shaped words response only');
   await mockFeeds(page);

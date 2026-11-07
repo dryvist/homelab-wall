@@ -108,15 +108,14 @@ The feed publisher produces snapshot mode's file. Its contract:
 
 ## Panel states
 
-- Each panel records its state in `data-state`: `ok`, `empty`, `pending`, `error` or `stale`.
-- A panel whose source is not wired yet, or whose query comes back empty or fails, shows plausible stand-in content
-  instead of a placeholder.
-- Nothing on screen marks it: a `data-source="stand-in"` attribute (plus `data-state` `empty`, `pending` or `error`
-  for an empty or failed query) records it for automation only.
-- MC1 to MC5 use stand-in content. MC6 to MC9 never do.
-- A panel's visible message appears only in state `ok`.
-- Each page's own states are on its page: [MC1](mc1.md), [MC2](mc2.md), [MC3](mc3.md), [MC4](mc4.md), [MC5](mc5.md),
-  [MC6](mc6.md), [MC7](mc7.md), [MC8](mc8.md) and [MC9](mc9.md).
+- Each panel records its state in `data-state`: `ok`, `empty`, `pending`, `error`, `stale` or `no-feed`.
+- `no-feed` means the panel has no real source. It keeps its heading and visibly says `No feed`.
+- A failed or empty query never displays an invented reading. Each page shows `—` or its current panel state;
+  retained real readings may remain visible with state `stale`.
+- A test fails if any page renders `data-source="stand-in"`.
+- `setState` copies its message into the visible `[data-panel-message]` element in any state, when that element exists.
+- Page-specific visible messages and states are listed on each page: [MC1](mc1.md), [MC2](mc2.md), [MC3](mc3.md),
+  [MC4](mc4.md), [MC5](mc5.md), [MC6](mc6.md), [MC7](mc7.md), [MC8](mc8.md) and [MC9](mc9.md).
 
 ## Rendering
 

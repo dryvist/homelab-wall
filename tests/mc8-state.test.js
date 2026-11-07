@@ -29,7 +29,8 @@ test('a feed value is its first row, and null while unmeasured or idle', () => {
 });
 
 test('an empty TTFT poll is idle only while its own source time is fresh', () => {
-  assert.ok(IDLE_WHEN_EMPTY.has('mc8TtftP95'));
+  assert.ok(IDLE_WHEN_EMPTY.has('mc8TtftLocalP95'));
+  assert.ok(IDLE_WHEN_EMPTY.has('mc8TtftCloudP95'));
   const idle = retain(null, [], 1000000, { idleAt: 990000 });
   assert.deepEqual(idle, { rows: [], at: 990000, state: 'idle' });
   assert.equal(feedValue(idle), null);

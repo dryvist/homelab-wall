@@ -20,17 +20,17 @@ panels. The header title comes from `config.json` `title` and defaults to `HOMEL
 
 - `appScore`: the health score per app, for the service health strip.
 
-The globe and the two edge panels have no data source.
+The globe is decorative. The globe, edge stats and blocked list have no data source.
 
 ## States
 
-- Stand-in:
-  - The globe, the edge stats and the blocked list are always stand-in content.
-  - They are decoration only and never show measured block data.
-  - The two edge panels carry `data-source="stand-in"` with state `ok`. Nothing on screen marks them.
+- No feed:
+  - The globe is decorative and does not show measured block data.
+  - The edge stats and blocked list have no feed and show `No feed`.
 - Service health:
-  - With no scored app, the strip counts sample scores, marked `data-source="stand-in"`, and records state `empty`.
-  - With no apps configured, the strip records state `empty`.
+  - Missing app scores show `—`; the strip does not fill them with other values.
+  - With no scores, the panel records state `empty` and reads `NO SERVICE DATA`, or `NO APPS CONFIGURED` when the
+    groups list is empty.
 - Service health after a failed score query:
   - With no held scores, the panel records state `error` and reads `SCORE QUERY FAILED`.
   - With held scores, it keeps them and records state `stale`.

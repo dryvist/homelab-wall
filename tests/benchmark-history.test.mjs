@@ -20,12 +20,12 @@ test('sparse live and snapshot ranges use shared timestamp and alignment options
     t.mock.method(globalThis, 'fetch', async (path) => {
       requests.push(path);
       const body = path === '/config.json' ? (snapshot ? { snapshot: '/snapshot.json' } : {})
-        : path === '/snapshot.json' ? { range: { llmTokRate: { result: rows } } }
+        : path === '/snapshot.json' ? { range: { routerOutput: { result: rows } } }
           : { status: 'success', data: { result: rows } };
       return Response.json(body);
     });
     const { range } = await import(`../site/lib/prom.js?mode=${snapshot}`);
-    const [series] = await range(Q.llmTokRate, 10, 15, { timestamps: true, align: true });
+    const [series] = await range(Q.routerOutput, 10, 15, { timestamps: true, align: true });
     assert.deepEqual(series, {
       labels: { model: 'example' }, values: [[430, 2], [445, 3], [490, NaN], [505, 5]],
     });

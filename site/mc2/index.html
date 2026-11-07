@@ -15,22 +15,16 @@
   <canvas id="globe"></canvas>
   <header>
     <div class="brand"><span id="title">HOMELAB</span> <span style="color:var(--red)">//</span> EDGE THREAT MAP</div>
-    <section class="appstrip" id="apps" data-panel="apps" data-state="pending"><h2>Service health <span id="appsum">—</span></h2></section>
+    <section class="appstrip" id="apps" data-panel="apps" data-state="pending"><h2>Service health <span id="appsum">—</span><span data-panel-message>SCORE PENDING</span></h2></section>
     <div class="clock num" id="clock">--:--:--<small>--</small></div>
   </header>
 
   <div class="row2">
-    <section class="panel panel-frameless" id="threat" data-panel="threat" data-state="pending">
+    <section class="panel panel-frameless" id="threat" data-panel="threat" data-state="no-feed">
       <h2>Edge <span style="color:var(--red)">//</span> block telemetry<span data-panel-message></span></h2>
-      <div class="stat" id="tstats">
-        <div>Blocked today<b></b></div>
-        <div>Unique sources<b></b></div>
-        <div>Top sources<b></b></div>
-      </div>
     </section>
-    <section class="panel panel-glass" id="blocked" data-panel="blocked" data-state="pending">
+    <section class="panel panel-glass" id="blocked" data-panel="blocked" data-state="no-feed">
       <h2>Blocked <span style="color:var(--red)">//</span> live feed<span data-panel-message></span></h2>
-      <div class="feed" id="feed"></div>
     </section>
   </div>
 </div>

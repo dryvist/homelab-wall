@@ -1,6 +1,6 @@
 # MC8 · Router Switchboard
 
-MC8 is the Router Switchboard, a beta page. It draws token flow from each caller, through the LiteLLM router, to each
+MC8 is the Router Switchboard, a beta page. It draws token flow from each caller, through the router, to each
 model, grouped by billing class, with four router readouts above it. MC8 uses real measurements only. The rotator
 names this slide `SWITCHBOARD`.
 
@@ -9,21 +9,22 @@ names this slide `SWITCHBOARD`.
 ## Panels
 
 - Readouts:
-  - Local token share: the local engines' share of classified input and output tokens, with the unclassified
-    percentage shown separately.
+  - Local and cloud values stay separate throughout the page; it does not display a combined local-plus-cloud total.
+  - Local token rate: local input and output tokens per second, with the unclassified share of cloud traffic shown
+    separately.
   - Router in-flight: requests in flight across the router.
-  - Pay per token / month: OpenRouter spend in cents since the month boundary in Coordinated Universal Time (UTC).
-  - Time to first token / p95: the router's time to first token (TTFT) p95 (95th percentile) over the trailing
-    5 minutes, in milliseconds.
-- Switchboard: callers on the left, the LiteLLM hub in the middle, and models by provider on the right.
+  - Pay per token / month: provider spend in cents since the month boundary in Coordinated Universal Time (UTC).
+  - Time to first token / p95: local and cloud router times to first token (TTFT) p95 (95th percentile) over the
+    trailing 5 minutes, in milliseconds.
+- Switchboard: callers on the left, the router hub in the middle, and models by provider on the right.
   - Routes retain caller alias and team, model, and provider labels.
   - Token rates exclude the router's own health-check caller.
-  - The page fits one screen. A column that cannot fit shows its top rows by rate plus one `+N more` row with their
-    combined rate.
-  - Routes to a collapsed caller or model end at its `+N more` row.
+  - The page fits one screen. A column that cannot fit shows its top rows plus one collapsed row with their local
+    and cloud rates apart. The model column's collapsed row reads `+N local · +M cloud`.
+  - Routes to a collapsed caller or model end at its collapsed row, one route per class.
   - Width means input plus output tokens/s over 5 minutes.
   - Focus or hover a caller or model to trace its paths.
-  - The hub reads the total tokens/s, or `Idle` at zero.
+  - Caller rates and the route status keep local and cloud values separate.
 - Billing banks: models sit in banks for local engines, subscriptions, pay per token, free, and unclassified.
   - A bank with no measured model draws nothing.
   - Billing banks use the token series' `tag_telemetry_billing_class_` labels: `local`, `subscription`, `paid`, and
@@ -33,7 +34,7 @@ names this slide `SWITCHBOARD`.
 - Failure flashes:
   - Failure flashes apply to model edges with measured failure or failed-fallback increases over the last minute.
   - Those counters do not establish caller attribution.
-  - A `+N more` row carries the failure markers of the models collapsed into it.
+  - A collapsed row carries the failure markers of the models collapsed into it.
   - Model failure markers also appear at zero token throughput; failure-only models show `No token rate` rather
     than a made-up zero.
   - Failure and failed-fallback indicators cover the one-minute window that ends at each result's evaluation time,
@@ -49,20 +50,20 @@ names this slide `SWITCHBOARD`.
 - `mc8OutputSourceTime`: the last sample time of each raw output token counter, grouped the same way.
 - `mc8InFlight`: requests in flight across the router.
 - `mc8InFlightSourceTime`: the last sample time of the in-flight series. MC8 uses it as router liveness.
-- `mc8TtftP95`: router TTFT p95 over 5 minutes.
-- `mc8TtftSourceTime`: the last sample time of the TTFT histogram.
+- `mc8TtftLocalP95` and `mc8TtftCloudP95`: local and cloud router TTFT p95 over 5 minutes.
+- `mc8TtftLocalSourceTime` and `mc8TtftCloudSourceTime`: last sample times of their TTFT histograms.
 - `mc8Failures`: failure responses per model and provider over the last minute.
 - `mc8FailuresSourceTime`: the last sample time of the failure counters.
 - `mc8Fallbacks`: failed fallbacks per model and provider over the last minute.
 - `mc8FallbacksSourceTime`: the last sample time of the failed-fallback counters.
-- `mc8SpendCents`: OpenRouter spend in cents since the UTC month boundary.
+- `mc8SpendCents`: provider spend in cents since the UTC month boundary.
 - `mc8SpendSourceTime`: the newest sample time of any router spend series.
 
 TTFT p95 uses standard router histogram buckets. It comes from bucket increases, which also count a new series' first
 small bucket counts.
 
-Spend shows OpenRouter cents since the UTC month boundary: each series' rise over its month-start baseline, clamped at
-zero, then summed. Counter resets can still undercount month-to-date spend, and the page says so.
+Spend shows cents since the UTC month boundary: each series' rise over its month-start baseline, clamped at zero,
+then summed. Counter resets can still undercount month-to-date spend, and the page says so.
 
 Token-rate freshness uses the raw input and output counter sample times, grouped by caller, team, model, provider and
 billing class. In-flight, TTFT, failure and fallback freshness use their raw series' sample times. Spend freshness
@@ -88,6 +89,5 @@ times out after 10 seconds.
 - Zero: an empty failure, fallback or spend result reads as zero while the router is live, meaning the in-flight
   sample time is fresh.
 - Unavailable:
-  - Local share uses classified token rates only.
-  - Without classified traffic it shows `Unavailable`.
+  - Without local traffic the local token rate shows `Unavailable`.
 - NO DATA: not used on MC8.

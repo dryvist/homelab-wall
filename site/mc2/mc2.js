@@ -1,18 +1,13 @@
-// Mission Control 2: edge threat map. The firewall/geoip block feed has no Prometheus source
-// yet (it lands with the Splunk pipeline), so the "threat"/"blocked" panels stay stand-in — the
-// globe and feed are decoration only, never fabricated block data. The "apps" strip is real,
-// driven by the same Gatus-derived health score as mc1.
+// Mission Control 2: edge threat map. The edge panels have no feed; the globe is decorative.
 import * as THREE from 'three';
 import { query, settle } from '/lib/prom.js';
 import { guardRefresh } from '/lib/refresh.js';
 import { Q } from '/lib/queries.js';
 import { makeBloom } from '/lib/bloom.js';
 import {
-  hardwareGL, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, setSampleBadge, setStandIn,
+  hardwareGL, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN,
   observeCanvas, onDispose, onContextLoss, disposeThreeScene, adaptiveBloomOn,
 } from '/lib/stage.js';
-import { sampleAppScore } from '/lib/sampleData.js';
-import { poissonLoop } from '/lib/liveJitter.js';
 import { serviceScoreState } from '/lib/serviceScoreState.js';
 import { createPointer } from '/lib/pointer.js';
 
@@ -44,92 +39,28 @@ async function refresh() {
 
 function renderApps() {
   const panel = $('apps');
-  if (!apps.length) { setState(panel, 'empty', 'NO APPS CONFIGURED'); $('appsum').textContent = '0'; return; }
+  if (!apps.length) { $('appsum').textContent = '—'; setState(panel, 'empty', 'NO APPS CONFIGURED'); return; }
   const scored = apps.filter((a) => a.s != null);
-  // A query that succeeded with zero rows has genuinely nothing to show yet — fall back to the
-  // shared sample scores (badged), never on top of real (even partial) data.
-  const sample = !scored.length;
-  const scores = sample ? apps.map((_, i) => sampleAppScore(i)) : scored.map((a) => a.s);
+  const scores = scored.map((a) => a.s);
   const ok = scores.filter((s) => s >= SCORE_OK_MIN).length;
   const warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
   const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
-  $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`;
-  setSampleBadge(panel, sample);
+  $('appsum').innerHTML = scores.length
+    ? `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`
+    : '—';
   const state = serviceScoreState(model.scoreFailed, scored.length > 0);
-  setState(panel, state, state === 'error' ? 'SCORE QUERY FAILED' : state === 'empty' ? 'NO SERVICE DATA' : '');
+  const message = state === 'error' || state === 'stale' ? 'SCORE QUERY FAILED'
+    : state === 'empty' ? 'NO SERVICE DATA'
+      : scored.length < apps.length ? 'PARTIAL SERVICE DATA' : '';
+  setState(panel, state, message);
 }
 
-/* ---------------- threat globe + blocked feed (stand-in: no edge/geoip metrics exist yet) ------
-   No edge/geoip feed exists yet — every number below is a stand-in, machine-flagged only
-   (setStandIn: no visible badge/pending text — see site/lib/stage.js). Never written into any
-   live model. Sources for the "arcs" panel — sketch scene 60 — and the "blocked" feed panel draw
-   from the same THREAT_SOURCES pool so the two panels read as one system, not two random ones. */
-setState($('threat'), 'ok', '');
-setStandIn($('threat'), true);
-setState($('blocked'), 'ok', '');
-setStandIn($('blocked'), true);
+setState($('threat'), 'no-feed');
+setState($('blocked'), 'no-feed');
 
-const THREAT_SOURCES = [
-  { name: 'China', cc: 'CN', lat: 35, lon: 105 },
-  { name: 'Russia', cc: 'RU', lat: 56, lon: 38 },
-  { name: 'Brazil', cc: 'BR', lat: -15, lon: -48 },
-  { name: 'India', cc: 'IN', lat: 21, lon: 78 },
-  { name: 'Vietnam', cc: 'VN', lat: 16, lon: 106 },
-  { name: 'Netherlands', cc: 'NL', lat: 52, lon: 5 },
-  { name: 'Germany', cc: 'DE', lat: 51, lon: 10 },
-  { name: 'South Korea', cc: 'KR', lat: 37, lon: 127 },
-  { name: 'Iran', cc: 'IR', lat: 32, lon: 53 },
-  { name: 'Nigeria', cc: 'NG', lat: 9, lon: 8 },
-  { name: 'Ukraine', cc: 'UA', lat: 49, lon: 32 },
-  { name: 'Singapore', cc: 'SG', lat: 1, lon: 104 },
-];
 const HOME_LATLON = [40, -86];
-const FEED_PORTS = [22, 23, 445, 3389, 8080, 5060, 6379, 27017, 9200, 2375];
-const FEED_REASONS = ['port scan', 'bad auth', 'rate limit', 'known botnet', 'invalid cert', 'exploit attempt'];
 
-/* ---------------- blocked feed (right-third scrolling panel) ---------------- */
-const feedEl = $('feed');
-const MAX_FEED_ROWS = 28;
-let blockedToday = 0;
-const countryCounts = new Map();
-
-function fmtTime(d) { return d.toTimeString().slice(0, 8); }
-
-function addFeedRow(source) {
-  const port = FEED_PORTS[(Math.random() * FEED_PORTS.length) | 0];
-  const reason = FEED_REASONS[(Math.random() * FEED_REASONS.length) | 0];
-  const row = document.createElement('div');
-  row.className = 'frow frow-flash';
-  row.innerHTML = `<span class="t">${fmtTime(new Date())}</span>` +
-    `<span class="src"><em>${source.cc}</em> ${source.name} → :${port}</span>` +
-    `<span class="act drop">${reason}</span>`;
-  feedEl.prepend(row);
-  row.addEventListener('animationend', () => row.classList.remove('frow-flash'), { once: true });
-  while (feedEl.children.length > MAX_FEED_ROWS) feedEl.lastChild.remove();
-
-  blockedToday += 1;
-  countryCounts.set(source.name, (countryCounts.get(source.name) || 0) + 1);
-  renderStats();
-}
-
-function renderStats() {
-  let top = 'NONE YET';
-  let topN = 0;
-  for (const [name, n] of countryCounts) if (n > topN) { topN = n; top = name; }
-  const b = document.querySelectorAll('#tstats div b');
-  b[0].textContent = String(blockedToday);
-  b[1].textContent = String(countryCounts.size);
-  b[2].textContent = top;
-}
-renderStats();
-
-// Poisson-process feed (site/lib/liveJitter.js), not a fixed interval: ~1.33 rows/sec, same
-// average cadence the ad-hoc 500-1000ms random timer this replaced used, but with proper
-// exponential inter-arrival gaps and never scheduled twice.
-const stopFeed = poissonLoop(() => (RM ? 0.25 : 1.33), () => addFeedRow(THREAT_SOURCES[(Math.random() * THREAT_SOURCES.length) | 0]));
-onDispose(stopFeed);
-
-/* ---------------- globe: real land mask, animated great-circle arcs ---------------- */
+/* ---------------- globe with a beacon ---------------- */
 const globeCanvas = $('globe');
 const forced = new URLSearchParams(location.search).get('gl');
 let drawGlobe;
@@ -155,8 +86,7 @@ function buildGlobe() {
   renderer.setClearColor(0x000000, 1);
   renderer.setPixelRatio(1); // backing-store pixels are set explicitly below
   const scene = new THREE.Scene();
-  // Shock-and-awe: the canvas is now a full-viewport layer (site/mc2/mc2.css #globe), not confined
-  // to the old "threat" panel box, so fov/distance are tuned to sweep the globe/arcs across the
+  // The canvas is a full-viewport layer (site/mc2/mc2.css #globe), so fov/distance sweep the globe across the
   // WHOLE screen (behind the header and side panels) rather than fitting inside one panel.
   const cam = new THREE.PerspectiveCamera(48, 1, 1, 1000);
   cam.position.set(0, 0, 285);
@@ -178,8 +108,7 @@ function buildGlobe() {
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  // Bright red, plain (no HDR multiply): land should read clearly on its own without adding to
-  // the bloom pass — only arc heads/the home beacon bloom (see the tube/bloom comments below).
+  // Bright red, plain (no HDR multiply): land reads clearly without adding to the bloom pass.
   group.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xff3350, size: 1.15, transparent: true, opacity: 0.85 })));
   // Ocean/globe body: near-black, not the muddy red wash a flat BackSide "atmosphere" sphere
   // produces (that renders as a uniform-opacity disc over the WHOLE visible hemisphere, not just
@@ -230,64 +159,24 @@ function buildGlobe() {
     return new THREE.Vector3(Math.cos(la) * Math.cos(lo) * h, Math.sin(la) * h, -Math.cos(la) * Math.sin(lo) * h);
   };
   const home = llToVec(...HOME_LATLON);
-  // HOME beacon: an HDR-bright core (bloom does the glow) that pulses in scale every frame, plus
-  // a periodic expanding ring (the same visual the impact pulse below uses on arc arrival) so the
-  // beacon is visibly "alive" even between arrivals.
+  // The home marker and periodic ring pulse animate without representing traffic.
   const homeCoreMat = new THREE.MeshBasicMaterial({ color: 0x9beeff });
   homeCoreMat.color.multiplyScalar(2);
   const homeMarker = new THREE.Mesh(new THREE.SphereGeometry(2.2, 16, 16), homeCoreMat);
   homeMarker.position.copy(home);
   group.add(homeMarker);
 
-  // Orient the group once so HOME sits on the visible front-upper hemisphere (~35% down from the
-  // globe's top edge) instead of wherever its raw lat/lon happens to fall — every arc and its
-  // impact then lands in frame, never off-globe or behind it. Solved via vector math (not
-  // hand-derived constants) so it stays correct if HOME_LATLON ever changes.
+  // Orient the group once so HOME sits on the visible front-upper hemisphere instead of wherever
+  // its raw coordinates fall. Vector math keeps the marker in frame if HOME_LATLON changes.
   const ELEV_DEG = 18; // ~35% down from the top of the globe's rendered disc
   const targetDir = new THREE.Vector3(0, Math.sin(ELEV_DEG * Math.PI / 180), Math.cos(ELEV_DEG * Math.PI / 180));
   const alignQuat = new THREE.Quaternion().setFromUnitVectors(home.clone().normalize(), targetDir);
   const wobbleAxis = new THREE.Vector3(0, 1, 0);
 
-  // Animated arcs: a pool of tube geometries (real 3D thickness — WebGL ignores Line.linewidth
-  // on every browser but Firefox-on-Windows, so a THREE.Line here would render as a 1px hairline
-  // regardless of material settings) from a source to `home`, rising well above the surface.
-  // Each draws in via a sliding-window index range (a moving trail, not a line that stays fully
-  // lit once revealed), with an HDR glowing head and, on arrival, an expanding impact ring.
-  const TUBULAR_SEGS = 48, RADIAL_SEGS = 6, IDX_PER_SEG = RADIAL_SEGS * 6, TRAIL_SEGS = 16;
-  const arcs = [];
   const pulses = [];
-  const headMat = new THREE.MeshBasicMaterial({ color: 0xfff2cf });
-  headMat.color.multiplyScalar(2.3);
-  // Plain (no HDR multiply) tube color: only the head should bloom — an HDR tube across 20
-  // concurrent arcs is enough bloom-eligible surface area to fog the whole panel.
-  const tubeMat = () => new THREE.MeshBasicMaterial({ color: 0xffb454, transparent: true, opacity: 1 });
-  function spawnArc() {
-    if (arcs.length >= 26) return;
-    const src = THREAT_SOURCES[(Math.random() * THREAT_SOURCES.length) | 0];
-    const a = llToVec(src.lat, src.lon);
-    // Apex fixed to 0.25-0.4 globe radii above the surface (never scaled by source distance, so
-    // it can never blow past the panel edge regardless of how far around the globe a source is).
-    const apexR = 80 * (1.25 + Math.random() * 0.15);
-    const mid = a.clone().add(home).multiplyScalar(0.5).normalize().multiplyScalar(apexR);
-    const curve = new THREE.QuadraticBezierCurve3(a, mid, home);
-    const tubeGeo = new THREE.TubeGeometry(curve, TUBULAR_SEGS, 0.65, RADIAL_SEGS, false);
-    tubeGeo.setDrawRange(0, 0);
-    const tube = new THREE.Mesh(tubeGeo, tubeMat());
-    group.add(tube);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(2.1, 10, 10), headMat);
-    group.add(head);
-    arcs.push({ tube, tubeGeo, curve, head, t: 0 });
-  }
-  // Poisson-process spawns (site/lib/liveJitter.js): ~7.14 arcs/sec, same average cadence the
-  // fixed 140ms interval this replaced used.
-  const stopArcs = RM ? null : poissonLoop(() => 7.14, spawnArc);
-  onDispose(() => stopArcs?.());
-
   const pulseMat = () => { const m = new THREE.MeshBasicMaterial({ color: 0x9beeff, transparent: true, opacity: 0.85, side: THREE.DoubleSide }); m.color.multiplyScalar(1.6); return m; };
   function spawnPulse() {
-    // Cap concurrent pulses: several overlapping additive-blended rings at the same point stack
-    // into a blown-out white blob instead of reading as a beacon — a hard cap keeps HOME a crisp
-    // pulsing point no matter how many arcs land close together.
+    // Cap concurrent rings so overlapping pulses keep the beacon crisp.
     if (pulses.length >= 6) return;
     const ring = new THREE.Mesh(new THREE.RingGeometry(1, 1.7, 28), pulseMat());
     ring.position.copy(home);
@@ -319,17 +208,6 @@ function buildGlobe() {
     homeMarker.scale.setScalar(1 + 0.22 * Math.sin(now / 260));
     beaconT += RM ? 0.02 : 0.014;
     if (beaconT >= 1) { beaconT = 0; spawnPulse(); }
-    for (let i = arcs.length - 1; i >= 0; i -= 1) {
-      const arc = arcs[i];
-      arc.t += RM ? 0.014 : 0.009;
-      const headSeg = Math.min(TUBULAR_SEGS, (arc.t * TUBULAR_SEGS) | 0);
-      const startSeg = Math.max(0, headSeg - TRAIL_SEGS);
-      arc.tubeGeo.setDrawRange(startSeg * IDX_PER_SEG, (headSeg - startSeg) * IDX_PER_SEG);
-      arc.tube.material.opacity = arc.t > 0.85 ? Math.max(0, 1 - (arc.t - 0.85) / 0.15) : 1;
-      arc.head.position.copy(arc.curve.getPoint(Math.min(arc.t, 1)));
-      if (arc.t >= 1 && !arc.landed) { arc.landed = true; spawnPulse(); }
-      if (arc.t > 1.12) { group.remove(arc.tube, arc.head); arc.tubeGeo.dispose(); arc.tube.material.dispose(); arcs.splice(i, 1); }
-    }
     for (let i = pulses.length - 1; i >= 0; i -= 1) {
       const p = pulses[i];
       p.t += RM ? 0.05 : 0.032;

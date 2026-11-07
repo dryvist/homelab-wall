@@ -6,19 +6,17 @@ export const lerp = (a, b, t) => a + (b - a) * t;
 export const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 // 'stale': the panel has real data, but it is a held-over last-good value rather than a fresh
-// read (a source that dropped out of the current poll) — distinct from 'pending' (no source
-// wired up yet) and 'error' (the query itself failed).
-const STATES = new Set(['ok', 'empty', 'pending', 'error', 'stale']);
+// read (a source that dropped out of the current poll). 'pending': no reading yet. 'error': the
+// query itself failed. 'empty': the query succeeded with zero rows. 'no-feed': the panel has no
+// data source at all, so it draws no values and says so (site/lib/wall.css).
+const STATES = new Set(['ok', 'empty', 'pending', 'error', 'stale', 'no-feed']);
 
-// `message` is recorded on the panel (data-panel-message-text, invisible) for automation/tests,
-// but only ever painted into the visible [data-panel-message] node for state 'ok' — every other
-// state (pending/empty/error/stale) always has stand-in content on screen instead (sampleData.js,
-// setSampleBadge below), so its message never needs to be, and must not be, visible.
+// `message` is painted into the panel's visible [data-panel-message] node in every state.
 export function setState(panel, state, message = '') {
   if (!STATES.has(state)) throw new Error(`unknown panel state: ${state}`);
   panel.dataset.state = state;
   const notice = panel.querySelector('[data-panel-message]');
-  if (notice) notice.textContent = state === 'ok' ? message : '';
+  if (notice) notice.textContent = message;
 }
 
 // App health score scale (site/lib/queries.js APP_HEALTH_SCORE): 0-9 is the normal range; 10 is
@@ -29,26 +27,6 @@ export const SCORE_DEGRADED_MIN = 5;
 // hue() expects a 0-100 input; a score maps onto it by this fixed 10x scale, which also matches
 // the /10 arc-fraction pattern every score ring/glyph already uses.
 export const scorePct = (s) => (s ?? 0) * 10;
-
-// Mark a panel as showing site/lib/sampleData.js content in place of a real source that
-// returned genuinely nothing this poll (a query that SUCCEEDED with zero rows) — machine-readable
-// only (data-source, invisible), never a visible badge: the wall must never look non-production,
-// live-empty included. `data-source` stays absent (equivalent to "live") until a page renders its
-// first stand-in panel.
-export function setSampleBadge(panel, on) {
-  panel.dataset.source = on ? 'stand-in' : 'live';
-}
-
-// Marks an element (a whole panel, or one sub-element inside an otherwise-real panel, e.g. mc1's
-// WAN overlay inside the real topology graph) as showing stand-in visuals for a feed that has NO
-// live source wired up AT ALL — as opposed to setSampleBadge's "a live query came back empty".
-// Deliberately invisible on the rendered page (a `data-source` attribute only, no on-screen
-// badge/"PENDING" text) so a stand-in panel reads as a normal, finished part of the wall; it never
-// overrides a live signal — nothing that has a real feed ever gets marked this way, live or down.
-export function setStandIn(el, on) {
-  if (on) el.dataset.source = 'stand-in';
-  else delete el.dataset.source;
-}
 
 // The page has no fixed design surface: the stage is 100vw x 100dvh (wall.css) and every grid
 // cell is fr/minmax(0,1fr)-sized, so the grid itself can never overflow its container.

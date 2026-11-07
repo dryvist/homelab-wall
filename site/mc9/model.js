@@ -1,14 +1,14 @@
 // These are signal roles, never identities discovered in metric labels.
 export const NODES = [
-  { id: 'gateway', label: 'Hermes gateway', signal: null, unit: 'events/s', x: .20, y: .27, color: '#f6c780' },
-  { id: 'cron', label: 'Hermes cron', signal: null, unit: 'events/s', x: .12, y: .61, color: '#f6c780', parent: 'gateway' },
+  { id: 'gateway', label: 'Hermes gateway', signal: 'mc9GatewayAgents', unit: 'active agents', x: .20, y: .27, color: '#f6c780' },
+  { id: 'cron', label: 'Hermes cron', signal: 'mc9CronJobs', unit: 'running jobs', x: .12, y: .61, color: '#f6c780', parent: 'gateway' },
   { id: 'donna', label: 'Donna', signal: 'mc9DonnaRate', unit: 'requests/s', x: .47, y: .21, color: '#e8a9d5' },
   { id: 'memory', label: 'Hindsight memory', signal: 'mc9HindsightRate', unit: 'operations/s', x: .44, y: .66, color: '#9ddac9' },
   { id: 'codex', label: 'Codex', signal: 'mc9CodexRate', role: '', unit: 'output tokens/s', x: .73, y: .27, color: '#aebcff' },
-  { id: 'codex-subagents', label: 'Codex subagents', signal: 'mc9CodexRate', role: 'subagents', unit: 'output tokens/s', x: .88, y: .12, color: '#aebcff', parent: 'codex' },
+  { id: 'codex-subagents', label: 'Codex subagents', signal: 'mc9CodexRate', role: 'subagents', unit: 'output tokens/s', x: .88, y: .12, color: '#aebcff', parent: 'codex', absentIsZero: true },
   { id: 'claude', label: 'Claude Code', signal: 'mc9ClaudeMainRate', unit: 'output tokens/s', x: .77, y: .67, color: '#ecb28e' },
-  { id: 'claude-subagents', label: 'Claude subagents', signal: 'mc9ClaudeSubagentRate', unit: 'output tokens/s', x: .91, y: .48, color: '#ecb28e', parent: 'claude' },
-  { id: 'spans', label: 'LLM spans', signal: 'mc9SpanRate', unit: 'spans/s', x: .56, y: .45, color: '#a7d7f0' },
+  { id: 'claude-subagents', label: 'Claude subagents', signal: 'mc9ClaudeSubagentRate', unit: 'output tokens/s', x: .91, y: .48, color: '#ecb28e', parent: 'claude', absentIsZero: true },
+  { id: 'spans', label: 'LLM spans', signal: null, unit: 'spans/s', x: .56, y: .45, color: '#a7d7f0' },
 ];
 
 export const STEP = 300;
@@ -65,7 +65,7 @@ export function shapeNodes(feeds, previous = [], now = Date.now() / 1000) {
     // A satellite's series exists only while it works. A successful poll without its row reads zero
     // while the parent reports, at the parent's sample time.
     const parent = NODES.find((n) => n.id === node.parent);
-    if (!current.length && Array.isArray(feed?.current) && parent?.signal) {
+    if (!current.length && Array.isArray(feed?.current) && node.absentIsZero) {
       const lead = currentRows(parent, feeds[parent.signal], now);
       if (lead.length) current = [{ value: 0, timestamp: Math.min(...lead.map((r) => r.timestamp)) }];
     }
@@ -77,7 +77,7 @@ export function shapeNodes(feeds, previous = [], now = Date.now() / 1000) {
     const seenAt = observed !== null ? Math.min(...current.map((r) => r.timestamp)) : old?.seenAt ?? null;
     const rate = observed ?? old?.rate ?? null;
     const points = feed?.history != null ? history : old?.points || [];
-    const state = observed === null ? (rate === null ? 'pending' : 'stale')
+    const state = !node.signal ? 'no-feed' : observed === null ? (rate === null ? 'pending' : 'stale')
       : now - seenAt > 300 ? 'stale' : observed > 0 ? 'active' : 'idle';
     return refreshNode({ ...node, rate, state, points, lastActive, seenAt,
       historyAt: feed?.history != null ? feed.historyAt : old?.historyAt,

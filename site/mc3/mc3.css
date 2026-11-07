@@ -55,9 +55,11 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
   text-shadow:0 0 18px rgba(255,79,216,.55)}
 .brand .sl{color:#ff4fd8}
 .brand small{display:block;font:400 clamp(9px,1vmin,11px)/1.6 var(--mono);letter-spacing:.3em;color:var(--dim)}
+.brand #subtitle{font-size:clamp(8px,.8vmin,10px);letter-spacing:.1em;white-space:nowrap}
 .kpis{display:flex;gap:clamp(14px,2.4vmin,26px);flex:1;justify-content:center}
 .kpi{display:flex;flex-direction:column;gap:3px;min-width:0}
 .kpi b{font:600 clamp(16px,2.2vmin,24px)/1 var(--disp);color:#fff}
+.kpi b.split{font-size:clamp(11px,1.4vmin,16px);white-space:nowrap}
 .kpi b i{font-style:normal;font-size:.55em;color:var(--dim);margin-left:3px}
 .kpi span{font-size:clamp(9px,1vmin,12px);letter-spacing:.2em;color:#e4e4f0;text-shadow:0 0 6px #000;text-transform:uppercase}
 .clock{text-align:right;font:600 clamp(18px,2.8vmin,34px)/1 var(--disp);color:#fff}
@@ -80,11 +82,13 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
 
 /* Dense fill for the rest of the fleet-health column, below the 3 app rows: req/min, a GPU/VRAM
    gauge, per-model sparklines of each card's large number, and the request feed. cxGpu and the
-   feed carry data-feed="none" when their source is absent; cxReqMin mirrors the real header KPI. */
+   feed carry data-feed state; cxReqMin mirrors the real header KPI. */
 .coreextra{flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;
   padding:6px clamp(8px,1.2vmin,12px) 8px;border-top:1px solid var(--grid);overflow:hidden}
 .cxrow{display:flex;justify-content:space-between;align-items:baseline;font-size:clamp(9px,.9vmin,11px);color:var(--dim);letter-spacing:.12em;text-transform:uppercase}
 .cxrow b{color:#fff;font:600 clamp(14px,1.6vmin,18px)/1 var(--disp);letter-spacing:0}
+.cxrow b.split{font-size:clamp(10px,1.1vmin,13px);white-space:nowrap}
+.cxrow small{color:var(--amber);font-size:.8em;letter-spacing:.06em}
 #gpuGauge{width:100%;height:10px;display:block;flex:none}
 .sparks{display:flex;flex-direction:column;gap:4px;flex:none}
 .spk{display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;font-size:clamp(9px,.85vmin,10px);color:var(--dim)}

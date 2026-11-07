@@ -25,8 +25,8 @@ export async function mockGithub(page: Page) {
 
 // mc6: fixture rows for /api/words (site/mc6/mc6.js fetches it directly, ClickHouse FORMAT
 // JSON: n is a UInt64 serialized as a STRING). Sources with no rows here —
-// antigravity and opencode — must render explicit NO FEED tiles, never stand-in words. The
-// 'minion' row is deliberately from a source mc6 has never heard of: unknown sources are
+// antigravity and opencode — must render explicit NO FEED tiles.
+// The 'minion' row is deliberately from a source mc6 has never heard of: unknown sources are
 // handled generically, same tile treatment, label upper-cased.
 export const words = [
   { source: 'user', word: 'deploy', n: '412' },

@@ -14,7 +14,7 @@ const codex = (nodes) => nodes.find((n) => n.id === 'codex');
 const byId = (nodes, id) => nodes.find((n) => n.id === id);
 
 test('an empty feed is pending, never zero or an invented activity time', () => {
-  for (const node of shapeNodes({}, [], now)) {
+  for (const node of shapeNodes({}, [], now).filter((n) => n.signal)) {
     assert.equal(node.rate, null);
     assert.equal(node.lastActive, null);
     assert.equal(node.state, 'pending');
@@ -150,8 +150,13 @@ test('a satellite without its own row reads zero at the parent sample time while
   const claude = { mc9ClaudeMainRate: { current: [{ labels: {}, value: 1, timestamp: now }] }, mc9ClaudeSubagentRate: { current: [] } };
   assert.equal(byId(shapeNodes(claude, [], now), 'claude-subagents').state, 'idle');
   assert.equal(byId(shapeNodes({ mc9ClaudeSubagentRate: { current: [] } }, [], now), 'claude-subagents').state, 'pending');
-  // Nodes without a signal never infer zero from a parent.
   assert.equal(byId(shapeNodes({}, [], now), 'cron').state, 'pending');
+  const hermes = { mc9GatewayAgents: { current: [{ labels: {}, value: 2, timestamp: now }] }, mc9CronJobs: { current: [] } };
+  assert.equal(byId(shapeNodes(hermes, [], now), 'gateway').state, 'active');
+  // A running-jobs gauge reports zero itself, so its absence is not zero.
+  assert.equal(byId(shapeNodes(hermes, [], now), 'cron').state, 'pending');
+  hermes.mc9CronJobs.current = [{ labels: {}, value: 0, timestamp: now }];
+  assert.equal(byId(shapeNodes(hermes, [], now), 'cron').state, 'idle');
 });
 
 test('a hung request times out while fulfilled and rejected requests keep their result', { timeout: 1000 }, async () => {
@@ -177,7 +182,9 @@ test('generated allow-list matches Q, including the MC9 queries', () => {
   assert(Q.mc9ClaudeSubagentRate.includes('agent_name!~"main|"'));
   assert.equal(Q.mc9ClaudeMainRate, 'sum(rate(claude_code_token_usage_total{type="output",agent_name=~"main|"}[5m]))');
   assert.equal(Q.mc9ClaudeSubagentRate, 'sum(rate(claude_code_token_usage_total{type="output",agent_name!~"main|"}[5m]))');
-  assert(Q.mc9SpanRate.includes('traces_span_metrics_calls_total'));
+  assert(Q.mc9GatewayAgents.includes('hermes_gateway_active_agents'));
+  assert(Q.mc9CronJobs.includes('hermes_cron_jobs_running'));
+  assert.equal(Q.mc9SpanRate, undefined);
   for (const [key, expr] of Object.entries(Q).filter(([key]) => key.startsWith('mc9'))) {
     assert(!expr.includes('or vector(0)'), key);
     assert(!/by \([^)]*(session_id|user_id|instance)/.test(expr), key);

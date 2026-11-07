@@ -1,7 +1,7 @@
 # MC1 · Mission Control
 
-MC1 is the estate overview. It shows every configured node, the network topology, service health, storage, firewall
-activity and the large language model (LLM) router, with a ribbon of recent LLM requests along the bottom. The header
+MC1 is the estate overview. It shows configured nodes, a full-page network topology behind the panels, service health,
+storage, WAN rates and the large language model (LLM) router, with recent LLM requests along the bottom. The header
 title comes from `config.json` `title` and defaults to `HOMELAB`.
 
 ![MC1 Mission Control](screenshots/mc1.jpg)
@@ -12,15 +12,17 @@ title comes from `config.json` `title` and defaults to `HOMELAB`.
   - The ring shows the lowest score among scored apps, so the estate never reads healthier than its worst app.
   - The key figures are guests (`config.json` `guestCount`), cores, memory in GB, raw storage in TB, apps, and
     24-hour uptime.
-- Nodes: one card per node in `config.json` `nodeRoles`, then one card per `extraNodes` entry.
+- Nodes: one card per node in `config.json` `nodeRoles`, in reverse name order, then one card per `extraNodes` entry.
   - Each card shows central processing unit (CPU), memory and load gauges, a graphics processing unit (GPU) gauge,
     and a 30-minute CPU sparkline.
+  - Each node has its own GPU gauge. Once GPU inventory is available, a node with no GPU shows `NO GPU`.
   - The card subtitle shows the role, the hottest temperature and the uptime in days.
   - A role that only repeats the node's own name is left out of the subtitle.
   - The panel title counts nodes up out of all nodes.
-- Network fabric · topology: one cluster per `config.json` group, each labelled with its app count and health.
-  - Overlays show wide area network (WAN) links, firewall event rates per virtual local area network (VLAN), a VLAN
-    pulse strip, and counts of nodes up, apps scored, models up and the last update time.
+- Network fabric · topology: one cluster per `config.json` group and hubs for returned VLAN metrics.
+  - The topology fills the page behind the panels. WAN rates come from UniFi WAN byte counters.
+  - VLAN hubs use client byte rates. Each network and VLAN pair is its own hub, named with its VLAN.
+  - Labels show group app counts and health, nodes up, apps scored, models up and the last update time.
   - On a software WebGL renderer the topology drops to a 2D mode, labelled `2D MODE`. `?gl=3d` or `?gl=2d` forces
     either.
 - Service health: a honeycomb of every app in `config.json` `groups`, in group order, with one empty cell between
@@ -28,18 +30,20 @@ title comes from `config.json` `title` and defaults to `HOMELAB`.
   - An app listed in two groups appears in the first one.
   - Each cell shows the app's health score from 0 to 10.
   - The title counts apps OK (8 or more), DEGRADED (5 to under 8) and DOWN (under 5).
-- Storage: up to 12 filesystems over 1 GB, largest first, each with host, pool or mount name, percent used and size.
-  - A ZFS pool is counted once per host.
-  - The same device and mountpoint reported by several hosts is one row, labelled `shared`.
+- Storage: pool and filesystem rows, largest first, each with node, pool or mount name, percent used and size.
+  - A pool is counted once per node.
+  - The same device and mountpoint reported by several nodes is one row, labelled `shared`.
   - Network and virtual filesystems are excluded by the query.
+  - All pools are included. If the rows do not fit, the panel shows a `+N more` count.
+  - Sizes from 900 GB through 1 TB display as `1T`.
   - The title shows used and total TB.
-- Firewall: two columns, `Blocked at the edge` and `Live firewall · flows`.
+- Firewall: the `Blocked at the edge` and `Live firewall · flows` columns have no feed and show `No feed`.
 - LLM fabric: up to 9 router models, sorted by state, then output tok/s, then name.
   - It lists only models with real requests in the last 4 days. The router's own health-check caller does not count.
   - When that query fails, it lists every deployment instead.
   - Each row shows a state dot, the model name, a token-rate sparkline, output tok/s and the state `ok`, `degraded`
     or `outage`.
-  - The title counts models up out of all models, plus their summed tok/s.
+  - The title shows local and cloud model counts and rates separately.
 - LLM activity ribbon: the 24 newest router requests, newest first, scrolling along the bottom.
   - MC1's activity ribbon reads `/api/llm/recent` once per minute, using metadata only: `ts` (Coordinated Universal
     Time), `source`, `model`, `role`, and `chars`.
@@ -63,21 +67,21 @@ title comes from `config.json` `title` and defaults to `HOMELAB`.
 - `acceleratorBusy`: busy percent per accelerator, averaged over 5 minutes. Every GPU gauge shows the busiest one.
 - `fsSize`: filesystem size in bytes.
 - `fsAvail`: filesystem free bytes.
+- `pveStorageUsed`: pool usage by storage identifier.
 - `llmState`: the router deployment state per model: 0 ok, 1 degraded, 2 outage.
 - `llmUsed4d`: models with a real request in the last 4 days. Only these models get a row.
 - `llmTokRate`: output tok/s per model over 5 minutes.
-- `vlanFwRate`: firewall events per second per VLAN over 5 minutes.
+- `wanRxBytes` and `wanTxBytes`: receive and transmit byte rates from the WAN counters.
+- `vlanRxBytes` and `vlanTxBytes`: client receive and transmit byte rates, grouped by network and VLAN.
 
 The ribbon reads `/api/llm/recent`, outside Prometheus. Its contract is in [the runtime contract](runtime-contract.md).
 
 ## States
 
 - Pending:
-  - MC1's GPU gauges are the exception to stand-in content. With no `accelerator:busy_percent:avg5m` reading they
-    draw an empty gauge and the nodes panel is `pending` (`error` when the query fails), never a stand-in value.
-  - An `extraNodes` entry with no exporter is a pending card. It shows its role and stand-in gauges.
-  - The LLM fabric panel is `pending` until the router answers, and `error` when its query fails.
-  - On the ribbon, no rows or no successful response yet shows `pending`.
+  - A node without current metrics keeps its card and shows pending or its last real values as stale.
+  - Missing GPU readings show `—`; a node without a GPU shows `NO GPU`.
+  - The LLM fabric is pending until readings arrive and shows its query message when a query fails.
 - Idle: a model at 0.05 tok/s or less reads `idle`. A model in outage reads `DOWN`.
 - STALE:
   - A node that drops out of a single poll shows a stale state instead of disappearing.
@@ -86,17 +90,10 @@ The ribbon reads `/api/llm/recent`, outside Prometheus. Its contract is in [the 
   - The last known values survive a page reload.
   - The node set itself always comes from `config.json` (`nodeRoles` and `extraNodes`), never from whichever series
     a poll happens to return.
-  - On the ribbon, rows older than 2 minutes, or retained after a failed refresh, show `STALE <age>`. After
-    5 minutes this becomes `STALE since <time>`.
+  - Ribbon rows retained after a failed refresh, or older than 2 minutes, show `STALE <age>`. After 5 minutes this
+    becomes `STALE since <time>`.
   - Successful empty responses clear the ribbon.
-- Stand-in:
-  - A panel whose source is not wired yet, or whose query comes back empty or fails, shows plausible stand-in
-    content instead of a placeholder.
-  - Nothing on screen marks it. A `data-source="stand-in"` attribute (plus `data-state` `empty`, `pending` or
-    `error` for an empty or failed query) records it for automation only.
-  - The firewall columns and the WAN overlay are always stand-in.
-  - The VLAN rates are stand-in while `vlanFwRate` is empty.
-  - The honeycomb, storage and LLM fabric use sample data while their query is empty or failed.
-  - Each key figure uses a stand-in value while its own source is missing.
-  - With some apps scored, an app with no score of its own draws as a red 0.
+- Missing data: cells and figures without a reading show `—`; an app without a score does not draw a score.
+- Query failures: panels show their visible query message. The firewall columns show `No feed` because they have no
+  source.
 - NO DATA and Unavailable: not used on MC1.

@@ -20,6 +20,7 @@ h2{font-weight:400;font-size:clamp(13px,1.12vw,22px);margin:0;color:var(--muted)
 #unclassified-share[data-state="stale"]{color:var(--fallback)}
 #unclassified-share[data-state="pending"]{color:var(--muted)}
 [data-state="pending"] .reading{font-size:clamp(24px,2.8vw,48px);color:var(--muted)}
+[data-state="pending"] .reading.split,[data-panel="in-flight"] .reading.split,[data-panel="ttft"] .reading.split{font-size:clamp(12px,1.1vw,21px)}
 [data-state="stale"] .reading{opacity:.5}
 [data-state="stale"] .status{color:var(--fallback)}
 #switchboard{flex:1;min-height:0;display:flex;flex-direction:column}
@@ -35,6 +36,7 @@ h2{font-weight:400;font-size:clamp(13px,1.12vw,22px);margin:0;color:var(--muted)
 .terminal small{display:block;color:var(--muted);font-size:.78em}
 .terminal .failure{color:var(--failure)}.terminal .fallback{color:var(--fallback)}
 .terminal .rate{white-space:nowrap;color:var(--ink);font-variant-numeric:tabular-nums}
+.terminal .rate.split{font-size:clamp(9px,.68vw,13px)}
 .terminal:focus-visible{outline:2px solid var(--local);outline-offset:4px}
 #models{gap:0}
 .bank{flex:none;margin:0 0 5px}.bank h3{font-size:clamp(11px,.86vw,17px);font-weight:600;margin:0 0 2px;color:var(--bank)}

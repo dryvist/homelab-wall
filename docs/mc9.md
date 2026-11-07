@@ -9,24 +9,19 @@ rate and ringed by its last 24 hours. The default rotator lists MC9 last, after 
 ## Panels
 
 - Header: `Mission Control 9 · Beta`, the title, a status line and a clock.
-  - The status line counts signals reporting and signals pending, and adds `STALE data` when any node is stale.
+  - The status line counts signals reporting, pending and without a feed, and adds `STALE data` when any node is stale.
 - Constellation: nine nodes, each with its label, rate, unit, and a last-seen or state line.
-  - Hermes gateway and Hermes cron, in events/s.
-  - Donna, in requests/s.
-  - Hindsight memory, in operations/s.
-  - Codex and Codex subagents, in output tokens/s.
-  - Claude Code and Claude subagents, in output tokens/s.
-  - Large language model (LLM) spans, in spans/s.
+  - The gateway shows active agents; the cron node shows running jobs.
+  - Request activity is measured in requests/s, memory activity in operations/s, and agent output in tokens/s.
+  - The LLM spans node has no source and shows `No feed`.
 - Footer: the legend (Active, Idle, Pending), how to read size and rings, and a `Pause motion` button.
 
 Node rules:
 
-- Codex groups `session_source` into primary and `subagent_*` activity.
-- Claude Code groups `agent_name` into main (including an absent label) and subagents.
-- Both show output tokens/s.
-- Donna shows router requests/s for its key alias; Hindsight shows operations/s.
-- The LLM spans node consumes the trace pipeline's `traces_span_metrics_calls_total` with a generative AI model or
-  system label.
+- The two agent output nodes separate primary and subagent activity.
+- One request node shows requests/s; one memory node shows operations/s.
+- The gateway and cron nodes show the current totals from their respective queries.
+- The LLM spans node has no signal.
 - Node area grows monotonically with the 5m rate, approaching its ring; signals have different units and are
   labelled.
 - Rings show measured 5m rates over 24h (brightness relative to each node's own maximum), with timestamp gaps
@@ -40,14 +35,12 @@ Node rules:
 
 ## Data
 
-MC9 uses only the Prometheus gateway or snapshot, with `mc9*` queries in `Q`.
+MC9 reads role-specific queries from the metrics gateway or snapshot.
 
-- `mc9DonnaRate`: router requests per second for Donna's key alias, over 5 minutes.
-- `mc9HindsightRate`: Hindsight operations per second, over 5 minutes.
-- `mc9CodexRate`: Codex output tokens per second, split into primary and subagents.
-- `mc9ClaudeMainRate`: Claude Code main-agent output tokens per second.
-- `mc9ClaudeSubagentRate`: Claude Code subagent output tokens per second.
-- `mc9SpanRate`: generative AI trace spans per second.
+- Request activity, memory activity and agent output rates use trailing 5-minute windows.
+- `mc9GatewayAgents`: current active-agent total.
+- `mc9CronJobs`: current running-job total.
+- The LLM spans node has no query.
 
 Each key is read as a current value and as a 24-hour range at 5-minute steps.
 
@@ -56,12 +49,11 @@ Each key is read as a current value and as a 24-hour range at 5-minute steps.
 
 ## States
 
-- MC9 never substitutes sample values.
+- MC9 shows measured readings or a visible missing-data state; it does not fill missing readings with invented values.
 - Pending:
   - Missing signals stay visible as pending.
-  - The LLM spans source is pending until span metrics arrive.
-  - Hermes gateway and Hermes cron have no signal yet, so they stay pending.
   - An empty 24h ring is pending.
+- No feed: the LLM spans node shows `No feed` and the status line counts it.
 - STALE:
   - A signal that disappears or fails retains its last measured value as STALE.
   - Current readings become stale after 300 seconds even during an unfinished poll.

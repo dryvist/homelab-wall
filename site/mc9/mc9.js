@@ -37,19 +37,20 @@ function renderLabels() {
   for (const node of nodes) {
     const el = elements.get(node.id);
     el.dataset.state = node.state;
-    el.querySelector('.rate').textContent = node.rate == null ? 'Pending · no activity data'
+    el.querySelector('.rate').textContent = node.state === 'no-feed' ? 'No feed' : node.rate == null ? 'Pending · no activity data'
       : `${node.state === 'stale' ? 'STALE · ' : ''}${node.rate.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${node.unit}`;
-    el.querySelector('.age').textContent = node.state === 'stale'
+    el.querySelector('.age').textContent = node.state === 'no-feed' ? '' : node.state === 'stale'
       ? now - node.seenAt < 300 ? `STALE ${ageLabel(node.seenAt, now)}` : `STALE since ${new Date(node.seenAt * 1000).toISOString().slice(11, 19)} UTC`
       : `Last seen: ${ageLabel(node.lastActive, now)}`;
-    el.querySelector('.history').textContent = node.historyStale ? 'History stale'
+    el.querySelector('.history').textContent = node.state === 'no-feed' ? '' : node.historyStale ? 'History stale'
       : node.historyPending ? 'History pending' : '';
   }
   const measured = nodes.filter((n) => n.state === 'active' || n.state === 'idle');
+  const noFeed = nodes.filter((n) => n.state === 'no-feed').length;
   // Stale history marks the page only where a history ring is drawn.
   const stale = nodes.some((n) => n.state === 'stale' || (n.historyStale && !n.historyPending));
   panel.dataset.state = stale ? 'stale' : measured.length ? 'ok' : 'pending';
-  document.getElementById('status').textContent = `${measured.length} signals reporting · ${nodes.filter((n) => n.state === 'pending').length} pending${stale ? ' · STALE data' : ''}`;
+  document.getElementById('status').textContent = `${measured.length} signals reporting · ${nodes.filter((n) => n.state === 'pending').length} pending${noFeed ? ` · ${noFeed} no feed` : ''}${stale ? ' · STALE data' : ''}`;
   document.getElementById('clock').textContent = new Date().toLocaleTimeString();
 }
 

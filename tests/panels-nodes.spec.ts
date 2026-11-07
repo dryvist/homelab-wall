@@ -12,7 +12,7 @@ test('a node missing from a later poll stays rendered, marked stale, with its la
   test.skip(!!wallUrl, 'exercises the fixture poll-drop sequence only');
   const nodeNames = ['node-a', 'node-b', 'node-c', 'node-d'];
   const dropped = 'node-a';
-  const inst = (n: string) => ({ instance: `${n}.example.test:9100`, job: 'pve_node_exporter' });
+  const inst = (n: string) => ({ instance: `${n}:9100`, job: 'pve_node_exporter' });
   const vec = (rows: Array<[Record<string, string>, number]>) => rows.map(([metric, v]) => ({ metric, value: [Date.now() / 1000, String(v)] }));
   const cores = (n: string) => (n === dropped ? 80 : 16);
 
@@ -53,8 +53,7 @@ test('a node missing from a later poll stays rendered, marked stale, with its la
   await expect.poll(() => cpuPolls, { message: 'waiting for a second CPU poll to drop node-a' }).toBeGreaterThan(1);
   await expect(cards).toHaveCount(4); // still 4 cards — the node was never removed
 
-  // nodeRoles preserves insertion order, so #node0 is node-a (the dropped one).
-  const staleCard = page.locator('#node0');
+  const staleCard = cards.filter({ hasText: dropped.toUpperCase() });
   await expect(staleCard).toHaveClass(/stale/);
   // "STALE <age>" only ever renders from a held-over lastGood entry (mc1.js drawNodes) — it
   // could not appear unless the node's earlier good reading was kept and reused.
@@ -71,13 +70,13 @@ test('a node missing from a later poll stays rendered, marked stale, with its la
 // and passes once queries.js excludes network filesystems natively.
 test('storage panel excludes network mounts and keys ZFS pools per host', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises the fixture NFS/ZFS-collision fixture only');
-  const inst = (n: string) => ({ instance: `${n}.example.test:9100`, job: 'pve_node_exporter' });
+  const inst = (n: string) => ({ instance: `${n}:9100`, job: 'pve_node_exporter' });
   const vec = (rows: Array<[Record<string, string>, number]>) => rows.map(([metric, v]) => ({ metric, value: [Date.now() / 1000, String(v)] }));
 
   await page.route('**/config.json', (r: Route) => r.fulfill({
     json: {
       title: 'HOMELAB', refreshSeconds: 15, guestCount: 2,
-      nodeRoles: { 'host-a': 'host-a', 'host-b': 'host-b' }, extraNodes: [],
+      nodeRoles: { 'node-a': 'node-a', 'node-b': 'node-b' }, extraNodes: [],
       groups: [{ name: 'apps', apps: ['alpha'] }],
     },
   }));
@@ -91,13 +90,13 @@ test('storage panel excludes network mounts and keys ZFS pools per host', async 
       // itself asks to exclude it, the same way a real server would honor the PromQL filter.
       const queryExcludesNfs = /nfs/i.test(q) && q.includes('fstype');
       const rows: Array<[Record<string, string>, number]> = [
-        [{ ...inst('host-a'), device: 'rpool/ROOT/pve-1', mountpoint: '/', fstype: 'zfs' }, 2e12 * frac],
-        [{ ...inst('host-b'), device: 'rpool/ROOT/pve-1', mountpoint: '/', fstype: 'zfs' }, 5e12 * frac],
-        [{ ...inst('host-a'), device: 'shared:/vol', mountpoint: '/mnt/shared', fstype: 'ext4' }, 3e12 * frac],
-        [{ ...inst('host-b'), device: 'shared:/vol', mountpoint: '/mnt/shared', fstype: 'ext4' }, 3e12 * frac],
+        [{ ...inst('node-a'), device: 'rpool/ROOT/pve-1', mountpoint: '/', fstype: 'zfs' }, 2e12 * frac],
+        [{ ...inst('node-b'), device: 'rpool/ROOT/pve-1', mountpoint: '/', fstype: 'zfs' }, 5e12 * frac],
+        [{ ...inst('node-a'), device: 'shared-volume', mountpoint: '/mnt/shared', fstype: 'ext4' }, 3e12 * frac],
+        [{ ...inst('node-b'), device: 'shared-volume', mountpoint: '/mnt/shared', fstype: 'ext4' }, 3e12 * frac],
       ];
       if (!queryExcludesNfs) {
-        rows.push([{ ...inst('host-a'), device: 'host-b.example.test:/rpool/ROOT/pve-1', mountpoint: '/mnt/pve/evac', fstype: 'nfs4' }, 5e12 * frac]);
+        rows.push([{ ...inst('node-a'), device: 'node-b:/rpool/ROOT/pve-1', mountpoint: '/mnt/evac', fstype: 'nfs4' }, 5e12 * frac]);
       }
       return r.fulfill({ json: { status: 'success', data: { resultType: 'vector', result: vec(rows) } } });
     }
@@ -106,15 +105,15 @@ test('storage panel excludes network mounts and keys ZFS pools per host', async 
 
   await page.goto('/mc1/?gl=2d');
   const rows = page.locator('#strows .st');
-  // 3 rows: host-a's rpool, host-b's rpool (kept as two — same pool name, different hosts,
+  // 3 rows: node-a's rpool, node-b's rpool (kept as two — same pool name, different nodes,
   // different sizes), and the one true shared device — never a 4th row for the NFS re-export.
   await expect(rows).toHaveCount(3);
 
   const labels = await rows.locator('span:first-child').allTextContents();
-  expect(labels.map((l) => l.trim().toUpperCase().replace(/\s+/g, ' ')).sort()).toEqual(['HOST-A RPOOL', 'HOST-B RPOOL', 'SHARED SHARED']);
+  expect(labels.map((l) => l.trim().toUpperCase().replace(/\s+/g, ' ')).sort()).toEqual(['NODE-A RPOOL', 'NODE-B RPOOL', 'SHARED SHARED']);
 
-  // 2e12 (host-a rpool) + 5e12 (host-b rpool) + 3e12 (shared) = 10e12 bytes = 10.0 TB of unique
-  // local storage — the NFS re-export of host-b's own pool never adds another 5e12 on top.
+  // 2e12 (node-a rpool) + 5e12 (node-b rpool) + 3e12 (shared) = 10e12 bytes = 10.0 TB of unique
+  // local storage — the NFS re-export of node-b's own pool never adds another 5e12 on top.
   await expect(page.locator('#sttot')).toContainText('10.0 TB');
 });
 

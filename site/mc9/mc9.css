@@ -10,7 +10,7 @@ h1{font-weight:400;font-size:clamp(24px,2.7vw,52px);margin:0;letter-spacing:-.03
 .orb{height:clamp(70px,9vw,170px);position:relative}.node h2{font-weight:600;font-size:clamp(13px,1.25vw,24px);margin:.1em 0 .25em}
 .rate{font-size:clamp(12px,1.1vw,22px);font-variant-numeric:tabular-nums;color:var(--signal)}
 .age,.history{font-size:clamp(10px,.85vw,17px);color:var(--muted);margin:.3em 0 0}.history:empty{display:none}
-.node[data-state=pending] h2,.node[data-state=idle] h2{color:var(--muted)}.node[data-state=stale] .rate{color:var(--amber)}
+.node[data-state=pending] h2,.node[data-state=no-feed] h2,.node[data-state=idle] h2{color:var(--muted)}.node[data-state=stale] .rate{color:var(--amber)}
 footer{display:flex;align-items:center;justify-content:space-between;gap:2vw;color:var(--muted);font-size:clamp(11px,.9vw,18px);border-top:1px solid var(--line);padding-top:1.4vh}
 footer p{margin:0;line-height:1.6}.legend{display:flex;align-items:center;gap:.65em}.legend span{width:.65em;height:.65em;border-radius:50%;margin-left:.6em}
 .active-dot{background:var(--lilac);box-shadow:0 0 9px var(--lilac)}.idle-dot{background:#626f8e}.pending-dot{border:1px dashed var(--muted)}
