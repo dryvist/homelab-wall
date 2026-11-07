@@ -4,7 +4,7 @@
 // display addons (bloom/afterimage/chromatic-aberration nodes) the WebGPU scene uses, into
 // site/vendor/three/ — this is a static site with no bundler,
 // so the browser imports these files directly (via each page's <script type="importmap">).
-// Regenerated from node_modules on every install/release (ci.yml, release.yml); never
+// Git ignores the output. CI and the release workflow regenerate it from node_modules; never
 // hand-edited. Run: node scripts/vendor-three.mjs
 import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';

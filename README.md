@@ -19,6 +19,8 @@ Run it locally from a clone:
 ```sh
 git clone https://github.com/dryvist/homelab-wall.git
 cd homelab-wall
+npm ci
+node scripts/vendor-three.mjs
 cat > site/config.json <<'EOF'
 {
   "title": "HOMELAB",
@@ -151,6 +153,7 @@ Details: [docs/mc9.md](docs/mc9.md).
 ```sh
 direnv allow                                       # optional: the Nix development shell
 npm ci
+node scripts/vendor-three.mjs                      # generate site/vendor/three
 npx tsc --noEmit                                   # typecheck
 node --test 'tests/*.test.js' 'tests/*.test.mjs'   # unit tests
 npx playwright install chromium webkit
@@ -168,15 +171,15 @@ npx playwright test                                # end-to-end tests
 - Set `WALL_URL` to run the suite against a deployed wall. The `live` project then also runs `tests/wall.live.spec.ts`.
 - After changing `site/lib/queries.js`, run `node scripts/gen-queries.mjs`. CI fails when `site/queries.json` is out
   of date.
-- After changing the `three` version, run `node scripts/vendor-three.mjs`. CI fails when `site/vendor/three` is out of
-  date.
+- After changing the `three` version, run `node scripts/vendor-three.mjs` again. Git ignores `site/vendor/three`. CI and
+  the release workflow generate it.
 
 Layout:
 
 - `site/index.html` and `site/rotator/`: the rotator.
 - `site/mc1/` to `site/mc9/`: one folder per page.
 - `site/lib/`: the Prometheus client, the queries and health score, and shared stage and render helpers.
-- `site/vendor/` and `site/fonts/`: vendored three.js, d3-cloud and fonts.
+- `site/vendor/` and `site/fonts/`: generated three.js (not committed), vendored d3-cloud and fonts.
 - `site/sw.js`: the service worker that keeps the wall bootable while the origin is down.
 - `scripts/`: the query allow-list generator and the three.js vendoring script.
 - `tests/`: Playwright specs and unit tests, against fixture data.
