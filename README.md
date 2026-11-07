@@ -77,7 +77,7 @@ Requests time out after 10 seconds. Current readings become stale after
 refresh fails or its last successful refresh is over 10 minutes old; a series
 that has gone quiet keeps current history. An empty 24h ring is pending.
 No host, session, or user identities appear. Pause and reduced motion stop
-glow animation. The default rotator includes MC9 immediately after MC6.
+glow animation. The default rotator lists MC9 last, after MC8.
 
 A panel whose source is not wired yet, or whose query comes back empty or
 fails, shows plausible stand-in content instead of a placeholder. Nothing on
