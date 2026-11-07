@@ -1,7 +1,7 @@
 import { query } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
 import { esc, loop, onDispose, adaptiveDpr, loadConfig, signalReady } from '/lib/stage.js';
-import { BANKS, shapeRates, retain, modelKey, fresh, shareState, withSourceTimes, increased, bounded, windowAge, windowLabel, refreshMs, REQUEST_TIMEOUT_MS, ZERO_WHEN_EMPTY, feedValue } from './data.js';
+import { BANKS, shapeRates, retain, modelKey, fresh, shareState, withSourceTimes, increased, bounded, windowAge, windowLabel, refreshMs, REQUEST_TIMEOUT_MS, ZERO_WHEN_EMPTY, IDLE_WHEN_EMPTY, feedValue } from './data.js';
 
 const $ = (id) => document.getElementById(id);
 const board = $('switchboard'), canvas = $('wires'), ctx = canvas.getContext('2d');
@@ -197,7 +197,8 @@ async function refresh() {
     for (const key of feedKeys) {
       const result = rows.get(key);
       const timed = result && sourceTimes[key] ? withSourceTimes(result, rows.get(sourceTimes[key])) : result;
-      feeds[key] = retain(feeds[key], timed, now, { emptyIsZero: ZERO_WHEN_EMPTY.has(key), liveAt });
+      const idleAt = IDLE_WHEN_EMPTY.has(key) ? Number(rows.get(sourceTimes[key])?.[0]?.value) * 1000 : null;
+      feeds[key] = retain(feeds[key], timed, now, { emptyIsZero: ZERO_WHEN_EMPTY.has(key), liveAt, idleAt });
     }
     render();
   } finally { refreshing = false; }

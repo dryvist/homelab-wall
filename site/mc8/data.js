@@ -68,10 +68,11 @@ function sourceAt(rows, now) {
 }
 
 // A failed poll (null) keeps last-good rows and their time, stale. A poll whose samples are all non-finite
-// is idle while its source is fresh: zero requests make a p95 NaN. A successful empty poll is zero only
-// when emptyIsZero (failure counters and spend) and router liveness, liveAt in ms, is fresh; otherwise it
-// is stale. Other empty polls hold last-good rows, since no sample is no measurement.
-export function retain(previous, rows, now, { emptyIsZero = false, liveAt = null } = {}) {
+// is idle while its source is fresh: zero requests make a p95 NaN. The store drops NaN, so a successful
+// empty poll is idle too while the key's own source time, idleAt in ms, is fresh. A successful empty poll
+// is zero only when emptyIsZero (failure counters and spend) and router liveness, liveAt in ms, is fresh;
+// otherwise it is stale. Other empty polls hold last-good rows, since no sample is no measurement.
+export function retain(previous, rows, now, { emptyIsZero = false, liveAt = null, idleAt = null } = {}) {
   const clean = validRows(rows);
   if (clean.length) {
     const at = sourceAt(clean, now);
@@ -79,6 +80,9 @@ export function retain(previous, rows, now, { emptyIsZero = false, liveAt = null
   }
   const at = rows?.length ? sourceAt(rows, now) : null;
   if (at != null && now - at <= FRESH_MS) return { rows: [], at, state: 'idle' };
+  if (Array.isArray(rows) && !rows.length && usable(idleAt, now) && now - idleAt <= FRESH_MS) {
+    return { rows: [], at: Math.min(idleAt, now), state: 'idle' };
+  }
   if (Array.isArray(rows) && emptyIsZero && usable(liveAt, now) && now - liveAt <= FRESH_MS) return { rows: [], at: now, state: 'ok' };
   if (previous?.rows.length || previous?.at != null || previous?.state === 'stale') return { ...previous, state: 'stale' };
   if (at != null || (Array.isArray(rows) && emptyIsZero)) return { rows: [], at, state: 'stale' };
@@ -89,6 +93,8 @@ export function retain(previous, rows, now, { emptyIsZero = false, liveAt = null
 // no failures, or no OpenRouter spend, since provider series exist only after use. Empty rate or latency polls
 // stay unmeasured.
 export const ZERO_WHEN_EMPTY = new Set(['mc8Failures', 'mc8Fallbacks', 'mc8SpendCents']);
+// A successful empty poll of these percentiles is idle while their own histogram source time is fresh.
+export const IDLE_WHEN_EMPTY = new Set(['mc8TtftP95']);
 // A feed's single value: its first row, zero for a fresh empty zero-when-empty poll, otherwise null.
 export const feedValue = (feed) => (feed?.state === 'ok' && !feed.rows.length ? 0 : feed?.rows[0]?.value ?? null);
 

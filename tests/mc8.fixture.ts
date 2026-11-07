@@ -26,7 +26,7 @@ export function mc8Answer(expr: string) {
   return [];
 }
 
-export async function mockMc8(page: Page, opts: { empty?: boolean; fail?: () => boolean; snapshot?: boolean; failure?: boolean; fallback?: boolean } = {}) {
+export async function mockMc8(page: Page, opts: { empty?: boolean; fail?: () => boolean; snapshot?: boolean; failure?: boolean; fallback?: boolean; idleTtft?: boolean } = {}) {
   await page.route('**/config.json', (r) => r.fulfill({ json: { refreshSeconds: 1, ...(opts.snapshot ? { snapshot: '/data/mc8.json' } : {}) } }));
   await page.route('**/api/prom/query?**', (r) => {
     if (opts.fail?.()) return r.fulfill({ status: 500, json: { status: 'error' } });
@@ -35,7 +35,9 @@ export async function mockMc8(page: Page, opts: { empty?: boolean; fail?: () => 
     if ((opts.failure && expr === Q.mc8Failures) || (opts.fallback && expr === Q.mc8Fallbacks)) {
       result[0].value[1] = '1';
     }
-    return r.fulfill({ json: { status: 'success', data: { resultType: 'vector', result: opts.empty ? [] : result } } });
+    // idleTtft: no TTFT requests in the window, while the histogram's sample time stays fresh.
+    const none = opts.empty || (opts.idleTtft && expr === Q.mc8TtftP95);
+    return r.fulfill({ json: { status: 'success', data: { resultType: 'vector', result: none ? [] : result } } });
   });
   await page.route('**/data/mc8.json', (r) => r.fulfill({ json: {
     generated_at: new Date().toISOString(),

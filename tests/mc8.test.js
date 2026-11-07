@@ -144,6 +144,7 @@ test('spend, in-flight, TTFT and failure freshness read their raw-series sample 
   assert.equal(Q.mc8SpendSourceTime, 'max(tlast_over_time(litellm_spend_metric_total{job="llm_router"}[5m]))');
   assert.equal(Q.mc8InFlightSourceTime, 'max(tlast_over_time(litellm_in_flight_requests{job="llm_router"}[5m]))');
   assert.equal(Q.mc8TtftSourceTime, 'max(tlast_over_time(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router"}[5m]))');
+  assert.equal(Q.mc8TtftP95, 'histogram_quantile(0.95, sum by (le) (increase(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router"}[5m])))');
   assert.equal(Q.mc8FailuresSourceTime, 'max by (model, api_provider) (tlast_over_time(litellm_deployment_failure_responses_total{job="llm_router"}[5m]))');
   assert.equal(Q.mc8FallbacksSourceTime, 'max by (model, api_provider) (tlast_over_time(litellm_deployment_failed_fallbacks_total{job="llm_router"}[5m]))');
   // Evaluation time is fresh (1300 s) but the raw sample is 1000 s old: the reading is stale.
