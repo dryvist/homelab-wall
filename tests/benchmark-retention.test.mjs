@@ -53,14 +53,53 @@ test('a held row keeps its last source time when only its age row is current', a
   const now = 1_700_200_000;
   const { retainMeasurements, refreshFreshness, clock, empty, ageFor } = await setup(t, now);
   const labels = { backend: 'vllm', model: 'held-without-value' };
-  const ageKey = ageFor.enginePrefixPercent;
-  retainMeasurements({ ...empty, enginePrefixPercent: [{ labels, value: 40 }], [ageKey]: [{ labels, value: now }] });
+  const ageKey = ageFor.engineKvPercent;
+  retainMeasurements({ ...empty, engineKvPercent: [{ labels, value: 40 }], [ageKey]: [{ labels, value: now }] });
   clock.ms += 600_000;
   const later = refreshFreshness(retainMeasurements({ ...empty, [ageKey]: [{ labels, value: now + 599 }] }));
-  const row = later.data.enginePrefixPercent.find((item) => item.labels.model === labels.model);
+  const row = later.data.engineKvPercent.find((item) => item.labels.model === labels.model);
   assert.equal(row.value, 40);
   assert.equal(row.sourceTimestamp, now);
-  assert.ok(later.stale.get('enginePrefixPercent').has(row));
+  assert.ok(later.stale.get('engineKvPercent').has(row));
+});
+
+test('a percentile or ratio without a row reads Idle while its source is fresh', async (t) => {
+  const now = 1_700_600_000;
+  const { retainMeasurements, refreshFreshness, clock, empty, ageFor } = await setup(t, now);
+  const labels = { backend: 'vllm', model: 'idle-without-rows' };
+  const keys = ['engineTtftP50', 'engineE2eP95', 'enginePrefixPercent', 'engineSpecPercent'];
+  const first = { ...empty };
+  for (const key of keys) Object.assign(first, { [key]: [{ labels, value: 0.5 }], [ageFor[key]]: [{ labels, value: now }] });
+  retainMeasurements(first);
+  clock.ms += 60_000;
+  const later = { ...empty };
+  for (const key of keys) later[ageFor[key]] = [{ labels, value: now + 59 }];
+  const result = refreshFreshness(retainMeasurements(later));
+  for (const key of keys) {
+    const rows = result.data[key].filter((row) => row.labels.model === labels.model);
+    assert.equal(rows.length, 1, key);
+    assert.deepEqual([rows[0].idle, rows[0].value, rows[0].sourceTimestamp], [true, null, now + 59], key);
+    assert.equal(result.stale.get(key)?.has(rows[0]) ?? false, false, key);
+  }
+  // Router percentiles group by model alone; a gauge with no row is never idle.
+  const router = retainMeasurements({ ...empty, routerTtftSourceAge: [{ labels: { model: 'm' }, value: now + 50 }],
+    engineKvSourceAge: [{ labels, value: now + 50 }] }).data;
+  assert.equal(router.routerTtftP50.find((row) => row.labels.model === 'm')?.idle, true);
+  assert.equal(router.routerTtftP95.find((row) => row.labels.model === 'm')?.idle, true);
+  assert.equal(router.engineKvPercent.some((row) => row.labels.model === labels.model), false);
+});
+
+test('a percentile without a row keeps its held reading, stale, once its source is old', async (t) => {
+  const now = 1_700_700_000;
+  const { retainMeasurements, refreshFreshness, clock, empty, ageFor } = await setup(t, now);
+  const labels = { backend: 'vllm', model: 'quiet-old-source' };
+  const ageKey = ageFor.engineTtftP95;
+  retainMeasurements({ ...empty, engineTtftP95: [{ labels, value: 0.25 }], [ageKey]: [{ labels, value: now }] });
+  clock.ms += 600_000;
+  const result = refreshFreshness(retainMeasurements({ ...empty, [ageKey]: [{ labels, value: now }] }));
+  const row = result.data.engineTtftP95.find((item) => item.labels.model === labels.model);
+  assert.deepEqual([row.value, row.idle, row.sourceTimestamp], [0.25, undefined, now]);
+  assert.ok(result.stale.get('engineTtftP95').has(row));
 });
 
 test('a row unmeasured for over an hour is dropped', async (t) => {

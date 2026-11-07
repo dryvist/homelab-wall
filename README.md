@@ -145,8 +145,9 @@ value with its source sample time, and the tooltip shows that time, not the
 poll time. A reading shows `STALE` with its age once that source sample is more
 than 5 minutes old, or when no source time is available. A held value keeps the
 source time of its last measurement, and a reading unmeasured for an hour leaves
-the page. A percentile with no requests in its window reads `Idle` while its
-source is fresh.
+the page. A percentile, prefix-hit or speculative-acceptance reading has no
+row when its window holds no requests; it reads `Idle` while its source is
+fresh.
 Device watts use a 5-minute mean; tokens/joule divides the recorded hourly
 generation rate by hourly mean power. These are device totals, shown only when
 an engine exposes an accelerator association, not per-model power allocations.
