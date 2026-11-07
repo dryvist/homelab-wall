@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.1](https://github.com/dryvist/homelab-wall/compare/v0.24.0...v0.24.1) (2026-11-07)
+
+
+### Bug Fixes
+
+* **mc8:** show real traffic only and fit the page to one screen ([#172](https://github.com/dryvist/homelab-wall/issues/172)) ([e176d36](https://github.com/dryvist/homelab-wall/commit/e176d36b7c52b9f3d2c9267c3e9ca3ef9cb4a421))
+
 ## [0.24.0](https://github.com/dryvist/homelab-wall/compare/v0.23.0...v0.24.0) (2026-11-07)
 
 
