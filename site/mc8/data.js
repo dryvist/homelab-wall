@@ -17,10 +17,14 @@ export function providerClass(labels) {
 export const modelKey = (labels) => JSON.stringify([labels.model || 'Unlabelled model', labels.api_provider || 'unknown']);
 export const validRows = (rows) => (rows || []).filter((r) => Number.isFinite(r.value) && r.value >= 0);
 
+const byClassRate = (a, b) => (b.localRate ?? -1) - (a.localRate ?? -1)
+  || (b.cloudRate ?? -1) - (a.cloudRate ?? -1) || String(a.id).localeCompare(String(b.id));
+
 // Keep the highest-rate rows and summarize everything else in one visible row. maxRows includes
 // that summary row when one is needed.
 export function splitTopByRate(rows, maxRows) {
   const ranked = [...(rows || [])].sort((a, b) => {
+    if ('localRate' in a && 'localRate' in b) return byClassRate(a, b);
     const rateA = Number.isFinite(a.rate) ? a.rate : -Infinity;
     const rateB = Number.isFinite(b.rate) ? b.rate : -Infinity;
     return rateB - rateA || String(a.id).localeCompare(String(b.id));
@@ -29,19 +33,17 @@ export function splitTopByRate(rows, maxRows) {
   if (ranked.length <= limit) return { visible: ranked, more: null };
   const visible = ranked.slice(0, limit - 1);
   const hidden = ranked.slice(visible.length);
-  const measured = hidden.filter((row) => Number.isFinite(row.rate));
-  const classRate = (row, bank) => `${bank}Rate` in row
-    ? (Number.isFinite(row[`${bank}Rate`]) ? row[`${bank}Rate`] : 0)
-    : ((row.bank === 'local') === (bank === 'local') ? row.rate : 0);
-  const classMeasured = (bank) => measured.filter((row) => `${bank}Rate` in row
-    ? Number.isFinite(row[`${bank}Rate`]) : (row.bank === 'local') === (bank === 'local'));
+  const classRates = (bank) => hidden.map((row) => `${bank}Rate` in row
+    ? row[`${bank}Rate`] : ((row.bank === 'local') === (bank === 'local') ? row.rate : null)).filter(Number.isFinite);
+  const classSum = (bank) => classRates(bank).length ? classRates(bank).reduce((sum, rate) => sum + rate, 0) : null;
   return {
     visible,
     more: {
       count: hidden.length,
-      rate: measured.length ? measured.reduce((sum, row) => sum + row.rate, 0) : null,
-      localRate: classMeasured('local').length ? measured.reduce((sum, row) => sum + classRate(row, 'local'), 0) : null,
-      cloudRate: classMeasured('cloud').length ? measured.reduce((sum, row) => sum + classRate(row, 'cloud'), 0) : null,
+      localCount: hidden.filter((row) => row.bank === 'local').length,
+      cloudCount: hidden.filter((row) => row.bank !== 'local').length,
+      localRate: classSum('local'),
+      cloudRate: classSum('cloud'),
     },
   };
 }
@@ -63,7 +65,7 @@ export function shapeRates(input, output) {
     const bank = providerClass(row.labels);
     const modelId = JSON.stringify([modelKey(row.labels), bank]);
     if (!callers.has(callerId)) callers.set(callerId, {
-      id: callerId, name: alias || team || 'Unattributed caller', team: alias ? team : '', rate: 0, localRate: null, cloudRate: null,
+      id: callerId, name: alias || team || 'Unattributed caller', team: alias ? team : '', localRate: null, cloudRate: null,
     });
     if (!models.has(modelId)) models.set(modelId, {
       id: modelId, name: model || 'Unlabelled model', provider: provider || 'unknown',
@@ -71,7 +73,6 @@ export function shapeRates(input, output) {
     });
     const id = JSON.stringify([callerId, modelId]);
     if (!routes.has(id)) routes.set(id, { id, caller: callerId, model: modelId, rate: 0, localRate: null, cloudRate: null });
-    callers.get(callerId).rate += row.value;
     const rateKey = bank === 'local' ? 'localRate' : 'cloudRate';
     callers.get(callerId)[rateKey] = (callers.get(callerId)[rateKey] ?? 0) + row.value;
     models.get(modelId).rate += row.value;
@@ -79,17 +80,14 @@ export function shapeRates(input, output) {
     route.rate += row.value;
     route[rateKey] = (route[rateKey] ?? 0) + row.value;
   }
-  const sorted = (map) => [...map.values()].sort((a, b) => b.rate - a.rate || a.id.localeCompare(b.id));
-  const total = [...models.values()].reduce((s, m) => s + m.rate, 0);
   const local = [...models.values()].filter((m) => m.bank === 'local').reduce((s, m) => s + m.rate, 0);
   const cloud = [...models.values()].filter((m) => m.bank !== 'local').reduce((s, m) => s + m.rate, 0);
   const unknown = [...models.values()].filter((m) => m.bank === 'unknown').reduce((s, m) => s + m.rate, 0);
-  const classified = [...models.values()].filter((m) => m.bank !== 'unknown').reduce((s, m) => s + m.rate, 0);
   const cloudTotal = [...models.values()].filter((m) => m.bank !== 'local').reduce((s, m) => s + m.rate, 0);
-  return { callers: sorted(callers), models: sorted(models), routes: [...routes.values()], total,
+  return { callers: [...callers.values()].sort(byClassRate),
+    models: [...models.values()].sort((a, b) => b.rate - a.rate || a.id.localeCompare(b.id)), routes: [...routes.values()],
     localRate: [...models.values()].some((m) => m.bank === 'local') ? local : null,
     cloudRate: [...models.values()].some((m) => m.bank !== 'local') ? cloud : null,
-    localShare: classified > 0 ? 100 * local / classified : null,
     // Unknown billing rows are non-local, so their coverage is measured within cloud traffic only.
     unclassifiedShare: cloudTotal > 0 ? 100 * unknown / cloudTotal : null };
 }

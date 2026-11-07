@@ -70,7 +70,8 @@ function updateUnclassified() {
 }
 
 function moreTerminal(kind, more) {
-  return { id: `__more_${kind}__`, name: `+${more.count} more`, rate: more.rate, localRate: more.localRate,
+  const name = kind === 'models' ? `+${more.localCount} local · +${more.cloudCount} cloud` : `+${more.count} more`;
+  return { id: `__more_${kind}__`, name, localRate: more.localRate,
     cloudRate: more.cloudRate, more: true, bank: 'unknown', metricId: null };
 }
 
@@ -126,7 +127,7 @@ function compactRoutes(routes, callers, models) {
     const caller = callerIds.has(route.caller) ? route.caller : moreCaller;
     const model = modelIds.has(route.model) ? route.model : moreModel;
     if (!caller || !model) continue;
-    const id = JSON.stringify([caller, model]);
+    const id = JSON.stringify([caller, model, Number.isFinite(route.localRate) ? 'local' : 'cloud']);
     const current = compacted.get(id);
     if (current) {
       current.rate += route.rate;
@@ -150,7 +151,7 @@ function render() {
     }
   }
   const scalar = (key) => feedValue(feeds[key]);
-  reading('local-share', ['mc8InputRate', 'mc8OutputRate'], shaped.localShare, '%', 'Share of classified input + output tokens', ready ? 'Unavailable' : 'Pending');
+  reading('local-rate', ['mc8InputRate', 'mc8OutputRate'], shaped.localRate, ' t/s', 'Local input + output tokens per second', ready ? 'Unavailable' : 'Pending');
   updateUnclassified();
   const inFlight = splitInFlight(feeds.mc8InFlight?.rows, feeds.vllmRunning?.rows, feeds.llamaRunning?.rows);
   reading('in-flight', IN_FLIGHT_KEYS, classPair(inFlight.local, inFlight.cloud), '', 'Local engines plus the router remainder');
@@ -211,7 +212,7 @@ function updateStatus() {
   updateUnclassified();
   board.dataset.state = !shaped.routes.length ? 'pending' : stateText(['mc8InputRate', 'mc8OutputRate']).startsWith('STALE') ? 'stale' : 'ok';
   markModels(displayed.hidden);
-  for (const [id, keys] of [['local-share', ['mc8InputRate', 'mc8OutputRate']], ['in-flight', IN_FLIGHT_KEYS], ['spend', ['mc8SpendCents']], ['ttft', TTFT_KEYS]]) {
+  for (const [id, keys] of [['local-rate', ['mc8InputRate', 'mc8OutputRate']], ['in-flight', IN_FLIGHT_KEYS], ['spend', ['mc8SpendCents']], ['ttft', TTFT_KEYS]]) {
     const panel = $(id).closest('[data-panel]');
     if (panel.dataset.state !== 'pending' && stateText(keys).startsWith('STALE')) {
       panel.dataset.state = 'stale';

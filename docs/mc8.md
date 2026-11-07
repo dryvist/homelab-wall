@@ -10,8 +10,8 @@ names this slide `SWITCHBOARD`.
 
 - Readouts:
   - Local and cloud values stay separate throughout the page; it does not display a combined local-plus-cloud total.
-  - Local token share: the local engines' share of classified input and output tokens, with the unclassified
-    percentage shown separately.
+  - Local token rate: local input and output tokens per second, with the unclassified share of cloud traffic shown
+    separately.
   - Router in-flight: requests in flight across the router.
   - Pay per token / month: provider spend in cents since the month boundary in Coordinated Universal Time (UTC).
   - Time to first token / p95: local and cloud router times to first token (TTFT) p95 (95th percentile) over the
@@ -89,6 +89,5 @@ times out after 10 seconds.
 - Zero: an empty failure, fallback or spend result reads as zero while the router is live, meaning the in-flight
   sample time is fresh.
 - Unavailable:
-  - Local share uses classified token rates only.
-  - Without classified traffic it shows `Unavailable`.
+  - Without local traffic the local token rate shows `Unavailable`.
 - NO DATA: not used on MC8.
