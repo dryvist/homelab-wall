@@ -80,3 +80,21 @@ jobs:
           name: screenshots-${{ matrix.project }}-${{ matrix.shard }}
           path: test-results/
           retention-days: 14
+
+  # Job id `gate` gives the stable required check `gate / Merge Gate`.
+  # The shared workflow cannot see caller jobs, so its Repo Tests command
+  # asserts both CI job results. Keep it active on docs-only PRs when either
+  # upstream job failed, since the shared workflow otherwise skips that tier.
+  gate:
+    needs: [typecheck, test]
+    if: ${{ always() }}
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    uses: JacobPEvans/.github/.github/workflows/_ci-gate.yml@v1
+    with:
+      production_branch: ${{ needs.typecheck.result == 'success' && needs.test.result == 'success' && 'main' || 'ci-gate-failure' }}
+      test_command: ${{ needs.typecheck.result == 'success' && needs.test.result == 'success' && 'true' || 'false' }}
+      workflow_lint: true
+      zizmor: true
