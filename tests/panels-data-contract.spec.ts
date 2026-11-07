@@ -87,9 +87,10 @@ for (const pageSpec of PAGES) {
         await expect(page.locator('#appsum')).not.toContainText('—');
       }
 
-      await expect.poll(() => page.locator('canvas').evaluateAll((canvases) => Array.from(canvases).every((canvas) =>
-        canvas instanceof HTMLCanvasElement && canvas.toDataURL().length > 200,
-      )), slowFirstFrame ? { timeout: 45_000 } : {}).toBe(true);
+      // Lists the blank canvases, so a failure names them.
+      await expect.poll(() => page.locator('canvas').evaluateAll((canvases) => Array.from(canvases)
+        .filter((canvas) => !(canvas instanceof HTMLCanvasElement && canvas.toDataURL().length > 200))
+        .map((canvas) => canvas.id || canvas.className || 'canvas')), slowFirstFrame ? { timeout: 45_000 } : {}).toEqual([]);
 
       const overlaps = await panels.evaluateAll((elements) => {
         const box = (element: HTMLElement) => {
