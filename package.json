@@ -8,7 +8,7 @@
   "devDependencies": {
     "@playwright/test": "latest",
     "@types/node": "^26.6.2",
-    "three": "^0.186.1",
+    "three": "^0.187.0",
     "typescript": "latest"
   }
 }
