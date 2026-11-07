@@ -61,8 +61,8 @@ test('mc1 lists every storage pool, maps each GPU to its node, and orders nodes 
   await mockFeeds(page);
   await page.goto('/mc1/?gl=2d');
 
-  const rows = await page.locator('#strows .st:not(.more) > span:first-child').allTextContents();
-  for (const pool of fixturePools) expect(rows).toContain(`${pool.node} ${pool.name}`);
+  const rows = page.locator('#strows .st:not(.more) > span:first-child');
+  for (const pool of fixturePools) await expect(rows.filter({ hasText: `${pool.node} ${pool.name}` })).toHaveCount(1);
 
   const nodeNames = await page.locator('#nodelist .node .nm').evaluateAll((els) =>
     els.map((el) => el.childNodes[0]?.textContent?.trim() ?? ''));

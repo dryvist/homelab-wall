@@ -206,7 +206,7 @@ export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
   if (q.includes('llamacpp:requests_processing')) return vec([[{ instance: 'gpu-b:8080' }, opts.llamaRunning ?? 0]]);
   if (q.includes('litellm_in_flight_requests')) return vec([[{}, opts.inflight ?? 3]]);
   if (q.includes('litellm_deployment_state')) return vec([[{ litellm_model_name: 'model-large' }, 0], [{ litellm_model_name: 'model-coder' }, 0], [{ litellm_model_name: 'model-small' }, 2], [{ litellm_model_name: 'model-mini' }, 0], [{ litellm_model_name: 'model-unused' }, 0]]);
-  if (q.includes('litellm_output_tokens')) return vec([[{ model: 'model-large' }, 38], [{ model: 'model-coder' }, 91]]);
+  if (q.includes('litellm_output_tokens')) return vec([[{ model: 'model-large' }, 38], [{ model: 'model-coder' }, 91], [{ model: 'model-small' }, 0], [{ model: 'model-mini' }, 0], [{ model: 'model-unused' }, 0]]);
   if (q === Q.llmTokensToday) return vec([[{ tag_telemetry_billing_class_local: 'true' }, 88_500_000], [{ tag_telemetry_billing_class_local: 'false' }, 10_300_000]]);
   if (q === Q.llmReqPerMin) return vec([[{ tag_telemetry_billing_class_local: 'true' }, 88], [{ tag_telemetry_billing_class_local: 'false' }, 11]]);
   if (q.includes('litellm_total_tokens_metric_total')) return vec([[{}, 4_810_000]]);

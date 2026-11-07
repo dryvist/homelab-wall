@@ -14,7 +14,8 @@ test('mc1 LLM list shows only recently used models and its summary counts only t
   await expect(llm).toHaveAttribute('data-state', 'ok');
   await expect(page.locator('#llmrows .lr > span:first-of-type')).toHaveText(['model-small', 'model-coder', 'model-large', 'model-mini']);
   await expect(page.locator('#llmrows')).not.toContainText('model-unused');
-  await expect(page.locator('#llmsum')).toContainText('3/4 UP');
+  await expect(page.locator('#llmsum')).toContainText('LOCAL 2/2 UP');
+  await expect(page.locator('#llmsum')).toContainText('CLOUD 1/2 UP');
 });
 
 // A failed Q.llmUsed4d lists every deployment as before, with the panel's error marker, never an empty list.
@@ -24,10 +25,11 @@ test('mc1 a failed used-models query lists every deployment and marks the LLM pa
   await page.goto('/mc1/?gl=2d');
   const llm = page.locator('[data-panel="llm"]');
   await expect(llm).toHaveAttribute('data-state', 'error');
-  await expect(llm.locator('[data-panel-message]')).toHaveText('');
+  await expect(llm.locator('[data-panel-message]')).toHaveText('ROUTER QUERY FAILED');
   await expect(page.locator('#llmrows .lr')).toHaveCount(5);
   await expect(page.locator('#llmrows')).toContainText('model-unused');
-  await expect(page.locator('#llmsum')).toContainText('4/5 UP');
+  await expect(page.locator('#llmsum')).toContainText('LOCAL 2/2 UP');
+  await expect(page.locator('#llmsum')).toContainText('CLOUD 2/3 UP');
 });
 
 for (const pageId of ['mc1', 'mc2', 'mc4', 'mc5']) {
@@ -49,7 +51,7 @@ for (const pageId of ['mc1', 'mc2', 'mc4', 'mc5']) {
     await expect(page.locator('#appsum')).toHaveText('—');
     if (pageId === 'mc1') {
       for (const group of config.groups) {
-        const label = page.locator('#labels .vl').filter({ hasText: group.name.toUpperCase() });
+        const label = page.locator('#labels .vl').filter({ hasText: new RegExp(`^${group.name.toUpperCase()}`) });
         await expect(label).toContainText(`${group.apps.length} apps · health — · ${group.apps.length} no data`);
       }
     }

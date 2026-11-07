@@ -125,8 +125,10 @@ test('mc3: a missing /api/llm/recent renders an explicit NO FEED state with no i
   await expect(page.locator('#reqfeed')).toHaveAttribute('data-feed', 'none');
   await expect(page.locator('#reqfeed')).toContainText('NO FEED');
   await expect(page.locator('#reqfeed .cfrow')).toHaveCount(1);
-  // The GPU query succeeds with no series here: the tile is explicit, not 0%.
-  await expect(page.locator('#cxGpu')).toHaveText('NO FEED');
+  // The GPU query succeeds with no series here: the tile shows no value and says why, never 0%.
+  await expect(page.locator('#cxGpu')).toHaveText('—');
+  await expect(page.locator('#cxGpu')).toHaveAttribute('data-feed', 'empty');
+  await expect(page.locator('#cxGpuMessage')).toHaveText('NO DATA');
   // The 404 itself is the feed being absent — pollFeed turns it into the state above; nothing
   // else may fault (no pageerror, no other request failure).
   // Chromium also logs the 404 as a generic console resource error.
@@ -148,7 +150,7 @@ test('mc3: only recently used models are listed, busiest first', async ({ page }
   await expect(page.locator('.kpi', { hasText: 'tokens today' }).locator('b')).toHaveText('local 88.50M · cloud 10.30M');
   await expect(page.locator('.kpi', { hasText: 'requests/min' }).locator('b')).toHaveText('local 88 · cloud 11');
   await expect(page.locator('#cxReqMin')).toHaveText('local 88 · cloud 11');
-  await expect(page.locator('.kpi', { hasText: 'models up' }).locator('b')).toHaveText('local 2/2 · cloud 1/2');
+  await expect(page.locator('.kpi', { hasText: 'models up' }).locator('b')).toHaveText('local 2/2 · cloud 1/2 UP');
   await expect(page.locator('[data-panel="cores"]')).toHaveAttribute('data-state', 'ok');
   expect(faults).toEqual([]);
 });
