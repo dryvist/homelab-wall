@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1](https://github.com/dryvist/homelab-wall/compare/v0.18.0...v0.18.1) (2026-11-07)
+
+
+### Bug Fixes
+
+* **mc9:** accept results stamped slightly ahead of the client clock ([#137](https://github.com/dryvist/homelab-wall/issues/137)) ([7e585ee](https://github.com/dryvist/homelab-wall/commit/7e585ee1ef56f6c2b25fc33baac0fe281b55375a))
+
 ## [0.18.0](https://github.com/dryvist/homelab-wall/compare/v0.17.0...v0.18.0) (2026-11-07)
 
 
