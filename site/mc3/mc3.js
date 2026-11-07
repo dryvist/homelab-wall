@@ -9,9 +9,8 @@ import { listedModels, perfReader, perfCard } from '/lib/modelPerf.js';
 import { assignModelColors, shortDevice } from '/lib/mc3.js';
 import {
   clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct,
-  setSampleBadge, onDispose, hardwareGL, adaptiveDpr,
+  onDispose, hardwareGL, adaptiveDpr,
 } from '/lib/stage.js';
-import { SAMPLE_LLM } from '/lib/sampleData.js';
 import { createPointer } from '/lib/pointer.js';
 
 const $ = (id) => document.getElementById(id);
@@ -20,6 +19,8 @@ const { pointer, dispose: disposePointer } = createPointer();
 onDispose(disposePointer);
 const PALETTE = ['#3ee6ff', '#7b8cff', '#38ff9c', '#ffb347', '#ff4fd8', '#b6ff3e', '#ff3b5c', '#e8f4ff', '#8ab8ff', '#ffd23e'];
 
+setState($('apps'), 'pending', 'WAITING FOR SCORE DATA');
+setState($('cores'), 'pending', 'WAITING FOR MODEL DATA');
 const cfg = await loadConfig();
 
 /* ---------------- accelerator anchors: layout, naming, attachment ---------------- */
@@ -56,18 +57,16 @@ const isDim = (d) => (d.kind === 'cloud' ? d.active === 0 && d.models === 0 : d.
 const overrides = cfg.accelerators && typeof cfg.accelerators === 'object' ? cfg.accelerators : {};
 
 // listFailed: Q.llmUsed4d failed, so models lists every deployment (site/lib/modelPerf.js).
-const model = { models: [], listFailed: false, tokensToday: null, reqPerMin: null, gpuBusy: null, inflight: null };
+const model = {
+  models: [], listFailed: false, stateFailed: false, tokensToday: null, reqPerMin: null,
+  gpuBusy: null, gpuFailed: false, inflight: null, localActive: null,
+};
 // Fleet list: the AI-category services and their 0-10 scores (Q.aiAppScore), sorted by name.
 let aiApps = [];
+let appScoreFailed = false;
 // Anchor state, rebuilt on every refresh: name, busy % (null when its busy series is absent),
 // active requests and attached model count.
 let accel = ANCHOR_DEFS.map((d) => ({ ...d, name: d.id, busy: null, active: 0, models: 0 }));
-
-// Sample models for the scene before any real model arrives; they sit on the cloud node, and each
-// card reads its sample tok/s as a decode speed, or Idle at zero.
-const sampleModels = () => assignModelColors(SAMPLE_LLM.map((m) => ({
-  n: m.n, up: m.state < 2, tok: m.tok, anchor: CLOUD, perf: { idle: !(m.tok > 0), decode: { p50: m.tok } },
-})), PALETTE);
 
 async function refresh() {
   const r = await settle({
@@ -96,7 +95,8 @@ async function refresh() {
     inflight: () => query(Q.routerInFlight),
   });
 
-  if (r.score) {
+  appScoreFailed = r.score === null;
+  if (r.score !== null) {
     aiApps = r.score
       .filter((row) => row.labels.name && Number.isFinite(row.value))
       .map((row) => ({ n: row.labels.name, s: clamp(row.value, 0, 10) }))
@@ -106,7 +106,8 @@ async function refresh() {
   const hostRole = deriveAccelerators(r);
 
   model.listFailed = r.used === null;
-  if (r.state) {
+  model.stateFailed = r.state === null;
+  if (r.state !== null) {
     const tok = Object.fromEntries((r.tok || []).map((x) => [x.labels.model, x.value]));
     const perf = perfReader(r);
     // A model can have several serving-URL rows, so the URLs are grouped under their model name.
@@ -132,6 +133,13 @@ async function refresh() {
 
   model.tokensToday = Number.isFinite(r.tokensToday?.[0]?.value) ? r.tokensToday[0].value : null;
   model.reqPerMin = Number.isFinite(r.reqPerMin?.[0]?.value) ? r.reqPerMin[0].value : null;
+  const localRows = [r.vllm, r.llama];
+  const hasLocalReadings = localRows.every((rows) => Array.isArray(rows) && rows.length > 0
+    && rows.every((row) => Number.isFinite(row.value)));
+  model.localActive = hasLocalReadings
+    ? localRows.flat().reduce((sum, row) => sum + row.value, 0)
+    : null;
+  model.gpuFailed = r.gpu === null;
   const busy = (r.gpu || []).map((x) => x.value).filter(Number.isFinite);
   model.gpuBusy = busy.length ? clamp(busy.reduce((x, y) => x + y, 0) / busy.length, 0, 100) : null;
   render();
@@ -214,22 +222,17 @@ function render() {
 
 function renderKpis() {
   const up = model.models.filter((m) => m.up).length;
-  // Each KPI has its own query and can fail/return nothing independently of the others — a
-  // plausible stand-in value per KPI, never the literal "—", marked on that KPI's own element.
-  const tokensStandIn = model.tokensToday == null;
-  const reqStandIn = model.reqPerMin == null;
-  const activeStandIn = model.inflight == null;
-  const modelsStandIn = !model.models.length;
-  // ACTIVE is router-wide requests in flight. Without that reading it shows the local servers' sum, marked as a stand-in.
-  const localActive = accel.reduce((s, d) => s + d.active, 0);
+  const active = model.inflight ?? model.localActive;
   const k = [
-    ['tokens today', tokensStandIn ? '4.81' : (model.tokensToday / 1e6).toFixed(2), 'M', tokensStandIn],
-    ['requests/min', reqStandIn ? '142' : model.reqPerMin.toFixed(0), '', reqStandIn],
-    ['active', activeStandIn ? String(localActive) : String(Math.round(model.inflight)), '', activeStandIn],
-    ['models up', modelsStandIn ? `${SAMPLE_LLM.filter((m) => m.state < 2).length}/${SAMPLE_LLM.length}` : `${up}/${model.models.length}`, '', modelsStandIn],
+    ['tokens today', model.tokensToday == null ? '—' : (model.tokensToday / 1e6).toFixed(2), 'M'],
+    ['requests/min', model.reqPerMin == null ? '—' : model.reqPerMin.toFixed(0), ''],
+    ['active', active == null ? '—' : String(Math.round(active)), ''],
+    ['models up', model.models.length ? `${up}/${model.models.length}` : '—', ''],
   ];
-  $('kpis').innerHTML = k.map(([l, v, u, standIn]) => `<div class="kpi"><b class="num"${standIn ? ' data-source="stand-in"' : ''}>${v}<i>${u}</i></b><span>${l}</span></div>`).join('');
-  $('subtitle').textContent = `${aiApps.length} SERVICES · ${model.models.length} MODELS`;
+  $('kpis').innerHTML = k.map(([l, v, u]) => `<div class="kpi"><b class="num">${v}<i>${u}</i></b><span>${l}</span></div>`).join('');
+  const serviceCount = aiApps.length || '—';
+  const modelCount = model.models.length || '—';
+  $('subtitle').textContent = `${serviceCount} SERVICES · ${modelCount} MODELS`;
 }
 
 /* ---------------- fleet health (mandatory "apps" panel) ---------------- */
@@ -242,7 +245,7 @@ function drawRing(el, score) {
     c.beginPath(); c.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * score / 10); c.stroke(); c.shadowBlur = 0;
   }
   c.fillStyle = '#fff'; c.font = `600 ${W * 0.14}px "Chakra Petch",sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.fillText(score == null ? '8' : Math.round(score), cx, cy - H * 0.03);
+  c.fillText(score == null ? '—' : Math.round(score), cx, cy - H * 0.03);
   c.fillStyle = '#8a5d90'; c.font = `${W * 0.055}px "JetBrains Mono",monospace`; c.fillText('HEALTH', cx, cy + H * 0.14);
 }
 
@@ -252,26 +255,27 @@ function renderApps() {
   const ok = scores.filter((s) => s >= SCORE_OK_MIN).length;
   const warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length;
   const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
-  $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> &middot; <span style="color:var(--amber)">${warn} DEG</span> &middot; <span style="color:var(--red)">${bad} DOWN</span>`;
+  $('appsum').innerHTML = scores.length
+    ? `<span style="color:var(--green)">${ok} OK</span> &middot; <span style="color:var(--amber)">${warn} DEG</span> &middot; <span style="color:var(--red)">${bad} DOWN</span>`
+    : '—';
   $('applist').innerHTML = aiApps.map((a) => `<div class="ar"><i style="background:${hue(scorePct(a.s))}"></i><span>${esc(a.n)}</span><b class="num">${Math.round(a.s)}</b></div>`).join('');
   drawRing($('fleetRing'), scores.length ? scores.reduce((x, y) => x + y, 0) / scores.length : null);
-  setSampleBadge($('apps'), false);
-  setState($('apps'), scores.length ? 'ok' : 'empty', scores.length ? '' : 'NO SERVICE DATA');
+  const state = appScoreFailed ? (scores.length ? 'stale' : 'error') : (scores.length ? 'ok' : 'empty');
+  const message = appScoreFailed
+    ? (scores.length ? 'SCORE QUERY FAILED · SHOWING LAST GOOD' : 'SCORE QUERY FAILED')
+    : (scores.length ? '' : 'NO SERVICE DATA');
+  setState($('apps'), state, message);
 }
 
 /* ---------------- AI core (models table + reactor) ---------------- */
-// The router metrics feed is real (Q.llmState), but has nothing yet on some deployments — the
-// shared LLM sample dataset (site/lib/sampleData.js), reshaped to this page's {n,up,tok,perf}, stands
-// in instead of a blank/pending table. reactorList mirrors whichever list rendered last, so the
-// decorative reactor canvas (drawReactor below) always animates real or stand-in state, never "N/A".
-let reactorList = sampleModels();
+// The reactor list contains only current or last-good model rows; an empty list draws no model cores or streams.
+let reactorList = [];
 // Each card's large number is a per-request reading (site/lib/modelPerf.js perfCard): the engine's
 // p50 decode speed, else the router's p50 request time. A model with no real request in the hour
-// reads Idle, a real absence rather than a failed query, so it never shows a stand-in badge.
+// reads Idle, a real absence rather than a failed query.
 // Rolling per-model history of that large number for the sparklines (model cards + fleet-health
-// column). An idle poll appends a gap (null), never a zero. A brand-new name seeds flat at its
-// first-seen reading, same technique SAMPLE_LLM.hist already uses, and a model whose large number
-// changes unit starts over, so one line never mixes tok/s and seconds.
+// column). An idle poll appends a gap (null), never a zero. A new name starts from its first real
+// reading, and a model whose large number changes unit starts over, so a line never mixes units.
 const HIST_N = 24;
 const perfHistory = new Map();
 function pushHist(name, { spark, unit }) {
@@ -312,8 +316,7 @@ function drawSpark(canvas, hist, color) {
 const active = (m) => !m.perf?.idle;
 
 function renderCore() {
-  const sample = !model.models.length;
-  const list = sample ? sampleModels() : model.models;
+  const list = model.models;
   reactorList = list;
   const now = Date.now() / 1000;
   const cards = new Map(list.map((m) => [m.n, perfCard(m.perf, now)]));
@@ -343,23 +346,32 @@ function renderCore() {
     drawSpark(canvas, perfHistory.get(m.n).values, m.up ? (active(m) ? '#38ff9c' : '#3ee6ff') : '#ff3b5c');
   }
   const up = list.filter((m) => m.up).length;
-  $('coresum').textContent = `${up}/${list.length} UP`;
-  setSampleBadge($('cores'), sample);
-  // A failed Q.llmUsed4d lists every deployment; the panel carries the machine-readable error marker.
-  setState($('cores'), model.listFailed ? 'error' : 'ok');
+  $('coresum').textContent = list.length ? `${up}/${list.length} UP` : '—';
+  let state = 'ok', message = '';
+  if (model.stateFailed) {
+    state = list.length ? 'stale' : 'error';
+    message = list.length ? 'MODEL QUERY FAILED · SHOWING LAST GOOD' : 'MODEL QUERY FAILED';
+  } else if (model.listFailed) {
+    state = 'error';
+    message = 'MODEL USAGE QUERY FAILED';
+  } else if (!list.length) {
+    state = 'empty';
+    message = 'NO RECENT MODEL DATA';
+  }
+  setState($('cores'), state, message);
   renderCoreExtra(list);
 }
 
 /* ---------------- fleet-health column fill: req/min, GPU/VRAM, sparklines, request feed ------- */
-// GPU/VRAM is the mean of the accelerator busy series (Q.acceleratorBusy); with no series
-// (or a failed query) the tile says so instead of showing a number. cxReqMin mirrors the real
-// header KPI.
+// GPU/VRAM is the mean of the accelerator busy series (Q.acceleratorBusy); an empty or failed
+// query shows no percentage and includes its state beside the value. cxReqMin mirrors the header KPI.
 function renderCoreExtra(list) {
-  $('cxReqMin').textContent = model.reqPerMin != null ? model.reqPerMin.toFixed(0) : '0';
+  $('cxReqMin').textContent = model.reqPerMin != null ? model.reqPerMin.toFixed(0) : '—';
 
   const gpuPct = model.gpuBusy;
-  $('cxGpu').textContent = gpuPct == null ? 'NO FEED' : `${Math.round(gpuPct)}%`;
-  $('cxGpu').dataset.feed = gpuPct == null ? 'none' : 'live';
+  $('cxGpu').textContent = gpuPct == null ? '—' : `${Math.round(gpuPct)}%`;
+  $('cxGpu').dataset.feed = gpuPct == null ? (model.gpuFailed ? 'error' : 'empty') : 'live';
+  $('cxGpuMessage').textContent = gpuPct == null ? (model.gpuFailed ? 'QUERY FAILED' : 'NO DATA') : '';
   const gauge = $('gpuGauge'), gc = gauge.getContext('2d');
   const dpr = adaptiveDpr();
   const gw = Math.max(1, Math.round(gauge.clientWidth * dpr)), gh = Math.max(1, Math.round(gauge.clientHeight * dpr));
@@ -547,7 +559,7 @@ function drawReactor(now) {
     }
     c.shadowBlur = 0; c.globalAlpha = 1;
     // An up model with tokens in flight streams from its dot into the hub: travelling sparks, the 2D
-    // stand-in for the 3D stream. The same gate as the 3D stream.
+    // fallback for the 3D stream. The same gate as the 3D stream.
     if (m.up && m.tok > 0.05) {
       streams += 1;
       for (let s = 0; s < 3; s++) {
