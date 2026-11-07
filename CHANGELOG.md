@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/dryvist/homelab-wall/compare/v0.21.1...v0.22.0) (2026-11-07)
+
+
+### Features
+
+* **mc3:** colour each model across cards and streams and shorten device names ([#157](https://github.com/dryvist/homelab-wall/issues/157)) ([c8a35cc](https://github.com/dryvist/homelab-wall/commit/c8a35cc26b1876c5eda900a4e9922f4ccae86faa))
+
 ## [0.21.1](https://github.com/dryvist/homelab-wall/compare/v0.21.0...v0.21.1) (2026-11-07)
 
 
