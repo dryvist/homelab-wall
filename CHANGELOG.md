@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/dryvist/homelab-wall/compare/v0.20.2...v0.21.0) (2026-11-07)
+
+
+### Features
+
+* **mc3:** show per-request model performance for recently used models ([#152](https://github.com/dryvist/homelab-wall/issues/152)) ([356dff0](https://github.com/dryvist/homelab-wall/commit/356dff08b696c65eb89b94b7ba0c1283f22d2c09))
+
 ## [0.20.2](https://github.com/dryvist/homelab-wall/compare/v0.20.1...v0.20.2) (2026-11-07)
 
 
