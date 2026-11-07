@@ -5,10 +5,9 @@ import { guardRefresh } from '/lib/refresh.js';
 import { Q } from '/lib/queries.js';
 import { makeBloom } from '/lib/bloom.js';
 import {
-  clamp, esc, loadConfig, setState, loop, SCORE_OK_MIN, SCORE_DEGRADED_MIN, setSampleBadge,
+  clamp, esc, loadConfig, setState, loop, SCORE_OK_MIN, SCORE_DEGRADED_MIN,
   onDispose, onContextLoss, disposeThreeScene, hardwareGL, adaptiveBloomOn, adaptiveDpr,
 } from '/lib/stage.js';
-import { sampleAppScore } from '/lib/sampleData.js';
 import { serviceScoreState } from '/lib/serviceScoreState.js';
 import { createPointer } from '/lib/pointer.js';
 
@@ -27,16 +26,11 @@ const model = { fleetUpFrac: null, scoreFailed: false }; // drives the hero scen
 /* ---------------- service health (real; condensed into the header strip, not a centre list) ---------------- */
 function renderApps() {
   const scored = apps.filter((a) => a.s != null);
-  // A query that succeeded with zero rows has genuinely nothing to show yet — render the shared
-  // sample scores instead (badged), never layered on top of real (even partial) data.
-  const sample = !scored.length;
-  const display = apps.map((a, i) => (sample ? { n: a.n, s: sampleAppScore(i) } : a));
-  const scores = display.map((a) => a.s).filter((s) => s != null);
+  const scores = scored.map((a) => a.s);
   const ok = scores.filter((s) => s >= SCORE_OK_MIN).length, warn = scores.filter((s) => s >= SCORE_DEGRADED_MIN && s < SCORE_OK_MIN).length, bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
   $('appsum').innerHTML = scores.length
     ? `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`
-    : '';
-  setSampleBadge($('apps'), sample);
+    : '—';
   const state = serviceScoreState(model.scoreFailed, scored.length > 0);
   setState($('apps'), state, state === 'error' ? 'SCORE QUERY FAILED' : state === 'empty' ? 'NO SERVICE DATA' : '');
   model.fleetUpFrac = scores.length ? ok / scores.length : null;
@@ -47,7 +41,7 @@ const panelCache = {};
 const ARR_SERVICES = ['sonarr', 'radarr', 'prowlarr', 'seerr', 'qbittorrent', 'plex'];
 const BYTES_PER_MIB = 1024 ** 2;
 const BYTES_PER_TIB = 1024 ** 4;
-const CARD_STATE_LABEL = { stale: 'STALE', error: 'ERROR', empty: 'NO DATA' };
+const CARD_STATE_LABEL = { stale: 'STALE', error: 'ERROR', empty: 'NO FEED' };
 
 function retainPanel(name, current) {
   const values = panelCache[name] || (panelCache[name] = {});
@@ -76,7 +70,7 @@ const metricValue = (panel, key, format, rows = panel.values[key]) => {
     const row = rows.find(({ value }) => Number.isFinite(value));
     if (row) return format(row.value);
   }
-  return panel.failed.has(key) ? 'ERROR' : 'NO DATA';
+  return panel.failed.has(key) ? 'ERROR' : 'NO FEED';
 };
 const mibRate = (value) => `${(value / BYTES_PER_MIB).toFixed(1)} MiB/s`;
 const integer = (value) => Math.round(value).toLocaleString();
@@ -95,14 +89,14 @@ function renderQbit(panel) {
   const activeStatus = connections.find((row) => row.value > 0);
   const connection = connected
     ? connected.value > 0 ? 'CONNECTED' : 'DISCONNECTED'
-    : activeStatus?.labels.status?.toUpperCase() || 'NO DATA';
-  const connectionColor = connection === 'CONNECTED' ? 'green' : ['ERROR', 'NO DATA'].includes(connection) ? '' : 'red';
+    : activeStatus?.labels.status?.toUpperCase() || 'NO FEED';
+  const connectionColor = connection === 'CONNECTED' ? 'green' : ['ERROR', 'NO FEED'].includes(connection) ? '' : 'red';
   const count = progress.length
     ? `${downloading} / ${seeding}`
-    : panel.failed.has('torrentProgress') ? 'ERROR' : 'NO DATA';
+    : panel.failed.has('torrentProgress') ? 'ERROR' : 'NO FEED';
   const ratio = shares.length
     ? averageShare.toFixed(2)
-    : panel.failed.has('torrentShareRatio') ? 'ERROR' : 'NO DATA';
+    : panel.failed.has('torrentShareRatio') ? 'ERROR' : 'NO FEED';
   const rows = [
     [metricValue(panel, 'qbitDownload', mibRate), 'download rate', 'green'],
     [metricValue(panel, 'qbitUpload', mibRate), 'upload rate', 'cyan'],
@@ -136,7 +130,7 @@ function renderTorrents(panel) {
   const rows = torrents.slice(0, 5).map((torrent) => {
     const rate = [torrent.download, torrent.upload].filter(Number.isFinite).reduce((total, value) => total + value, 0);
     const rateText = Number.isFinite(torrent.download) || Number.isFinite(torrent.upload)
-      ? mibRate(rate) : panel.failed.has('torrentDownload') || panel.failed.has('torrentUpload') ? 'ERROR' : 'NO DATA';
+      ? mibRate(rate) : panel.failed.has('torrentDownload') || panel.failed.has('torrentUpload') ? 'ERROR' : 'NO FEED';
     const hasProgress = Number.isFinite(torrent.progress);
     const progress = hasProgress ? clamp(torrent.progress * 100, 0, 100) : null;
     const color = SEEDING_STATES.has(torrent.state) ? 'var(--cyan)' : 'var(--green)';
@@ -147,7 +141,7 @@ function renderTorrents(panel) {
   const overflow = torrents.length > 5 ? `<div class="tmore">+${torrents.length - 5} more</div>` : '';
   const body = torrents.length
     ? `<div class="torrent-list">${rows}${overflow}</div>`
-    : `<div class="panel-placeholder">${panel.state === 'error' ? 'QUERY ERROR' : 'NO DATA'}</div>`;
+    : `<div class="panel-placeholder">${panel.state === 'error' ? 'QUERY ERROR' : 'NO FEED'}</div>`;
   updateCard('torrents', 'TORRENTS', panel.state, body);
 }
 
@@ -176,13 +170,13 @@ function renderLibrary(panel) {
   const rowsHtml = rows.map(([name, value, color]) => {
     const readable = Number.isFinite(value)
       ? `${(value / BYTES_PER_TIB).toFixed(1)} TiB`
-      : appError ? 'ERROR' : storageError && name === 'Other' ? 'ERROR' : 'NO DATA';
+      : appError ? 'ERROR' : storageError && name === 'Other' ? 'ERROR' : 'NO FEED';
     const width = Number.isFinite(value) && maxPart > 0 ? `${(value / maxPart * 100).toFixed(0)}%` : '0%';
     return `<div class="lrow"><span>${name}</span><div class="lbar"><i style="width:${width};background:var(--${color})"></i></div><b>${readable}</b></div>`;
   }).join('');
-  const usedText = Number.isFinite(used) ? `${(used / BYTES_PER_TIB).toFixed(1)} TiB` : storageError ? 'ERROR' : 'NO DATA';
+  const usedText = Number.isFinite(used) ? `${(used / BYTES_PER_TIB).toFixed(1)} TiB` : storageError ? 'ERROR' : 'NO FEED';
   const totalText = Number.isFinite(total) ? `${(total / BYTES_PER_TIB).toFixed(1)} TiB`
-    : panel.failed.has('diskTotal') ? 'ERROR' : 'NO DATA';
+    : panel.failed.has('diskTotal') ? 'ERROR' : 'NO FEED';
   const pct = Number.isFinite(used) && Number.isFinite(total) && total > 0 ? ` · ${Math.round(used / total * 100)}%` : '';
   const content = `<div class="lbig"><b>${usedText}</b><i> / ${totalText}${pct}</i></div>${rowsHtml}`;
   updateCard('library', 'LIBRARY STORAGE', panel.state, content);
@@ -194,7 +188,7 @@ function renderPlex(panel) {
   const sessions = (panel.values.plexSessions || []).filter((row) => row.value > 0);
   const transcodes = sessions.filter((row) => /transcod/i.test(row.labels.decision || '')).length;
   const transcodeText = panel.failed.has('plexSessions') && !panel.values.plexSessions?.length
-    ? 'ERROR' : panel.values.plexSessions?.length ? String(transcodes) : active === 0 ? '0' : 'NO DATA';
+    ? 'ERROR' : panel.values.plexSessions?.length ? String(transcodes) : active === 0 ? '0' : 'NO FEED';
   const activeText = metricValue(panel, 'plexActive', integer);
   const sessionRows = sessions.slice(0, 4).map((row) => {
     const title = row.labels.title || 'NO TITLE';
@@ -246,7 +240,7 @@ function renderVpn(panel) {
   const killswitch = panel.values.vpnKillswitch?.find(({ value }) => Number.isFinite(value))?.value;
   const portForward = panel.values.vpnPortForward?.find(({ value }) => Number.isFinite(value))?.value;
   const valueText = (key, value, format) => Number.isFinite(value)
-    ? format(value) : panel.failed.has(key) ? 'ERROR' : 'NO DATA';
+    ? format(value) : panel.failed.has(key) ? 'ERROR' : 'NO FEED';
   const tunnelText = valueText('vpnTunnel', tunnel, (value) => value > 0 ? 'CONNECTED' : 'DOWN');
   const detail = [
     `handshake ${valueText('vpnHandshake', handshake, (value) => formatAge(value))}`,
@@ -265,7 +259,7 @@ function renderPosters(panel) {
     return `<div class="poster" title="${esc(title)}" style="background:linear-gradient(${i * 45}deg,hsl(${20 + i * 40} 70% 30%),hsl(${200 + i * 20} 55% 14%))"><strong>${esc(title)}</strong><span>${formatAge(row.value)}</span></div>`;
   }).join('');
   const content = cards ? `<div class="pgrid">${cards}</div>`
-    : `<div class="panel-placeholder">${panel.state === 'error' ? 'QUERY ERROR' : 'NO DATA'}</div>`;
+    : `<div class="panel-placeholder">${panel.state === 'error' ? 'QUERY ERROR' : 'NO FEED'}</div>`;
   $('posters').innerHTML = `<div class="ct">RECENTLY ADDED${CARD_STATE_LABEL[panel.state] ? `<small class="state-label">${CARD_STATE_LABEL[panel.state]}</small>` : ''}</div>${content}`;
   setState($('posters'), panel.state);
 }
