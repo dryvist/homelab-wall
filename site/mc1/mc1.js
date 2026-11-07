@@ -57,7 +57,6 @@ async function refresh() {
     fsAvail: () => query(Q.fsAvail),
     llmState: () => query(Q.llmState),
     llmUsed: () => query(Q.llmUsed4d),
-    llmReq: () => query(Q.llmRequests1h),
     llmTok: () => query(Q.llmTokRate),
     vlan: () => query(Q.vlanFwRate),
   });
@@ -149,7 +148,7 @@ async function refresh() {
   model.llmFailed = r.llmState === null || r.llmUsed === null;
   if (r.llmState) {
     const tok = Object.fromEntries((r.llmTok || []).map((x) => [x.labels.model, x.value]));
-    model.llmAll = listedModels(r.llmState, r.llmUsed, r.llmReq).map((x) => {
+    model.llmAll = listedModels(r.llmState, r.llmUsed, null).map((x) => {
       const n = x.labels.litellm_model_name;
       const prev = model.llmAll?.find((m) => m.n === n);
       const t = tok[n] ?? 0;

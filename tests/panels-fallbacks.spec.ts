@@ -12,9 +12,7 @@ test('mc1 LLM list shows only recently used models and its summary counts only t
   await page.goto('/mc1/?gl=2d');
   const llm = page.locator('[data-panel="llm"]');
   await expect(llm).toHaveAttribute('data-state', 'ok');
-  const names = page.locator('#llmrows .lr > span:first-of-type');
-  await expect(names).toHaveCount(4);
-  expect((await names.allTextContents()).sort()).toEqual(['model-coder', 'model-large', 'model-mini', 'model-small']);
+  await expect(page.locator('#llmrows .lr > span:first-of-type')).toHaveText(['model-small', 'model-coder', 'model-large', 'model-mini']);
   await expect(page.locator('#llmrows')).not.toContainText('model-unused');
   await expect(page.locator('#llmsum')).toContainText('3/4 UP');
 });
