@@ -42,9 +42,10 @@ jobs:
   # projects), which surfaced as screenshot-capture failures and skewed the fake-clock/postMessage
   # timing rotator.spec depends on — both CI-only, never reproducing in a low-parallelism local
   # run. Sharding by project keeps each runner's load light and the wall-clock time down, since
-  # shards run on separate runners in parallel rather than queueing on one.
+  # shards run on separate runners in parallel rather than queueing on one. Each project is also
+  # split in two (--shard) so its slowest half still finishes inside the 10-minute job limit.
   test:
-    name: Playwright (${{ matrix.project }})
+    name: Playwright (${{ matrix.project }} ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     # Playwright's own image carries the browsers and their system packages, so no step installs
     # them through apt. Its version matches @playwright/test in package-lock.json.
@@ -63,6 +64,7 @@ jobs:
           - webkit-2560x1440
           - chromium-1440x900
           - webkit-1440x900
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -71,10 +73,10 @@ jobs:
       - run: node scripts/vendor-three.mjs
       # The fixture web server (playwright.config.ts) is python3's http.server.
       - run: python3 --version
-      - run: npx playwright test --project="${{ matrix.project }}"
+      - run: npx playwright test --project="${{ matrix.project }}" --shard=${{ matrix.shard }}/2
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: screenshots-${{ matrix.project }}
+          name: screenshots-${{ matrix.project }}-${{ matrix.shard }}
           path: test-results/
           retention-days: 14
