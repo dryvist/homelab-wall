@@ -1,3 +1,5 @@
+import { MC9_QUERIES } from '../mc9/queries.js';
+
 // PromQL used by the wall. APP_HEALTH_SCORE is the single base definition of
 // the 0-9(-10) app health score; prometheus-homelab-rules records the identical
 // expression as homelab:app_health_score, which Q.appScore prefers once it exists.
@@ -26,6 +28,7 @@ export const APP_HEALTH_SCORE = `
 const APP_SCORE = `homelab:app_health_score or (${APP_HEALTH_SCORE})`;
 
 export const Q = {
+  ...MC9_QUERIES,
   appScore: APP_SCORE,
   // mc3 fleet list: the same per-name score, kept only for names with a Gatus series in the AI
   // catalog category (group "AI · UI" or "AI · API"). Q.appScore carries no group label to filter on.

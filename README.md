@@ -10,6 +10,7 @@ other dashboards.
 | --- | --- |
 | `site/mc1/` | Mission Control 1: nodes, storage, 3D topology, app health honeycomb, LLM status, firewall feeds |
 | `site/mc6/` | Mission Control 6 (LEXICON): a hero word cloud cycling the sources every 8 s plus a strip with one small cloud per source |
+| `site/mc9/` | Mission Control 9 (beta): independent agent constellation, measured activity rates, and 24h activity rings |
 | `site/lib/` | Shared Prometheus client, PromQL (including the app health score), stage/GL helpers |
 | `site/vendor/`, `site/fonts/` | three.js, d3-cloud and fonts, vendored so no page loads code or fonts from the internet |
 | `tests/` | Playwright at 1920×1080 against fixture data |
@@ -45,6 +46,32 @@ MC6 reads `GET /api/words` (same origin), ClickHouse `FORMAT JSON`:
 `n` is a UInt64 serialized as a string. Every known source keeps a tile even
 when the feed has no rows for it — an explicit NO FEED state; a feed that
 fails keeps its last good clouds and shows the stale indicator.
+
+MC9 uses only the Prometheus gateway or snapshot, with `mc9*` queries in `Q`.
+Codex groups `session_source` into primary and `subagent_*` activity; Claude
+Code groups `agent_name` into main (including an absent label) and subagents.
+Both show output tokens/s. Donna shows router requests/s for its key alias;
+Hindsight shows operations/s. The LLM spans node consumes the trace pipeline's
+`traces_span_metrics_calls_total` with a generative AI model or system label.
+That source is pending until span metrics arrive. Hermes gateway and cron
+remain pending until their event counter names are confirmed; the available
+prefix inventory alone does not define an activity counter.
+
+MC9 never substitutes sample values. Missing signals stay visible as pending;
+a signal that disappears or fails retains its last measured value as STALE.
+Zero means a measured idle rate. Node area grows monotonically with the 5m
+rate, approaching its ring; signals have different units and are labelled.
+Rings show measured 5m rates over 24h (brightness relative to each node's own
+maximum), with timestamp gaps unfilled. History refreshes every 5 minutes;
+current rates follow `refreshSeconds`. Last seen is the end of the last
+positive activity window, with 5-minute resolution for historical samples;
+it is unknown when no activity was observed. Lines show agent grouping only.
+Requests time out after 10 seconds. Current readings become stale after
+300 seconds even during an unfinished poll. History becomes stale when its
+newest sample is over 10 minutes old (allowing for refresh and alignment);
+an empty 24h ring is pending, and expired retained history is also stale.
+No host, session, or user identities appear. Pause and reduced motion stop
+glow animation. The default rotator includes MC9 immediately after MC6.
 
 A panel whose source is not wired yet, or whose query comes back empty or
 fails, shows plausible stand-in content instead of a placeholder. Nothing on
@@ -98,6 +125,7 @@ direnv allow
 npm ci
 npx playwright install chromium
 npx playwright test
+node --test
 ```
 
 Releases attach `homelab-wall-site.tar.gz`, which the deploy role fetches at a

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MC9 · Agent Constellation</title>
+<link rel="stylesheet" href="/mc9/mc9.css">
+</head>
+<body>
+<main id="stage">
+  <header>
+    <div><p>Mission Control 9 · Beta</p><h1>Agent Constellation</h1></div>
+    <div class="reading"><span id="status">Awaiting telemetry</span><time id="clock"></time></div>
+  </header>
+  <section id="constellation" data-panel="constellation" data-state="pending" aria-label="Agent activity constellation">
+    <canvas id="sky" aria-hidden="true"></canvas>
+    <div id="nodes" aria-label="Activity by agent"></div>
+  </section>
+  <footer>
+    <div class="legend"><span class="active-dot"></span>Active <span class="idle-dot"></span>Idle <span class="pending-dot"></span>Pending</div>
+    <p>Size: measured 5m rate · Rings: 24h, oldest at top, clockwise<br>Last seen: end of last active 5m window · Gaps remain empty</p>
+    <button id="motion" type="button" aria-pressed="false">Pause motion</button>
+  </footer>
+</main>
+<script type="module" src="/mc9/mc9.js"></script>
+</body>
+</html>

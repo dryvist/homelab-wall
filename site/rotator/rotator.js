@@ -11,6 +11,7 @@ const DEFAULT_SLIDES = [
   { name: 'MC4', url: '/mc4/' },
   { name: 'MC5', url: '/mc5/' },
   { name: 'LEXICON', url: '/mc6/' },
+  { name: 'Agent Constellation', url: '/mc9/' },
 ];
 const MIN_HOLD = 30;
 const MAX_HOLD = 60;
