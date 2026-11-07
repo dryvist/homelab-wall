@@ -52,6 +52,16 @@ for (const mode of ['2d', '3d'] as const) {
     await mockFeeds(page);
     await page.goto(`/mc3/?gl=${mode}`);
     await awaitReady(page, mode);
+    const colorData = await page.evaluate(() => ({
+      cards: [...document.querySelectorAll<HTMLElement>('#modeltab .mc')].map((card) => ({
+        name: card.dataset.model,
+        color: card.dataset.color,
+      })),
+      scene: JSON.parse(document.querySelector<HTMLCanvasElement>('#reactor')?.dataset.modelColors ?? '[]') as Array<{ n: string; color: string }>,
+    }));
+    expect(colorData.cards.length).toBeGreaterThan(0);
+    expect(new Set(colorData.cards.map(({ color }) => color)).size).toBe(colorData.cards.length);
+    for (const { name, color } of colorData.cards) expect(colorData.scene).toContainEqual({ n: name, color });
     // stage.js signalReady is once-guarded, so exactly one ready per load — the rotator contract.
     // Forced 3D on CI runs WebGPURenderer's WebGL2 backend on a software rasterizer, where the
     // first frame (shader builds plus the particle init dispatch) takes far longer than on the
