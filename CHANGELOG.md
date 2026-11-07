@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.1](https://github.com/dryvist/homelab-wall/compare/v0.25.0...v0.25.1) (2026-11-07)
+
+
+### Bug Fixes
+
+* **mc1:** draw a dashed baseline in empty LLM row charts ([#182](https://github.com/dryvist/homelab-wall/issues/182)) ([a24ad0d](https://github.com/dryvist/homelab-wall/commit/a24ad0d73c02c545d8006214648c4e9100907916))
+* **wall:** show real metrics or no feed on every panel ([#180](https://github.com/dryvist/homelab-wall/issues/180)) ([f5ff7c8](https://github.com/dryvist/homelab-wall/commit/f5ff7c81b51651ff9cfa3c298a83ac3871e61661))
+
 ## [0.25.0](https://github.com/dryvist/homelab-wall/compare/v0.24.2...v0.25.0) (2026-11-07)
 
 
