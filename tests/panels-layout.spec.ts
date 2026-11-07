@@ -16,6 +16,12 @@ const STABILITY_MATRIX = [
   { width: 1080, height: 1920, deviceScaleFactor: 1 },
 ] as const;
 
+const MC4_VIEWPORTS = [
+  { width: 1920, height: 1080 },
+  { width: 2560, height: 1440 },
+  { width: 1440, height: 900 },
+] as const;
+
 for (const vp of STABILITY_MATRIX) {
   test.describe(`mc1 layout stability at ${vp.width}x${vp.height}@${vp.deviceScaleFactor}`, () => {
     test.use({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.deviceScaleFactor, reducedMotion: 'reduce' });
@@ -88,5 +94,36 @@ for (const pageSpec of PAGES) {
       expect(h, `scrollHeight ${h}px exceeds viewport height ${viewport.height}px at t=${i}s`).toBeLessThanOrEqual(viewport.height);
     });
     expect(new Set(heights).size, `scrollHeight was not stable over 5s: ${heights.join(', ')}`).toBe(1);
+  });
+}
+
+for (const viewport of MC4_VIEWPORTS) {
+  test(`mc4 fits with long fixture titles and many torrents at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    if (!wallUrl) await mockFeeds(page);
+    await page.setViewportSize(viewport);
+    await page.goto('/mc4/?gl=2d');
+    for (const id of ['qbit', 'library', 'plex', 'torrents', 'arr', 'vpn', 'recently-added']) {
+      await expect(page.locator(`[data-panel="${id}"]`)).toHaveAttribute('data-state', 'ok');
+    }
+    await expect(page.locator('#torrents .trow')).toHaveCount(5);
+    await expect(page.locator('#torrents')).toContainText('+13 more');
+    await expect(page.locator('#torrents .tn').first()).toHaveAttribute('title', 'The Life and Passion of Jesus Christ (1903)');
+    await expect(page.locator('#posters .poster')).toHaveCount(8);
+
+    const size = await page.evaluate(() => ({
+      scrollWidth: document.scrollingElement!.scrollWidth,
+      scrollHeight: document.scrollingElement!.scrollHeight,
+      clientWidth: document.scrollingElement!.clientWidth,
+      clientHeight: document.scrollingElement!.clientHeight,
+      columns: ['#acqbody', '#pipebody'].map((id) => {
+        const column = document.querySelector(id)!;
+        return { scrollHeight: column.scrollHeight, clientHeight: column.clientHeight };
+      }),
+    }));
+    expect(size.scrollWidth, 'the MC4 page must not scroll horizontally').toBeLessThanOrEqual(size.clientWidth);
+    expect(size.scrollHeight, 'the MC4 page must not scroll vertically').toBeLessThanOrEqual(size.clientHeight);
+    size.columns.forEach((column, i) => {
+      expect(column.scrollHeight, `MC4 card column ${i} content must fit inside its viewport track`).toBeLessThanOrEqual(column.clientHeight);
+    });
   });
 }

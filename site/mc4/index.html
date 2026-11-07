@@ -16,25 +16,35 @@
   <canvas id="corecanvas"></canvas>
   <header>
     <div class="brand"><span id="title">HOMELAB</span> <span class="acc">//</span> MEDIA <span class="acc">//</span> ACQUISITION</div>
-    <div class="vpn"><b id="vpn"></b><small id="vpnDetail"></small></div>
+    <div class="vpn" id="vpnPanel" data-panel="vpn" data-state="pending"><b id="vpn"></b><small id="vpnDetail"></small></div>
     <section class="appstrip" id="apps" data-panel="apps" data-state="pending"><h2>Service health <span id="appsum"></span></h2></section>
     <div class="clock num" id="clock">--:--:--<small>--</small></div>
   </header>
 
-  <!-- Floating glass cards (sketch scene 125's mdL/mdR), not an opaque full-height column: the
-       hero canvas's tube/core/disk must show through the gaps between cards and behind them. -->
-  <section class="hero-col colL" id="acq" data-panel="acquisition" data-state="pending">
-    <div class="cardbody" id="acqbody"></div>
-  </section>
+  <!-- Keep the side cards around the unlabeled hero canvas while reserving a separate bottom row
+       for recently-added posters. The canvas shows through the card gaps and each grid row stays
+       outside the other panels' bounds. -->
+  <div class="hero-main">
+    <section class="hero-col colL" id="acq">
+      <div class="cardbody" id="acqbody">
+        <div class="card" id="qbit" data-panel="qbit" data-state="pending"><div class="ct">QBITTORRENT</div><div class="panel-placeholder">LOADING</div></div>
+        <div class="card" id="library" data-panel="library" data-state="pending"><div class="ct">LIBRARY STORAGE</div><div class="panel-placeholder">LOADING</div></div>
+        <div class="card" id="plex" data-panel="plex" data-state="pending"><div class="ct">PLEX</div><div class="panel-placeholder">LOADING</div></div>
+      </div>
+    </section>
 
-  <!-- No title here: the sketch's own scene 125 has no on-canvas label. -->
-  <section class="panel panel-frameless" id="core" data-panel="core" data-state="ok"></section>
+    <!-- No title here: the sketch's own scene 125 has no on-canvas label. -->
+    <section class="panel panel-frameless" id="core" data-panel="core" data-state="ok"></section>
 
-  <section class="hero-col colR" id="pipe" data-panel="pipeline" data-state="pending">
-    <div class="cardbody" id="pipebody"></div>
-  </section>
+    <section class="hero-col colR" id="pipe">
+      <div class="cardbody" id="pipebody">
+        <div class="card" id="torrents" data-panel="torrents" data-state="pending"><div class="ct">TORRENTS</div><div class="panel-placeholder">LOADING</div></div>
+        <div class="card" id="arr" data-panel="arr" data-state="pending"><div class="ct">ARR STACK</div><div class="panel-placeholder">LOADING</div></div>
+      </div>
+    </section>
+  </div>
 
-  <div class="posters" id="posters"></div>
+  <div class="posters" id="posters" data-panel="recently-added" data-state="pending"><div class="ct">RECENTLY ADDED</div><div class="panel-placeholder">LOADING</div></div>
 </div>
 <script type="importmap">{"imports": {"three": "/vendor/three/three.module.js", "three/addons/": "/vendor/three/addons/"}}</script>
 <script type="module" src="/mc4/mc4.js"></script>

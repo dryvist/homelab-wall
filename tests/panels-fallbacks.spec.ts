@@ -116,14 +116,12 @@ test('a no-data apps panel renders sample scores marked only by data-source, nev
 
 // Every panel with NO live source wired up at all (as opposed to a live query that returned zero
 // rows this poll) shows stand-in content: no visible badge, no "pending" text — a machine-only
-// data-source="stand-in" marker (site/lib/stage.js setStandIn) is the only trace, so the panel
-// contract test above already covers its visible state (it must be 'ok', like a live panel).
+// data-source="stand-in" marker (site/lib/stage.js setStandIn) is the only trace.
 // mc1's "nodes" panel is deliberately excluded: its node cards and GPU gauges are real data,
 // never a stand-in.
 const STAND_IN_PANELS: Record<string, string[]> = {
   mc1: ['firewall'], // mc1's topology panel is a MIX (real graph + a stand-in #wan sub-element)
   mc2: ['threat', 'blocked'],
-  mc4: ['acquisition', 'pipeline'],
   mc5: ['infra'],
 };
 
@@ -210,3 +208,81 @@ for (const [outcome, state] of [['empty', 'pending'], ['failed', 'error']] as co
     for (let i = 0; i < 4; i += 1) await expect(page.locator(`#g${i}3`)).not.toHaveAttribute('data-source', 'stand-in');
   });
 }
+
+const MC4_QBIT_QUERIES = [
+  Q.mc4QbitDownloadRate, Q.mc4QbitUploadRate, Q.mc4QbitDhtNodes, Q.mc4QbitConnection,
+  Q.mc4TorrentProgress, Q.mc4TorrentShareRatio,
+];
+
+test('mc4 live media panels render fixture telemetry and each panel has its own live state', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped media telemetry only');
+  await mockFeeds(page);
+  await page.goto('/mc4/?gl=2d');
+
+  for (const id of ['qbit', 'library', 'plex', 'torrents', 'arr', 'vpn', 'recently-added']) {
+    const panel = page.locator(`[data-panel="${id}"]`);
+    await expect(panel, `${id} panel`).toHaveAttribute('data-state', 'ok');
+    await expect(panel, `${id} source`).not.toHaveAttribute('data-source', 'stand-in');
+  }
+  await expect(page.locator('#qbit')).toContainText('5.0 MiB/s');
+  await expect(page.locator('#qbit')).toContainText('432');
+  await expect(page.locator('#qbit')).toContainText('average share ratio');
+  await expect(page.locator('#qbit')).not.toContainText('peers');
+  await expect(page.locator('#torrents .trow')).toHaveCount(5);
+  await expect(page.locator('#torrents')).toContainText('+13 more');
+  await expect(page.locator('#torrents')).toContainText('The Life and Passion of Jesus Christ (1903)');
+  await expect(page.locator('#library')).toContainText('31.0 TiB');
+  await expect(page.locator('#library')).toContainText('Other');
+  await expect(page.locator('#library')).not.toContainText('Music');
+  await expect(page.locator('#plex')).toContainText('active sessions');
+  await expect(page.locator('#plex')).toContainText('transcodes');
+  await expect(page.locator('#plex')).toContainText('transcode');
+  await expect(page.locator('#plex')).not.toContainText('Mb/s');
+  await expect(page.locator('#arr .aname')).toHaveText(['sonarr', 'radarr', 'prowlarr', 'seerr', 'qbittorrent', 'plex']);
+  await expect(page.locator('#vpn')).toContainText('CONNECTED');
+  await expect(page.locator('#vpnDetail')).toContainText('42s ago');
+  await expect(page.locator('#vpnDetail')).not.toContainText('leak');
+  await expect(page.locator('#posters .poster')).toHaveCount(8);
+  await expect(page.locator('#posters')).toContainText('ago');
+});
+
+test('mc4 a failed first QBITTORRENT feed shows error without blanking other cards', async ({ page }) => {
+  test.skip(!!wallUrl, 'forces a media query failure against the fixture server only');
+  await mockFeeds(page, { failQuery: (query) => MC4_QBIT_QUERIES.some((expression) => expression === query) });
+  await page.goto('/mc4/?gl=2d');
+  await expect(page.locator('#qbit')).toHaveAttribute('data-state', 'error');
+  await expect(page.locator('#qbit')).toContainText('ERROR');
+  await expect(page.locator('#library')).toHaveAttribute('data-state', 'ok');
+  await expect(page.locator('#library')).toContainText('31.0 TiB');
+});
+
+test('mc4 a successful empty QBITTORRENT feed shows empty', async ({ page }) => {
+  test.skip(!!wallUrl, 'forces empty media responses against the fixture server only');
+  await mockFeeds(page, { emptyQuery: (query) => MC4_QBIT_QUERIES.some((expression) => expression === query) });
+  await page.goto('/mc4/?gl=2d');
+  await expect(page.locator('#qbit')).toHaveAttribute('data-state', 'empty');
+  await expect(page.locator('#qbit')).toContainText('NO DATA');
+});
+
+test('mc4 held QBITTORRENT readings become stale when their queries fail', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises changing media responses against the fixture server only');
+  await mockFeeds(page);
+  await page.route('**/config.json', (route) => route.fulfill({ json: { ...config, refreshSeconds: 1 } }));
+  let failing = false;
+  await page.route('**/api/prom/**', async (route) => {
+    const query = new URL(route.request().url()).searchParams.get('query') || '';
+    if (failing && MC4_QBIT_QUERIES.some((expression) => expression === query)) {
+      return route.fulfill({ status: 500, json: { status: 'error', error: 'forced failure' } });
+    }
+    return route.fallback();
+  });
+
+  await page.goto('/mc4/?gl=2d');
+  const qbit = page.locator('#qbit');
+  await expect(qbit).toHaveAttribute('data-state', 'ok');
+  failing = true;
+  await expect(qbit).toHaveAttribute('data-state', 'stale');
+  await expect(qbit).toContainText('STALE');
+  await expect(qbit).toContainText('5.0 MiB/s');
+  await expect(page.locator('#library')).toHaveAttribute('data-state', 'ok');
+});
