@@ -46,7 +46,8 @@ function renderLabels() {
       : node.historyPending ? 'History pending' : '';
   }
   const measured = nodes.filter((n) => n.state === 'active' || n.state === 'idle');
-  const stale = nodes.some((n) => n.state === 'stale' || n.historyStale);
+  // Stale history marks the page only where a history ring is drawn.
+  const stale = nodes.some((n) => n.state === 'stale' || (n.historyStale && !n.historyPending));
   panel.dataset.state = stale ? 'stale' : measured.length ? 'ok' : 'pending';
   document.getElementById('status').textContent = `${measured.length} signals reporting · ${nodes.filter((n) => n.state === 'pending').length} pending${stale ? ' · STALE data' : ''}`;
   document.getElementById('clock').textContent = new Date().toLocaleTimeString();

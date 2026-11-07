@@ -75,7 +75,8 @@ it is unknown when no activity was observed. Lines show agent grouping only.
 Requests time out after 10 seconds. Current readings become stale after
 300 seconds even during an unfinished poll. History becomes stale when its
 refresh fails or its last successful refresh is over 10 minutes old; a series
-that has gone quiet keeps current history. An empty 24h ring is pending.
+that has gone quiet keeps current history. An empty 24h ring is pending, and
+stale history marks the page header only where its ring is drawn.
 No host, session, or user identities appear. Pause and reduced motion stop
 glow animation. The default rotator lists MC9 last, after MC8.
 
