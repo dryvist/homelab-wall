@@ -11,8 +11,6 @@ export default defineConfig({
   testMatch: '**/*.spec.ts',
   testIgnore: ['**/wall.live.spec.ts'],
   timeout: 60_000,
-  // Shards split by test, not by file, so ci.yml's three shards per project stay balanced.
-  fullyParallel: true,
   // ci.yml runs a third of one Playwright project per job (its own runner) instead of the full 8-project
   // matrix on one runner — that's what fixed the resource contention (see ci.yml). Each shard's
   // tests still get the CPU-based default worker count, same as a local run.
