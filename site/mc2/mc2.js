@@ -13,6 +13,7 @@ import {
 } from '/lib/stage.js';
 import { sampleAppScore } from '/lib/sampleData.js';
 import { poissonLoop } from '/lib/liveJitter.js';
+import { serviceScoreState } from '/lib/serviceScoreState.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -21,10 +22,12 @@ const cfg = await loadConfig();
 $('title').textContent = cfg.title || 'HOMELAB';
 const apps = [...new Set((cfg.groups || []).flatMap((g) => g.apps))].sort().map((n) => ({ n, s: null }));
 const appIndex = Object.fromEntries(apps.map((a) => [a.n, a]));
+const model = { scoreFailed: false };
 
 /* ---------------- apps strip (real data) ---------------- */
 async function refresh() {
   const r = await settle({ score: () => query(Q.appScore) });
+  model.scoreFailed = r.score === null;
   if (r.score) {
     const seen = new Set();
     for (const row of r.score) {
@@ -49,7 +52,8 @@ function renderApps() {
   const bad = scores.filter((s) => s < SCORE_DEGRADED_MIN).length;
   $('appsum').innerHTML = `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`;
   setSampleBadge(panel, sample);
-  setState(panel, scored.length ? 'ok' : 'empty');
+  const state = serviceScoreState(model.scoreFailed, scored.length > 0);
+  setState(panel, state, state === 'error' ? 'SCORE QUERY FAILED' : state === 'empty' ? 'NO SERVICE DATA' : '');
 }
 
 /* ---------------- threat globe + blocked feed (stand-in: no edge/geoip metrics exist yet) ------

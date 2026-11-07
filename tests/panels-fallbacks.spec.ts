@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { Q } from '../site/lib/queries.js';
-import { mockFeeds } from './fixture';
+import { config, mockFeeds } from './fixture';
 import { wallUrl } from './panels-contract';
 
 // MC1's LLM list holds only models with a real request in the last 4d (Q.llmUsed4d), in MC1's existing
@@ -46,6 +46,49 @@ test('a failed health query renders an explicit error, never a silent zero count
   await expect(page.locator('#appsum')).toContainText(/\d/);
 });
 
+for (const pageId of ['mc2', 'mc4', 'mc5']) {
+  test(`${pageId} a failed first score query marks sample scores as error`, async ({ page }) => {
+    test.skip(!!wallUrl, 'forces a query failure against the fixture server only');
+    await mockFeeds(page, { failQuery: (q) => q === Q.appScore });
+    await page.goto(`/${pageId}/`);
+    const apps = page.locator('[data-panel="apps"]');
+    await expect(apps).toHaveAttribute('data-state', 'error');
+    await expect(apps).toHaveAttribute('data-source', 'stand-in');
+    await expect(page.locator('#appsum')).toContainText(/\d/);
+  });
+
+  test(`${pageId} held scores become stale on failure and recover with new scores`, async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises changing score responses against the fixture server only');
+    await mockFeeds(page);
+    await page.route('**/config.json', (route) => route.fulfill({ json: { ...config, refreshSeconds: 1 } }));
+    let phase: 'live' | 'failing' | 'recovered' = 'live';
+    await page.route('**/api/prom/**', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get('query') !== Q.appScore) return route.fallback();
+      if (phase === 'failing') return route.fulfill({ status: 500, json: { status: 'error', error: 'forced failure' } });
+      if (phase === 'recovered') {
+        const result = config.groups.flatMap((group) => group.apps).map((name) => ({
+          metric: { name }, value: [Date.now() / 1000, '0'],
+        }));
+        return route.fulfill({ json: { status: 'success', data: { resultType: 'vector', result } } });
+      }
+      return route.fallback();
+    });
+
+    await page.goto(`/${pageId}/`);
+    const apps = page.locator('[data-panel="apps"]');
+    await expect(apps).toHaveAttribute('data-state', 'ok');
+    await expect(page.locator('#appsum')).not.toContainText(/\b0 OK\b/);
+    phase = 'failing';
+    await expect(apps).toHaveAttribute('data-state', 'stale');
+    await expect(apps).toHaveAttribute('data-source', 'live');
+    await expect(page.locator('#appsum')).not.toContainText(/\b0 OK\b/);
+    phase = 'recovered';
+    await expect(apps).toHaveAttribute('data-state', 'ok');
+    await expect(page.locator('#appsum')).toContainText(/\b0 OK\b/);
+  });
+}
+
 // A score query that succeeds with zero rows (never a failure — that's the error-state test
 // above) is genuinely empty, so the apps panel falls back to the shared sample scores
 // (site/lib/sampleData.js), marked only by the invisible data-source attribute — the wall never
@@ -62,7 +105,13 @@ test('a no-data apps panel renders sample scores marked only by data-source, nev
   await expect(page.locator('#appsum')).toContainText(/\d/);
 
   await page.goto('/mc2/');
-  await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-source', 'stand-in');
+  for (const pageId of ['mc2', 'mc4', 'mc5']) {
+    if (pageId !== 'mc2') await page.goto(`/${pageId}/`);
+    const apps = page.locator('[data-panel="apps"]');
+    await expect(apps).toHaveAttribute('data-state', 'empty');
+    await expect(apps).toHaveAttribute('data-source', 'stand-in');
+    await expect(page.locator('#appsum')).toContainText(/\d/);
+  }
 });
 
 // Every panel with NO live source wired up at all (as opposed to a live query that returned zero

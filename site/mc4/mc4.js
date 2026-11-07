@@ -9,6 +9,7 @@ import {
   setStandIn, onDispose, onContextLoss, disposeThreeScene, hardwareGL, adaptiveBloomOn, adaptiveDpr,
 } from '/lib/stage.js';
 import { sampleAppScore } from '/lib/sampleData.js';
+import { serviceScoreState } from '/lib/serviceScoreState.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -18,11 +19,12 @@ $('title').textContent = cfg.title || 'HOMELAB';
 const groups = cfg.groups || [];
 const apps = [...new Set(groups.flatMap((g) => g.apps))].sort().map((n) => ({ n, s: null }));
 const appIndex = Object.fromEntries(apps.map((a) => [a.n, a]));
-const model = { fleetUpFrac: null }; // drives the hero scene's brightness/motion (real signal)
+const model = { fleetUpFrac: null, scoreFailed: false }; // drives the hero scene's brightness/motion (real signal)
 
 /* ---------------- data ---------------- */
 async function refresh() {
   const r = await settle({ score: () => query(Q.appScore) });
+  model.scoreFailed = r.score === null;
   if (r.score) {
     const seen = new Set();
     for (const row of r.score) {
@@ -46,7 +48,8 @@ function renderApps() {
     ? `<span style="color:var(--green)">${ok} OK</span> · <span style="color:var(--amber)">${warn} DEGRADED</span> · <span style="color:var(--red)">${bad} DOWN</span>`
     : '';
   setSampleBadge($('apps'), sample);
-  setState($('apps'), scored.length ? 'ok' : 'empty', scored.length ? '' : 'NO SERVICE DATA');
+  const state = serviceScoreState(model.scoreFailed, scored.length > 0);
+  setState($('apps'), state, state === 'error' ? 'SCORE QUERY FAILED' : state === 'empty' ? 'NO SERVICE DATA' : '');
   model.fleetUpFrac = scores.length ? ok / scores.length : null;
 }
 
