@@ -140,5 +140,7 @@ export function identities(data, router = false) {
       found.set(JSON.stringify(id), id);
     }
   }
+  // A recently used model keeps its card even with no reading rows.
+  for (const model of recentlyUsed ?? []) found.set(JSON.stringify({ model }), { model });
   return [...found.values()].sort((a, b) => `${a.backend || ''}/${a.guest || a.model}`.localeCompare(`${b.backend || ''}/${b.guest || b.model}`));
 }

@@ -64,6 +64,7 @@ test('router identities require real use and fall back when the usage query fail
   };
   assert.deepEqual(identities(readings, true), [{ model: 'real-model' }]);
   assert.deepEqual(identities({ ...readings, llmUsed4d: [] }, true), []);
+  assert.deepEqual(identities({ llmUsed4d: [{ labels: { model: 'no-readings' }, value: 1 }] }, true), [{ model: 'no-readings' }]);
   assert.deepEqual(identities({ ...readings, llmUsed4d: null }, true), [
     { model: 'health-check-only' }, { model: 'real-model' },
   ]);
