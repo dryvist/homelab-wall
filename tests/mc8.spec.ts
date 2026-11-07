@@ -13,10 +13,11 @@ test('measured routes, provider banks and hero readings render without page faul
   await expect(page.locator('#callers .terminal')).toHaveCount(2);
   await expect(page.locator('#models .terminal')).toHaveCount(3);
   await expect(page.locator('#local-share')).toHaveText(/69[.,]2%/);
-  await expect(page.locator('#in-flight')).toHaveText('7');
+  await expect(page.locator('#in-flight')).toHaveText('local 3 · cloud 4');
   await expect(page.locator('#spend')).toHaveText(/123[.,]4¢/);
-  await expect(page.locator('#ttft')).toHaveText('420 ms');
-  await expect(page.locator('#route-state')).toHaveText('130 tokens/s');
+  await expect(page.locator('#ttft')).toHaveText('local 210 ms · cloud 420 ms');
+  await expect(page.locator('#route-state')).toHaveText('local 90 · cloud 40 tokens/s');
+  await expect(page.locator('#callers .terminal').first().locator('.rate')).toHaveText('local 90 tokens/s · cloud 15 tokens/s');
   expect(await page.locator('[data-source="stand-in"]').count()).toBe(0);
   expect(errors).toEqual([]);
   expect(await page.evaluate(() => document.scrollingElement!.scrollHeight)).toBeLessThanOrEqual(await page.evaluate(() => innerHeight));
@@ -34,6 +35,10 @@ test('high-cardinality routes fit one screen and keep collapsed terminal routes 
   expect(await page.evaluate(() => document.scrollingElement!.scrollHeight)).toBeLessThanOrEqual(await page.evaluate(() => innerHeight));
   await expect(page.locator('#callers .more')).toBeVisible();
   await expect(page.locator('#models .more')).toBeVisible();
+  await expect(page.locator('#callers .more .rate')).toContainText('local');
+  await expect(page.locator('#callers .more .rate')).toContainText('cloud');
+  await expect(page.locator('#models .more .rate')).toContainText('local');
+  await expect(page.locator('#models .more .rate')).toContainText('cloud');
   await expect(page.locator('#callers .terminal').first()).toContainText('caller-20');
 
   const callerMore = page.locator('#callers .more strong');
@@ -97,15 +102,15 @@ test('empty data remains pending and draws no sample routes or numeric heroes', 
   await page.goto('/mc8/');
   await expect(page.locator('#flow-status')).toContainText('Pending');
   await expect(page.locator('.terminal')).toHaveCount(0);
-  await expect(page.locator('.reading')).toHaveText(['Pending', 'Pending', 'Pending', 'Pending']);
+  await expect(page.locator('.reading')).toHaveText(['Pending', 'local — · cloud —', 'Pending', 'local — · cloud —']);
 });
 
-test('an empty TTFT result reads Idle while its histogram sample time is fresh', async ({ page }) => {
+test('empty TTFT classes show missing values while their histogram sample times stay fresh', async ({ page }) => {
   await mockMc8(page, { idleTtft: true });
   await page.goto('/mc8/');
-  await expect(page.locator('#ttft')).toHaveText('Idle');
-  await expect(page.locator('[data-panel]:has(#ttft) .status')).toHaveText('Idle · no samples in the trailing 5 minutes');
-  await expect(page.locator('#in-flight')).toHaveText('7');
+  await expect(page.locator('#ttft')).toHaveText('local — · cloud —');
+  await expect(page.locator('[data-panel]:has(#ttft) .status')).toHaveText('Router histogram · trailing 5 minutes');
+  await expect(page.locator('#in-flight')).toHaveText('local 3 · cloud 4');
 });
 
 test('a failed first poll stays pending', async ({ page }) => {
@@ -124,7 +129,7 @@ test('a failed refresh retains measured routes and marks their age, then recover
   await expect(page.locator('#switchboard')).toHaveAttribute('data-state', 'stale');
   await expect(page.locator('#flow-status')).toContainText('STALE');
   await expect(page.locator('#models .terminal')).toHaveCount(3);
-  await expect(page.locator('#in-flight')).toHaveText('7');
+  await expect(page.locator('#in-flight')).toHaveText('local 3 · cloud 4');
   await expect(page.locator('[data-panel="in-flight"]')).toHaveAttribute('data-state', 'stale');
   fail = false;
   await expect(page.locator('#switchboard')).toHaveAttribute('data-state', 'ok');
@@ -136,13 +141,13 @@ test('snapshot mode resolves MC8 queries without reaching the live gateway', asy
   await mockMc8(page, { snapshot: true });
   await page.goto('/mc8/');
   await expect(page.locator('#switchboard')).toHaveAttribute('data-state', 'ok');
-  await expect(page.locator('#ttft')).toHaveText('420 ms');
+  await expect(page.locator('#ttft')).toHaveText('local 210 ms · cloud 420 ms');
   expect(calls).toEqual([]);
 });
 
 test('old snapshot samples stay stale after repeated successful fetches and never mark failures', async ({ page }) => {
   await mockMc8(page, { snapshot: true });
-  const instant = Object.fromEntries(Object.entries(Q).filter(([key]) => key.startsWith('mc8')).map(([key, expr]) => {
+  const instant = Object.fromEntries(Object.entries(Q).filter(([key]) => key.startsWith('mc8') || ['vllmRunning', 'llamaRunning'].includes(key)).map(([key, expr]) => {
     const result = mc8Answer(expr);
     for (const row of result) {
       row.value[0] = Date.now() / 1000 - 600;
@@ -164,7 +169,7 @@ test('old snapshot samples stay stale after repeated successful fetches and neve
 test('unclassified share goes stale on its own when every token series is unclassified', async ({ page }) => {
   await mockMc8(page, { snapshot: true });
   const unclassified = Object.fromEntries(['local', 'subscription', 'paid', 'free'].map((bank) => [`tag_telemetry_billing_class_${bank}`, 'false']));
-  const instant = Object.fromEntries(Object.entries(Q).filter(([key]) => key.startsWith('mc8')).map(([key, expr]) => {
+  const instant = Object.fromEntries(Object.entries(Q).filter(([key]) => key.startsWith('mc8') || ['vllmRunning', 'llamaRunning'].includes(key)).map(([key, expr]) => {
     const result = mc8Answer(expr);
     for (const row of result) {
       if (key.endsWith('Rate')) row.metric = { ...row.metric, ...unclassified };
@@ -175,7 +180,7 @@ test('unclassified share goes stale on its own when every token series is unclas
   await page.route('**/data/mc8.json', (r) => r.fulfill({ json: { generated_at: new Date().toISOString(), instant } }));
   await page.goto('/mc8/');
   await expect(page.locator('#local-share')).toHaveText('Unavailable');
-  await expect(page.locator('#unclassified-share')).toContainText('unclassified 100%');
+  await expect(page.locator('#unclassified-share')).toContainText('unclassified cloud 100%');
   await expect(page.locator('#unclassified-share')).toHaveAttribute('data-state', 'stale');
   await expect(page.locator('#unclassified-share')).toContainText('STALE');
 });
@@ -192,7 +197,7 @@ test('zero-token model failures remain visible without drawing token paths', asy
     return r.fulfill({ json: { status: 'success', data: { result } } });
   });
   await page.goto('/mc8/');
-  await expect(page.locator('#route-state')).toHaveText('Idle');
+  await expect(page.locator('#route-state')).toHaveText('local 0 · cloud 0 tokens/s');
   const model = page.locator('#models .terminal').filter({ hasText: 'local-model' });
   await expect(model.locator('.rate')).toHaveText('0 t/s');
   await expect(model.locator('.failure-marker')).toHaveText('Failures · last minute');

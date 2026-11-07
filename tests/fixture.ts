@@ -68,6 +68,7 @@ function modelPerf(q: string): unknown[] | undefined {
     case Q.llmDecodeP90: return rows([['model-large', 88.4]], 'model_name');
     case Q.llmDecodeP99: return rows([['model-large', 61]], 'model_name');
     case Q.llmLastRequest: return rows([['model-large', now - 20], ['model-coder', now - 5], ['model-small', now - 600], ['model-mini', now - (3 * 3600 + 12 * 60)]]);
+    case Q.llmLocalModels: return rows([['model-large', 1], ['model-coder', 1]]);
     default: return undefined;
   }
 }
@@ -182,6 +183,8 @@ export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
   if (q.includes('litellm_in_flight_requests')) return vec([[{}, opts.inflight ?? 3]]);
   if (q.includes('litellm_deployment_state')) return vec([[{ litellm_model_name: 'model-large' }, 0], [{ litellm_model_name: 'model-coder' }, 0], [{ litellm_model_name: 'model-small' }, 2], [{ litellm_model_name: 'model-mini' }, 0], [{ litellm_model_name: 'model-unused' }, 0]]);
   if (q.includes('litellm_output_tokens')) return vec([[{ model: 'model-large' }, 38], [{ model: 'model-coder' }, 91]]);
+  if (q === Q.llmTokensToday) return vec([[{ tag_telemetry_billing_class_local: 'true' }, 88_500_000], [{ tag_telemetry_billing_class_local: 'false' }, 10_300_000]]);
+  if (q === Q.llmReqPerMin) return vec([[{ tag_telemetry_billing_class_local: 'true' }, 88], [{ tag_telemetry_billing_class_local: 'false' }, 11]]);
   if (q.includes('litellm_total_tokens_metric_total')) return vec([[{}, 4_810_000]]);
   if (q.includes('litellm_proxy_total_requests_metric_total')) return vec([[{}, 142]]);
   return [];

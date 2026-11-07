@@ -6,7 +6,7 @@ import { query, settle } from '/lib/prom.js';
 import { guardRefresh } from '/lib/refresh.js';
 import { Q } from '/lib/queries.js';
 import { listedModels, perfReader, perfCard } from '/lib/modelPerf.js';
-import { assignModelColors, shortDevice } from '/lib/mc3.js';
+import { assignModelColors, billingClassValues, classPair, modelCounts, modelCountPair, shortDevice } from '/lib/mc3.js';
 import {
   clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct,
   onDispose, hardwareGL, adaptiveDpr,
@@ -52,14 +52,14 @@ const hostOf = (s) => {
   return (v6 ? v6[1] : rest.split(/[/:]/)[0]).toLowerCase();
 };
 // Dim when nothing is attached or in flight; an accelerator without a busy series is always dim.
-const isDim = (d) => (d.kind === 'cloud' ? d.active === 0 && d.models === 0 : d.busy == null || (d.models === 0 && d.active === 0));
+const isDim = (d) => (d.kind === 'cloud' ? (d.active == null || d.active === 0) && d.models === 0 : d.busy == null || (d.models === 0 && d.active === 0));
 // /config.json may override an anchor's display name; a missing or blank entry keeps the label.
 const overrides = cfg.accelerators && typeof cfg.accelerators === 'object' ? cfg.accelerators : {};
 
 // listFailed: Q.llmUsed4d failed, so models lists every deployment (site/lib/modelPerf.js).
 const model = {
-  models: [], listFailed: false, stateFailed: false, tokensToday: null, reqPerMin: null,
-  gpuBusy: null, gpuFailed: false, inflight: null, localActive: null,
+  models: [], listFailed: false, stateFailed: false, tokensToday: { local: null, cloud: null }, reqPerMin: { local: null, cloud: null },
+  modelCounts: null, active: { local: null, cloud: null }, gpuBusy: null, gpuFailed: false,
 };
 // Fleet list: the AI-category services and their 0-10 scores (Q.aiAppScore), sorted by name.
 let aiApps = [];
@@ -73,6 +73,7 @@ async function refresh() {
     score: () => query(Q.aiAppScore),
     state: () => query(Q.llmState),
     used: () => query(Q.llmUsed4d),
+    localModels: () => query(Q.llmLocalModels),
     // The 5m output rate drives the scene's streams only; the cards read per-request readings.
     tok: () => query(Q.llmTokRate),
     requests: () => query(Q.llmRequests1h),
@@ -131,14 +132,9 @@ async function refresh() {
   }
   for (const m of model.models) accel[m.anchor].models += 1;
 
-  model.tokensToday = Number.isFinite(r.tokensToday?.[0]?.value) ? r.tokensToday[0].value : null;
-  model.reqPerMin = Number.isFinite(r.reqPerMin?.[0]?.value) ? r.reqPerMin[0].value : null;
-  const localRows = [r.vllm, r.llama];
-  const hasLocalReadings = localRows.every((rows) => Array.isArray(rows) && rows.length > 0
-    && rows.every((row) => Number.isFinite(row.value)));
-  model.localActive = hasLocalReadings
-    ? localRows.flat().reduce((sum, row) => sum + row.value, 0)
-    : null;
+  model.tokensToday = billingClassValues(r.tokensToday);
+  model.reqPerMin = billingClassValues(r.reqPerMin);
+  model.modelCounts = modelCounts(model.models, r.localModels);
   model.gpuFailed = r.gpu === null;
   const busy = (r.gpu || []).map((x) => x.value).filter(Number.isFinite);
   model.gpuBusy = busy.length ? clamp(busy.reduce((x, y) => x + y, 0) / busy.length, 0, 100) : null;
@@ -173,22 +169,23 @@ function deriveAccelerators(r) {
     if (ROLE.has(row.labels.accelerator) && Number.isFinite(row.value)) busy[ROLE.get(row.labels.accelerator)] = clamp(row.value, 0, 100);
   }
 
-  // Requests: each local server's count lands on its device's anchor when its host is a known device.
-  const active = ANCHOR_DEFS.map(() => 0);
-  let onDevices = 0;
-  for (const row of [...(r.vllm || []), ...(r.llama || [])]) {
+  // Requests: local engine readings map to a device only when its instance is known.
+  const localRows = [r.vllm, r.llama];
+  const hasLocalReadings = localRows.every((rows) => Array.isArray(rows) && rows.length > 0
+    && rows.every((row) => Number.isFinite(row.value)));
+  const localActive = hasLocalReadings ? localRows.flat().reduce((sum, row) => sum + row.value, 0) : null;
+  const active = ANCHOR_DEFS.map(() => hasLocalReadings ? 0 : null);
+  for (const row of localRows.flatMap((rows) => rows || [])) {
     const role = Number.isFinite(row.value) ? hostRole.get(hostOf(row.labels.instance)) : undefined;
     if (role == null) continue;
     active[ROLE.get(role)] += row.value;
-    onDevices += row.value;
   }
-  // Cloud = router-wide in flight minus the counts drawn on a device. A local server on an unmatched
-  // host is not subtracted, so its requests stay on cloud. Without both readings the share is unknown,
-  // so the node draws none.
+  // Cloud is the router count minus every local engine count, clamped at zero. Without both readings,
+  // the cloud share is unknown.
   const inflight = r.inflight?.[0]?.value;
-  const known = r.vllm != null && r.llama != null && Number.isFinite(inflight);
-  active[CLOUD] = known ? Math.max(0, Math.round(inflight - onDevices)) : 0;
-  model.inflight = Number.isFinite(inflight) ? inflight : null;
+  const activeCloud = localActive != null && Number.isFinite(inflight) ? Math.max(0, Math.round(inflight - localActive)) : null;
+  active[CLOUD] = activeCloud;
+  model.active = { local: localActive, cloud: activeCloud };
 
   const plain = ANCHOR_DEFS.map((d, i) => {
     const o = overrides[d.id];
@@ -216,23 +213,20 @@ function render() {
   renderKpis();
   renderAnchors();
   reactor.dataset.modelColors = JSON.stringify(reactorList.map(({ n, color }) => ({ n, color })));
-  core3d?.sync(model.models, model.tokensToday, sceneAnchors());
+  core3d?.sync(model.models, model.tokensToday.local, sceneAnchors());
   markPending(); // the inputs changed: the next drawn frame takes them in and marks the signal ready
 }
 
 function renderKpis() {
-  const up = model.models.filter((m) => m.up).length;
-  const active = model.inflight ?? model.localActive;
   const k = [
-    ['tokens today', model.tokensToday == null ? '—' : (model.tokensToday / 1e6).toFixed(2), 'M'],
-    ['requests/min', model.reqPerMin == null ? '—' : model.reqPerMin.toFixed(0), ''],
-    ['active', active == null ? '—' : String(Math.round(active)), ''],
-    ['models up', model.models.length ? `${up}/${model.models.length}` : '—', ''],
+    ['tokens today', classPair(model.tokensToday.local, model.tokensToday.cloud, (value) => `${(value / 1e6).toFixed(2)}M`)],
+    ['requests/min', classPair(model.reqPerMin.local, model.reqPerMin.cloud, (value) => value.toFixed(0))],
+    ['active', classPair(model.active.local, model.active.cloud, (value) => String(Math.round(value)))],
+    ['models up', modelCountPair(model.modelCounts, true)],
   ];
-  $('kpis').innerHTML = k.map(([l, v, u]) => `<div class="kpi"><b class="num">${v}<i>${u}</i></b><span>${l}</span></div>`).join('');
+  $('kpis').innerHTML = k.map(([label, value]) => `<div class="kpi"><b class="num split">${value}</b><span>${label}</span></div>`).join('');
   const serviceCount = aiApps.length || '—';
-  const modelCount = model.models.length || '—';
-  $('subtitle').textContent = `${serviceCount} SERVICES · ${modelCount} MODELS`;
+  $('subtitle').textContent = `${serviceCount} SERVICES · ${modelCountPair(model.modelCounts)}`;
 }
 
 /* ---------------- fleet health (mandatory "apps" panel) ---------------- */
@@ -345,8 +339,7 @@ function renderCore() {
     const m = list.find((x) => x.n === canvas.dataset.model);
     drawSpark(canvas, perfHistory.get(m.n).values, m.up ? (active(m) ? '#38ff9c' : '#3ee6ff') : '#ff3b5c');
   }
-  const up = list.filter((m) => m.up).length;
-  $('coresum').textContent = list.length ? `${up}/${list.length} UP` : '—';
+  $('coresum').textContent = modelCountPair(model.modelCounts, true);
   let state = 'ok', message = '';
   if (model.stateFailed) {
     state = list.length ? 'stale' : 'error';
@@ -366,7 +359,7 @@ function renderCore() {
 // GPU/VRAM is the mean of the accelerator busy series (Q.acceleratorBusy); an empty or failed
 // query shows no percentage and includes its state beside the value. cxReqMin mirrors the header KPI.
 function renderCoreExtra(list) {
-  $('cxReqMin').textContent = model.reqPerMin != null ? model.reqPerMin.toFixed(0) : '—';
+  $('cxReqMin').textContent = classPair(model.reqPerMin.local, model.reqPerMin.cloud, (value) => value.toFixed(0));
 
   const gpuPct = model.gpuBusy;
   $('cxGpu').textContent = gpuPct == null ? '—' : `${Math.round(gpuPct)}%`;
@@ -445,23 +438,23 @@ function renderAnchors() {
   }
   accel.forEach((d, i) => {
     const el = host.children[i];
-    el.dataset.active = String(d.active);
-    el.dataset.beads = String(Math.min(d.active, BEAD_CAP));
+    el.dataset.active = d.active == null ? '' : String(d.active);
+    el.dataset.beads = d.active == null ? '' : String(Math.min(d.active, BEAD_CAP));
     el.dataset.models = String(d.models);
     el.dataset.busy = d.busy == null ? '' : String(Math.round(d.busy));
     el.classList.toggle('dim', isDim(d));
     const models = `${d.models} model${d.models === 1 ? '' : 's'}`;
     let busyLine, statusLine;
     if (d.kind === 'cloud') {
-      busyLine = d.active ? `${d.active} in flight` : 'idle';
-      statusLine = d.models ? models : 'no models';
+      busyLine = d.active == null ? 'no data' : d.active ? `${d.active} in flight` : 'idle';
+      statusLine = d.models ? models : d.active == null ? 'no data' : 'no models';
     } else {
       busyLine = d.busy == null ? 'no data' : `${Math.round(d.busy)}% busy`;
-      statusLine = d.models || d.active
-        ? [d.models ? models : null, d.active ? `${d.active} active` : null].filter(Boolean).join(' · ')
-        : 'idle';
+      statusLine = d.models || d.active > 0
+        ? [d.models ? models : null, d.active > 0 ? `${d.active} active` : null].filter(Boolean).join(' · ')
+        : d.active == null ? 'no data' : 'idle';
     }
-    const badge = d.active > BEAD_RING ? `<em class="badge">×${d.active}</em>` : '';
+    const badge = d.active != null && d.active > BEAD_RING ? `<em class="badge">×${d.active}</em>` : '';
     el.querySelector('.alab').innerHTML = `<b class="an">${esc(d.name)}</b><span class="ab">${busyLine}</span><span class="as">${statusLine}</span>${badge}`;
   });
   layoutAnchors();
@@ -669,7 +662,7 @@ async function startGpuCore() {
     if (core3d && core3d !== core) core3d.dispose();
     core3d = core;
     core.layout(slots);
-    core.sync(model.models.length ? model.models : reactorList, model.tokensToday, sceneAnchors());
+  core.sync(model.models.length ? model.models : reactorList, model.tokensToday.local, sceneAnchors());
     markPending();
     drawScene = (now) => {
       core.render(now);

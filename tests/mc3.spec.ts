@@ -146,9 +146,27 @@ test('mc3: only recently used models are listed, busiest first', async ({ page }
   await awaitReady(page, '2d');
   await expect(page.locator('#modeltab .mch b')).toHaveText(['model-coder', 'model-large', 'model-small', 'model-mini']);
   await expect(page.locator('#modeltab')).not.toContainText('model-unused');
-  await expect(page.locator('#subtitle')).toContainText('4 MODELS');
+  await expect(page.locator('#subtitle')).toContainText('local 2 · cloud 2 MODELS');
+  await expect(page.locator('#coresum')).toHaveText('local 2/2 · cloud 1/2 UP');
+  await expect(page.locator('.kpi', { hasText: 'tokens today' }).locator('b')).toHaveText('local 88.50M · cloud 10.30M');
+  await expect(page.locator('.kpi', { hasText: 'requests/min' }).locator('b')).toHaveText('local 88 · cloud 11');
+  await expect(page.locator('#cxReqMin')).toHaveText('local 88 · cloud 11');
+  await expect(page.locator('.kpi', { hasText: 'models up' }).locator('b')).toHaveText('local 2/2 · cloud 1/2');
   await expect(page.locator('[data-panel="cores"]')).toHaveAttribute('data-state', 'ok');
   expect(faults).toEqual([]);
+});
+
+test('mc3: failed split queries leave each side as —', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+  const faults = watchFaults(page);
+  await mockFeeds(page, { failQuery: (q) => [Q.llmTokensToday, Q.llmReqPerMin, Q.llmLocalModels].includes(q) });
+  await page.goto('/mc3/?gl=2d');
+  await awaitReady(page, '2d');
+  await expect(page.locator('.kpi', { hasText: 'tokens today' }).locator('b')).toHaveText('local — · cloud —');
+  await expect(page.locator('.kpi', { hasText: 'requests/min' }).locator('b')).toHaveText('local — · cloud —');
+  await expect(page.locator('.kpi', { hasText: 'models up' }).locator('b')).toHaveText('local — · cloud — UP');
+  await expect(page.locator('#cxReqMin')).toHaveText('local — · cloud —');
+  expect(faults.filter((f) => !(f.startsWith('500 ') && f.includes('/api/prom/')) && !f.includes('status of 500'))).toEqual([]);
 });
 
 test('mc3: a 35-service fleet keeps its list and readings inside the panel', async ({ page }) => {
@@ -249,7 +267,7 @@ const ATTACHMENT_CASES: Array<{ name: string; feeds: FeedOpts; active: string[];
   // Two local requests against one router in-flight request: the device share is drawn, cloud clamps to zero.
   { name: 'local total exceeds router in-flight', feeds: { inflight: 1, vllmRunning: 2 }, active: ['2', '0', '0', '0', '0'], models: ['1', '1', '0', '0', '2'] },
   // Neither local host matches a device, so their live requests stay on cloud with the rest.
-  { name: 'unmatched hosts have live requests', feeds: { emptyQuery: (q) => DEVICE_QUERIES.some((d) => q.includes(d)), inflight: 5, vllmRunning: 2, llamaRunning: 1 }, active: ['0', '0', '0', '0', '5'], models: ['0', '0', '0', '0', '4'] },
+  { name: 'unmatched hosts remain local while cloud subtracts every local request', feeds: { emptyQuery: (q) => DEVICE_QUERIES.some((d) => q.includes(d)), inflight: 5, vllmRunning: 2, llamaRunning: 1 }, active: ['0', '0', '0', '0', '2'], models: ['0', '0', '0', '0', '4'] },
 ];
 
 for (const mode of ['2d', '3d'] as const) {
@@ -280,7 +298,7 @@ for (const mode of ['2d', '3d'] as const) {
     await expect(page.locator('#anchors [data-accel="gpu-secondary"]')).toHaveAttribute('data-models', '1');
     await expect(page.locator('#anchors [data-accel="cloud"]')).toHaveAttribute('data-models', '2');
     await expect(page.locator('#modeltab .mc').filter({ hasText: 'model-large' }).locator('.mcat')).toHaveText(ANCHOR_NAMES['gpu-primary']);
-    await expect(page.locator('.kpi', { hasText: 'active' }).locator('b')).toContainText('3');
+    await expect(page.locator('.kpi', { hasText: 'active' }).locator('b')).toHaveText('local 0 · cloud 3');
     expect(faults).toEqual([]);
   });
 
@@ -527,7 +545,7 @@ for (const mode of ['2d', '3d'] as const) {
       await expect(cloud).toHaveAttribute('data-beads', String(inflight));
       if (inflight > 12) await expect(cloud.locator('.badge')).toHaveText(`×${inflight}`);
       else await expect(cloud.locator('.badge')).toHaveCount(0);
-      await expect(page.locator('.kpi', { hasText: 'active' }).locator('b')).toContainText(String(inflight));
+      await expect(page.locator('.kpi', { hasText: 'active' }).locator('b')).toHaveText(`local 0 · cloud ${inflight}`);
       expect(faults).toEqual([]);
     });
   }

@@ -12,9 +12,9 @@
     <div class="live-note"><span class="pilot"></span> LiteLLM <time id="clock"></time></div></header>
   <section class="readouts" aria-label="Router measurements">
     <article data-panel="local-share" data-state="pending"><h2>Local token share</h2><div class="reading" id="local-share">Pending</div><p class="status">Waiting for token rates</p><p class="status" id="unclassified-share" data-state="pending"></p></article>
-    <article data-panel="in-flight" data-state="pending"><h2>Router in-flight</h2><div class="reading" id="in-flight">Pending</div><p class="status">Waiting for requests</p></article>
+    <article data-panel="in-flight" data-state="pending"><h2>Router in-flight</h2><div class="reading split" id="in-flight">Pending</div><p class="status">Waiting for requests</p></article>
     <article data-panel="spend" data-state="pending"><h2>Pay per token / month</h2><div class="reading" id="spend">Pending</div><p class="status">Waiting for spend</p><p class="reset-note">Counter resets can undercount month-to-date spend.</p></article>
-    <article data-panel="ttft" data-state="pending"><h2>Time to first token / p95</h2><div class="reading" id="ttft">Pending</div><p class="status">Waiting for histogram</p></article>
+    <article data-panel="ttft" data-state="pending"><h2>Time to first token / p95</h2><div class="reading split" id="ttft">Pending</div><p class="status">Waiting for histogram</p></article>
   </section>
   <section id="switchboard" data-panel="routes" data-state="pending" aria-label="Caller to model token flow">
     <div class="board-head"><h2>Callers</h2><p>Input + output tokens/s · trailing 5 minutes</p><h2>Models by provider</h2></div>

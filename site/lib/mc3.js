@@ -4,6 +4,40 @@ export function assignModelColors(models, palette) {
   return models.map((model) => ({ ...model, color: palette[names.indexOf(model.n)] }));
 }
 
+export function billingClassValues(rows) {
+  if (!Array.isArray(rows)) return { local: null, cloud: null };
+  const totals = { local: 0, cloud: 0 };
+  const measured = { local: false, cloud: false };
+  for (const row of rows) {
+    if (!Number.isFinite(row.value)) continue;
+    const kind = row.labels?.tag_telemetry_billing_class_local === 'true' ? 'local' : 'cloud';
+    totals[kind] += row.value;
+    measured[kind] = true;
+  }
+  return { local: measured.local ? totals.local : null, cloud: measured.cloud ? totals.cloud : null };
+}
+
+export function modelCounts(models, localModelRows) {
+  if (!Array.isArray(models) || !Array.isArray(localModelRows)) return null;
+  const localNames = new Set(localModelRows.map((row) => row.labels?.model).filter(Boolean));
+  return ['local', 'cloud'].reduce((counts, kind) => {
+    const list = models.filter((model) => localNames.has(model.n) === (kind === 'local'));
+    counts[kind] = { up: list.filter((model) => model.up).length, total: list.length };
+    return counts;
+  }, {});
+}
+
+export function classPair(local, cloud, format = (value) => String(value)) {
+  const display = (value) => Number.isFinite(value) ? format(value) : '—';
+  return `local ${display(local)} · cloud ${display(cloud)}`;
+}
+
+export function modelCountPair(counts, upOnly = false) {
+  const side = (kind) => counts == null ? '—'
+    : upOnly ? `${counts[kind].up}/${counts[kind].total}` : String(counts[kind].total);
+  return `local ${side('local')} · cloud ${side('cloud')}${upOnly ? ' UP' : ' MODELS'}`;
+}
+
 const VENDOR_WORD = /^[A-Z]{4,}\s+/;
 
 export function shortDevice(raw) {

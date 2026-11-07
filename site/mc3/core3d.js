@@ -276,7 +276,7 @@ export async function buildGpuCore(canvas, { palette, reducedMotion = false, onL
 
   // models: [{n, up, tok, anchor}] (any order; sorted by name here so a core keeps its slot, position
   // and colour while the model tab re-sorts by load). anchor indexes `anchors`; a missing or invalid
-  // index puts the model on the last anchor, the cloud node. tokensToday: real 24h total or null.
+  // index puts the model on the last anchor, the cloud node. tokensToday: local 24h tokens or null.
   // anchors: [{kind, busy, active, dim}] in mc3.js ANCHOR_DEFS order; their screen points come from layout().
   function sync(models, tokensToday, anchors = []) {
     anchorCount = Math.min(MAX_ANCHORS, anchors.length);

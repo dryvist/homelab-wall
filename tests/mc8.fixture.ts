@@ -34,13 +34,17 @@ export function mc8Answer(expr: string, rows: TokenFixtureRow[] = tokenRows) {
   const modelRows = [...new Map(rows.map((row) => [JSON.stringify([row.labels.model, row.labels.api_provider]), row.labels])).values()];
   // Raw counter sample times: freshness reads each source value as that sample's time in seconds.
   if (expr === Q.mc8InputSourceTime || expr === Q.mc8OutputSourceTime) return vec(rows.map((row) => [row.labels, Date.now() / 1000]));
-  if (expr === Q.mc8InFlightSourceTime || expr === Q.mc8SpendSourceTime || expr === Q.mc8TtftSourceTime) return vec([[{}, Date.now() / 1000]]);
+  if ([Q.mc8InFlightSourceTime, Q.mc8SpendSourceTime, Q.mc8TtftLocalSourceTime, Q.mc8TtftCloudSourceTime,
+    Q.mc8VllmSourceTime, Q.mc8LlamaSourceTime].includes(expr)) return vec([[{}, Date.now() / 1000]]);
   if (expr === Q.mc8FailuresSourceTime || expr === Q.mc8FallbacksSourceTime) return vec(modelRows.map((m) => [{ model: m.model, api_provider: m.api_provider }, Date.now() / 1000]));
   if (expr === Q.mc8InputRate) return vec(rows.map((row) => [row.labels, row.input]));
   if (expr === Q.mc8OutputRate) return vec(rows.map((row) => [row.labels, row.output]));
+  if (expr === Q.vllmRunning) return vec([[{}, 2]]);
+  if (expr === Q.llamaRunning) return vec([[{}, 1]]);
   if (expr === Q.mc8InFlight) return vec([[{}, 7]]);
   if (expr === Q.mc8SpendCents) return vec([[{}, 123.4]]);
-  if (expr === Q.mc8TtftP95) return vec([[{}, 0.42]]);
+  if (expr === Q.mc8TtftLocalP95) return vec([[{}, 0.21]]);
+  if (expr === Q.mc8TtftCloudP95) return vec([[{}, 0.42]]);
   if (expr === Q.mc8Failures || expr === Q.mc8Fallbacks) return vec(modelRows.map((m) => [{ model: m.model, api_provider: m.api_provider }, 0]));
   return [];
 }
@@ -56,11 +60,12 @@ export async function mockMc8(page: Page, opts: { empty?: boolean; fail?: () => 
       result[0].value[1] = '1';
     }
     // idleTtft: no TTFT requests in the window, while the histogram's sample time stays fresh.
-    const none = opts.empty || (opts.idleTtft && expr === Q.mc8TtftP95);
+    const none = opts.empty || (opts.idleTtft && [Q.mc8TtftLocalP95, Q.mc8TtftCloudP95].includes(expr));
     return r.fulfill({ json: { status: 'success', data: { resultType: 'vector', result: none ? [] : result } } });
   });
   await page.route('**/data/mc8.json', (r) => r.fulfill({ json: {
     generated_at: new Date().toISOString(),
-    instant: Object.fromEntries(Object.entries(Q).filter(([key]) => key.startsWith('mc8')).map(([key, expr]) => [key, { result: mc8Answer(expr, rows) }])),
+    instant: Object.fromEntries(Object.entries(Q).filter(([key]) => key.startsWith('mc8') || ['vllmRunning', 'llamaRunning'].includes(key))
+      .map(([key, expr]) => [key, { result: mc8Answer(expr, rows) }])),
   } }));
 }
