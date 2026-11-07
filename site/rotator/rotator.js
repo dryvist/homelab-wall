@@ -1,9 +1,6 @@
-// Rotator: shows one slide at a time on `/`. Slides come from /config.json's `slides` key
-// ([{name, url, seconds?}]); with no key, DEFAULT_SLIDES is used. One persistent <iframe> per
-// slide is created once at startup and never re-navigated afterwards — switching slides toggles
-// visibility, it never swaps `.src`, so a slide's own render context (WebGL, timers) is created
-// once and lives for the wall's whole session; site/lib/stage.js is what pauses/resumes and
-// eventually disposes it, not this file.
+import { scheduleReload } from './reload.js';
+
+// Configured or default slides keep persistent iframes. stage.js pauses hidden pages.
 const DEFAULT_SLIDES = [
   { name: 'MC1', url: '/mc1/' },
   { name: 'MC2', url: '/mc2/' },
@@ -11,6 +8,7 @@ const DEFAULT_SLIDES = [
   { name: 'MC4', url: '/mc4/' },
   { name: 'MC5', url: '/mc5/' },
   { name: 'LEXICON', url: '/mc6/' },
+  { name: 'SWITCHBOARD', url: '/mc8/' },
   { name: 'Agent Constellation', url: '/mc9/' },
 ];
 const MIN_HOLD = 30;
@@ -27,10 +25,7 @@ const SKIP_NOTE_MS = 4000;
 // slide that was down at boot (or hung mid-session) can rejoin rotation once it recovers.
 const REPROBE_MS = 5 * 60 * 1000;
 const FADE_MS = 800; // matches .layer{transition:opacity .8s ease} below
-// Hard ceiling under Chromium's 16-live-WebGL-context limit. Every layer stays loaded, and a slide
-// holds at most one GL context, its renderer: hardwareGL() releases its probe context at once
-// (site/lib/stage.js). The deployed wall configures 8 slides (MC1-5, LEXICON, GLANCE, HOMARR);
-// 10 leaves room for two more. Slides past it are not shown.
+// Stay below Chromium's 16-context WebGL limit; slides past this ceiling are omitted.
 const MAX_LAYERS = 10;
 const CIRC = 2 * Math.PI * 6;
 
@@ -59,9 +54,6 @@ const holdMs = () => FAST_MS || (slides[current]?.seconds ?? DEFAULT_SECONDS) * 
 // A test-only override (never read by real config), mirroring `?fast=`: shortens the re-probe
 // interval so a test can exercise it without waiting out the real 5 minutes.
 const REPROBE_OVERRIDE_MS = Number(new URLSearchParams(location.search).get('reprobe')) || 0;
-// A test-only override (never read by real config), mirroring `?fast=`/`?reprobe=`: shortens the
-// periodic full-page reload so a test can exercise it without waiting out real minutes.
-const RELOAD_OVERRIDE_MS = Number(new URLSearchParams(location.search).get('reloadms')) || 0;
 const sameOrigin = (url) => {
   try { return new URL(url, location.href).origin === location.origin; } catch { return false; }
 };
@@ -71,9 +63,7 @@ function postWall(layer, state) {
   try { layer.el.contentWindow?.postMessage({ wall: state }, location.origin); } catch { /* torn down mid-message */ }
 }
 
-// (Re)arms a layer's readiness: a fresh promise, a fresh PROBE_TIMEOUT_MS deadline. Used both at
-// layer creation and by reprobeBroken() below — a re-probed layer is indistinguishable from a
-// freshly-built one as far as resolveSlide()/the rest of this file is concerned.
+// Creation and recovery both get a new readiness promise and deadline.
 function armLayer(layer) {
   let settled = false, resolveReady;
   layer.ok = null;
@@ -93,13 +83,7 @@ function armLayer(layer) {
   layer.timeoutId = setTimeout(() => layer.finish(false), PROBE_TIMEOUT_MS);
 }
 
-// One persistent iframe per slide, created once and never re-navigated (except by reprobeBroken,
-// which reloads only a layer already marked broken). A same-origin slide proves itself alive by
-// posting {wall:'ready'} once its own site/lib/stage.js render loop has painted a first frame; a
-// probe window with no 'ready' means it's broken (Track G3) — the same conclusion the cross-origin
-// probe below draws from a failed or stalled load.
-// The wall's own ?gl= (2d or 3d) is passed on to each same-origin wall slide (/mcN/), which reads
-// it from its own location; every other slide gets its configured URL untouched.
+// Forward the renderer override only to same-origin wall pages.
 const FORWARDED_GL = new URLSearchParams(location.search).get('gl');
 function slideUrl(url) {
   if (!FORWARDED_GL || !sameOrigin(url)) return url;
@@ -137,10 +121,7 @@ window.addEventListener('message', (e) => {
   layers.find((l) => l.sameOrigin && l.el.contentWindow === e.source)?.finish(true);
 });
 
-// Every REPROBE_MS, reload any layer still marked broken (ok === false — never one still mid-
-// probe, ok === null) and re-arm it: a slide that was down at boot, or that hung mid-session, gets
-// a chance to rejoin rotation instead of being skipped forever. An off-screen layer is invisible
-// either way (activateLayer), so reloading it never disturbs what's on screen.
+// Re-probe only failed layers; healthy or still-loading pages keep their contexts.
 function reprobeBroken() {
   for (const layer of layers) {
     if (layer.ok !== false) continue;
@@ -312,41 +293,6 @@ document.addEventListener('keydown', (e) => {
   else pin();
 });
 
-const RELOAD_RETRY_MS = 60 * 1000;
-
-// Confirms the origin is actually serving the site before navigating away from the running
-// rotation — a `location.reload()` fired while the auth proxy/backend is down gets Brave's own
-// error page with no wall JS left running and nothing to retry (Track: self-heal). A network
-// error, a non-200, or an opaque redirect all count as "not ready"; the current rotation just
-// keeps going and this re-checks every RELOAD_RETRY_MS until the origin recovers.
-async function originReady() {
-  try {
-    const res = await fetch(location.href, { cache: 'no-store', credentials: 'include', redirect: 'manual' });
-    if (res.type === 'opaqueredirect' || res.status !== 200) return false;
-    const html = await res.text();
-    return html.includes('/rotator/rotator.js'); // the rotator's own script tag
-  } catch {
-    return false;
-  }
-}
-
-async function attemptReload() {
-  if (await originReady()) location.reload();
-  else setTimeout(attemptReload, RELOAD_RETRY_MS);
-}
-
-// Reloads the whole page every `reloadMinutes` so a new deployed release shows up on the kiosk
-// without anyone touching it — a fresh document pulls in whatever build is currently live.
-function scheduleReload() {
-  setTimeout(attemptReload, RELOAD_OVERRIDE_MS || reloadMinutes * 60 * 1000);
-}
-
-// A service worker keeps the kiosk shell bootable across an outage even without this rotator
-// running (e.g. after a manual reload lands mid-outage): see site/sw.js.
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
-}
-
 async function init() {
   try {
     const res = await fetch('/config.json', { cache: 'no-store' });
@@ -363,7 +309,7 @@ async function init() {
   activateLayer(current);
   renderDots();
   scheduleRotate();
-  scheduleReload();
+  scheduleReload(reloadMinutes);
 }
 
 init();

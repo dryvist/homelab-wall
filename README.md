@@ -8,11 +8,12 @@ other dashboards.
 
 | Path | What |
 | --- | --- |
-| `site/mc1/` | Mission Control 1: nodes, storage, 3D topology, app health honeycomb, LLM status, firewall feeds |
-| `site/mc6/` | Mission Control 6 (LEXICON): a hero word cloud cycling the sources every 8 s plus a strip with one small cloud per source |
-| `site/mc9/` | Mission Control 9 (beta): independent agent constellation, measured activity rates, and 24h activity rings |
-| `site/lib/` | Shared Prometheus client, PromQL (including the app health score), stage/GL helpers |
-| `site/vendor/`, `site/fonts/` | three.js, d3-cloud and fonts, vendored so no page loads code or fonts from the internet |
+| `site/mc1/` | Nodes, storage, topology, app health, LLM status, firewall |
+| `site/mc6/` | LEXICON: rotating hero word cloud and per-source clouds |
+| `site/mc8/` | Router Switchboard (beta): caller-to-model token paths |
+| `site/mc9/` | Agent Constellation (beta): agent activity rates and 24h rings |
+| `site/lib/` | Prometheus client, PromQL, app health score, stage/GL helpers |
+| `site/vendor/`, `site/fonts/` | Vendored three.js, d3-cloud, and fonts |
 | `tests/` | Playwright at 1920×1080 against fixture data |
 
 ## Runtime contract
@@ -86,6 +87,37 @@ disappearing: it keeps its last known values, dims, and is labeled "STALE
 &lt;age&gt;", then "STALE since &lt;time&gt;" after about 5 minutes. The node set
 itself always comes from `config.json` (`nodeRoles` + `extraNodes`), never
 from whichever series a poll happens to return.
+MC8 uses real measurements only. Empty or failed queries show `Pending` until
+the first reading; later gaps retain the last measurement with a visible
+`STALE` age. An empty failure, fallback or spend result reads as zero while the
+router is live. Zero token rate means idle; local share is unavailable when the
+total is zero. Routes retain caller alias and team, model, and provider labels;
+width means input plus output tokens/s over 5 minutes. Focus or hover a caller
+or model to trace its paths. Failure flashes apply to model edges with measured
+failure or failed-fallback increases over the last minute; those counters do
+not establish caller attribution. Stale failure readings never trigger flashes.
+Billing banks use the token series' `tag_telemetry_billing_class_` labels:
+`local`, `subscription`, `paid`, and `free`, when their string value is `true`.
+Series with all flags false or missing remain Unclassified; provider names
+never determine billing. Rates retain these labels through aggregation.
+Token-rate freshness uses the raw input and output counter sample times, grouped
+by caller, team, model, provider and billing class. In-flight, TTFT, failure and
+fallback freshness use their raw series' sample times; spend freshness uses
+router liveness, since provider spend series exist only after use. Measurements
+older than 5 minutes, more than 5 seconds ahead, or without a valid
+timestamp are stale, even after a successful snapshot refresh. The unclassified
+percentage has its own stale state from the same token-rate sample times.
+Model failure markers also appear at zero token throughput; failure-only models
+show No token rate rather than a made-up zero.
+Local share uses classified token rates only, with the unclassified percentage
+shown separately. Without classified traffic it shows Unavailable. Failure and
+failed-fallback indicators cover the one-minute window that ends at each result's
+evaluation time, and expire 75 seconds after it. Past 25 seconds the marker names
+how long ago that window ended.
+Time to first token p95 uses standard router histogram buckets; spend shows
+OpenRouter cents since the UTC month boundary: each series' rise over its
+month-start baseline, clamped at zero, then summed. Counter resets can still
+undercount month-to-date spend, and the page says so.
 MC1's activity ribbon reads `/api/llm/recent` once per minute, using metadata
 only: `ts` (UTC), `source`, `model`, `role`, and `chars`. It accepts a row array
 or ClickHouse JSON's `data` array. Size means exact characters, never tokens.

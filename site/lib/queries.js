@@ -70,4 +70,23 @@ export const Q = {
   vllmRunning: 'sum by (instance) (vllm:num_requests_running)',
   llamaRunning: 'sum by (instance) (llamacpp:requests_processing)',
   routerInFlight: 'sum(litellm_in_flight_requests)',
+  // MC8: retain caller dimensions only on the token edges; all other queries aggregate early.
+  mc8InputRate: 'sum by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (rate(litellm_input_tokens_metric_total{job="llm_router"}[5m]))',
+  mc8OutputRate: 'sum by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (rate(litellm_output_tokens_metric_total{job="llm_router"}[5m]))',
+  mc8InputSourceTime: 'max by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (tlast_over_time(litellm_input_tokens_metric_total{job="llm_router"}[5m]))',
+  mc8OutputSourceTime: 'max by (api_key_alias, team, model, api_provider, tag_telemetry_billing_class_local, tag_telemetry_billing_class_subscription, tag_telemetry_billing_class_paid, tag_telemetry_billing_class_free) (tlast_over_time(litellm_output_tokens_metric_total{job="llm_router"}[5m]))',
+  mc8InFlight: 'sum(litellm_in_flight_requests{job="llm_router"})',
+  mc8TtftP95: 'histogram_quantile(0.95, sum by (le) (rate(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router"}[5m])))',
+  mc8Failures: 'sum by (model, api_provider) (increase(litellm_deployment_failure_responses_total{job="llm_router"}[1m]))',
+  mc8Fallbacks: 'sum by (model, api_provider) (increase(litellm_deployment_failed_fallbacks_total{job="llm_router"}[1m]))',
+  // Raw-series last sample times for the readings above, grouped like each reading.
+  mc8InFlightSourceTime: 'max(tlast_over_time(litellm_in_flight_requests{job="llm_router"}[5m]))',
+  mc8TtftSourceTime: 'max(tlast_over_time(litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router"}[5m]))',
+  mc8FailuresSourceTime: 'max by (model, api_provider) (tlast_over_time(litellm_deployment_failure_responses_total{job="llm_router"}[5m]))',
+  mc8FallbacksSourceTime: 'max by (model, api_provider) (tlast_over_time(litellm_deployment_failed_fallbacks_total{job="llm_router"}[5m]))',
+  // Provider spend series exist only after that provider is used, so router liveness is the freshness signal.
+  mc8SpendSourceTime: 'max(tlast_over_time(litellm_spend_metric_total{job="llm_router"}[5m]))',
+  // Subtract each series before aggregating, including series absent at the UTC month boundary.
+  // A counter reset can leave a series below its baseline; clamp it at zero so it never subtracts spend.
+  mc8SpendCents: '100 * sum(clamp_min(max_over_time(litellm_spend_metric_total{job="llm_router",api_provider="openrouter"}[31d]) - (max_over_time(litellm_spend_metric_total{job="llm_router",api_provider="openrouter"}[31d] @ (time() - (scalar(day_of_month()) - 1) * 86400 - time() % 86400)) or max_over_time(litellm_spend_metric_total{job="llm_router",api_provider="openrouter"}[31d]) * 0), 0))',
 };

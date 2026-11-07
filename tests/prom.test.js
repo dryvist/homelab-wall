@@ -83,3 +83,47 @@ for (const source of ['live', 'snapshot']) {
     }
   });
 }
+
+test('a rejected config request is retried on the next query', async (t) => {
+  let configs = 0;
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (url === '/config.json') {
+      configs += 1;
+      if (configs === 1) throw new Error('temporary config failure');
+      return Response.json({});
+    }
+    return Response.json({ status: 'success', data: { result: instant } });
+  });
+  const prom = await import(`../site/lib/prom.js?retry=${encodeURIComponent(t.name)}`);
+  await assert.rejects(prom.query(Q.nodeCpu), /temporary config failure/);
+  assert.deepEqual(await prom.query(Q.nodeCpu), [{ labels, value: 12.5 }]);
+  assert.equal(configs, 2);
+});
+
+test('a timed-out config request is retried on the next query', async (t) => {
+  let configs = 0;
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (url === '/config.json') {
+      configs += 1;
+      if (configs === 1) return new Promise(() => {});
+      return Response.json({});
+    }
+    return Response.json({ status: 'success', data: { result: instant } });
+  });
+  const timers = [];
+  t.mock.method(globalThis, 'setTimeout', (callback, delay) => {
+    const timer = { callback, delay };
+    timers.push(timer);
+    return timer;
+  });
+  t.mock.method(globalThis, 'clearTimeout', () => {});
+  const prom = await import(`../site/lib/prom.js?timeout-retry=${encodeURIComponent(t.name)}`);
+  const first = prom.query(Q.nodeCpu);
+  await new Promise((resolve) => setImmediate(resolve));
+  const timeout = timers.find((timer) => timer.delay === 10_000);
+  assert.ok(timeout);
+  timeout.callback();
+  await assert.rejects(first, /config request timed out/);
+  assert.deepEqual(await prom.query(Q.nodeCpu), [{ labels, value: 12.5 }]);
+  assert.equal(configs, 2);
+});
