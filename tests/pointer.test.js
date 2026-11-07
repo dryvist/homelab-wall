@@ -86,7 +86,10 @@ test('pointer eases back to the centre after leaving the window', () => {
   win.flushFrame();
   assert.deepEqual(pointer, { x: 1, y: 1, active: true });
 
-  win.dispatch('pointerleave');
+  win.dispatch('pointerout', { relatedTarget: {} });
+  win.flushFrame();
+  assert.equal(pointer.active, true);
+  win.dispatch('pointerout');
   win.flushFrame();
   assert.equal(pointer.active, false);
   assert.ok(pointer.x > 0 && pointer.x < 1);
