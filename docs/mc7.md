@@ -1,7 +1,7 @@
 # MC7 · AI Benchmark Cockpit
 
 MC7 is the AI Benchmark Cockpit, a beta page. Engine cards show what each inference engine measures, and router
-cards show per-model latency as the router records it. The rotator names this slide `AI Benchmark Cockpit`.
+cards show per-model latency from real requests as the router records it. The rotator names this slide `AI Benchmark Cockpit`.
 
 ![MC7 AI Benchmark Cockpit](screenshots/mc7.jpg)
 
@@ -21,7 +21,10 @@ cards show per-model latency as the router records it. The rotator names this sl
   - Tokens/joule divides the recorded hourly generation rate by hourly mean power.
   - These are device totals, shown only when an engine exposes an accelerator association, not per-model power
     allocations.
-- Router latency: one card per router model.
+- Router latency: one card per model with a real request in the last 4 days (`llmUsed4d`).
+  - Router readings exclude the router's own health-check caller.
+  - A listed model with no readings keeps its card, which reads `NO DATA`.
+  - When `llmUsed4d` fails, the section lists every model it has readings for.
   - Router cards use LiteLLM `_bucket` histograms for TTFT p50/p95 and E2E p95, aggregated per model.
   - Each router card also shows output and input tok/s over 5 minutes.
   - An engine that reports only through the router has a router card and no engine card, so its engine-level cache
@@ -48,7 +51,8 @@ Engine histograms also use standard `_bucket` names. Percentiles come from bucke
 - `enginePrefixPercent`: prefix cache hits as a percent of prefix cache queries.
 - `engineSpecPercent`: accepted speculative tokens as a percent of draft tokens.
 - `routerInput`: router input tok/s per model over 5 minutes.
-- `llmTokRate`: router output tok/s per model over 5 minutes.
+- `routerOutput`: router output tok/s per model over 5 minutes.
+- `llmUsed4d`: models with a real request in the last 4 days.
 - `routerTtftP50`: router TTFT p50 per model.
 - `routerTtftP95`: router TTFT p95 per model.
 - `routerE2eP95`: router E2E p95 per model.
@@ -70,11 +74,11 @@ histogram share its source-age key.
 - `enginePrefixSourceAge`: for `enginePrefixPercent`, the older of its two inputs.
 - `engineSpecSourceAge`: for `engineSpecPercent`, the older of its two inputs.
 - `routerInputSourceAge`: for `routerInput`.
+- `routerOutputSourceAge`: for `routerOutput`.
 - `routerTtftSourceAge`: for the two router TTFT percentiles.
 - `routerE2eSourceAge`: for `routerE2eP95`.
 - `acceleratorWattsSourceAge`: for `acceleratorWatts`.
 - `acceleratorTokensPerJouleSourceAge`: for `acceleratorTokensPerJoule`, the older of tokens and power.
-- `llmTokRateSourceAge`: for `llmTokRate`.
 
 The page polls every `config.json` `refreshSeconds`, 15 seconds by default and at least 1 second. Each request
 times out after 10 seconds.
