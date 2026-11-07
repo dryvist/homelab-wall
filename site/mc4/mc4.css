@@ -14,8 +14,8 @@
 header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:center;gap:clamp(12px,2vmin,26px);padding:0 clamp(4px,1vmin,10px)}
 .brand{font:700 clamp(16px,2.4vmin,30px)/1 var(--disp);letter-spacing:.14em;color:#fff;text-shadow:0 0 18px rgba(255,179,71,.55)}
 .brand .acc{color:var(--amber)}
-/* Connection state is the headline; the detail line (exit/handshake/killswitch/leaks/port-fwd,
-   sketch scene 125) rides underneath it, same two-tier pattern as the clock. */
+/* Tunnel state is the headline; the detail line carries handshake, killswitch and port-forward
+   readings underneath it, in the same two-tier pattern as the clock. */
 .vpn{text-align:right;white-space:nowrap}
 .vpn b{display:block;font:700 clamp(13px,1.6vmin,18px)/1.3 var(--disp);letter-spacing:.06em;color:#fff}
 .vpn small{display:block;font:600 clamp(8px,.85vmin,11px)/1.5 var(--mono);letter-spacing:.06em;color:var(--ink)}
@@ -44,10 +44,12 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
    Background opacity matches the sketch's own card() gradient (.8-.85) — translucent enough that
    the hero scene's glow still shows around the card, opaque enough that its particles don't
    speckle through the text as visual noise. */
-.card{border:1px solid rgba(255,179,71,.35);background:linear-gradient(180deg,rgba(30,18,6,.86),rgba(8,5,2,.92));
+.card{min-width:0;min-height:0;border:1px solid rgba(255,179,71,.35);background:linear-gradient(180deg,rgba(30,18,6,.86),rgba(8,5,2,.92));
   padding:clamp(8px,1.2vmin,14px) clamp(10px,1.4vmin,16px);
   clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
-.card .ct{font:600 clamp(11px,1.2vmin,14px) var(--disp);letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:8px}
+.card .ct{display:flex;justify-content:space-between;gap:8px;font:600 clamp(11px,1.2vmin,14px) var(--disp);letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:8px}
+.state-label{flex:none;color:var(--prefill);font:600 clamp(8px,.8vmin,10px) var(--mono);letter-spacing:.08em}
+.panel-placeholder{color:var(--ink);font:600 clamp(9px,.9vmin,11px) var(--mono);letter-spacing:.04em}
 
 /* QBITTORRENT / stat-numeral cards: a 2-column grid of big headline numbers over a small caption,
    same shape as the sketch's own QBITTORRENT card. */
@@ -65,26 +67,32 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
 .lbar i{display:block;height:100%}
 .lrow b{color:#fff;font-weight:600;text-align:right}
 
-/* PLEX: 3-up headline grid + a short list of generic "now playing" lines. */
-.p3grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center;margin-bottom:8px}
+/* PLEX: 2-up headline grid + a short list of now-playing sessions. */
+.p3grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;text-align:center;margin-bottom:8px}
 .p3grid b{display:block;font:700 clamp(16px,2vmin,24px)/1 var(--disp);color:#fff}
 .p3grid span{color:var(--ink);font-size:clamp(9px,.85vmin,10px)}
-.pstreams{color:var(--ink);font-size:clamp(10px,1vmin,12px);line-height:1.7}
+.pstreams{min-width:0;color:var(--ink);font-size:clamp(10px,1vmin,12px);line-height:1.6}
+.pstream,.pstream-more{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.pstream-more{color:var(--dim)}
 
 /* TORRENTS: one row per item, a thin progress bar underneath. */
-.trow{display:grid;grid-template-columns:1fr 60px 56px;gap:8px;align-items:center;margin:6px 0;font-size:clamp(10px,1vmin,12px)}
+.trow{display:grid;grid-template-columns:minmax(0,1fr) 84px 62px;gap:8px;align-items:center;margin:6px 0;font-size:clamp(10px,1vmin,12px)}
 .trow .tn{color:var(--ink);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .trow .tr{text-align:right;font-weight:600}
-.trow .tratio{color:var(--amber);text-align:right}
+.trow .tpct{color:var(--ink);text-align:right}
 .tbar{grid-column:1/-1;height:4px;background:#241203}
 .tbar i{display:block;height:100%}
+.tmore{color:var(--dim);font:600 clamp(9px,.9vmin,11px) var(--mono);text-align:right;margin-top:4px}
 
 /* ARR STACK: a fixed 6-service status grid — dot, name, queue/degraded — not a scrolling feed. */
-.agrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 8px}
-.arow{color:var(--green);font-size:clamp(10px,1vmin,12px)}
-.arow.bad{color:var(--amber)}
+.agrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 8px}
+.arow{min-width:0;color:var(--green);font-size:clamp(10px,1vmin,12px)}
+.arow.degraded{color:var(--amber)}
+.arow.down{color:var(--red)}
+.arow.no-score{color:var(--dim)}
+.aname{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .arow i{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px;box-shadow:0 0 6px currentColor}
-.arow em{display:block;font-style:normal;color:var(--ink);margin-top:2px}
+.arow em{display:block;overflow:hidden;font-style:normal;color:var(--ink);margin-top:2px;font-size:clamp(8px,.8vmin,10px);line-height:1.3}
 
 /* Recently-added poster strip (sketch scene 125's bottom band): sits behind the side columns in
    the same grid row, aligned to the bottom, so it never competes with them for width. */
@@ -92,6 +100,7 @@ header{grid-column:1/-1;position:relative;z-index:1;display:flex;align-items:cen
   padding-bottom:clamp(10px,1.6vmin,20px)}
 .posters .ct{font:600 clamp(10px,1.1vmin,13px) var(--disp);letter-spacing:.22em;text-transform:uppercase;color:var(--amber);margin-bottom:8px}
 .pgrid{display:grid;grid-template-columns:repeat(8,1fr);gap:clamp(6px,1vmin,12px)}
-.poster{aspect-ratio:2/3;border:1px solid rgba(255,179,71,.4);display:flex;flex-direction:column;justify-content:flex-end;
+.poster{min-width:0;aspect-ratio:2/3;border:1px solid rgba(255,179,71,.4);display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;
   padding:6px;font:600 clamp(9px,1vmin,12px) var(--disp);color:#fff;box-shadow:0 10px 30px rgba(0,0,0,.6)}
+.poster strong{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow-wrap:anywhere}
 .poster span{color:#fc9;font:clamp(8px,.85vmin,10px) var(--mono);margin-top:2px}

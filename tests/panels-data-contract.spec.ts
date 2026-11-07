@@ -87,15 +87,27 @@ for (const pageSpec of PAGES) {
         canvas instanceof HTMLCanvasElement && canvas.toDataURL().length > 200,
       )), slowFirstFrame ? { timeout: 45_000 } : {}).toBe(true);
 
-      const overlaps = await panels.evaluateAll((elements) => (elements as HTMLElement[]).flatMap((element, index) => {
-        const a = { left: element.offsetLeft, top: element.offsetTop, right: element.offsetLeft + element.offsetWidth, bottom: element.offsetTop + element.offsetHeight };
+      const overlaps = await panels.evaluateAll((elements) => {
+        const box = (element: HTMLElement) => {
+          let left = 0, top = 0;
+          let current: HTMLElement | null = element;
+          while (current) {
+            left += current.offsetLeft;
+            top += current.offsetTop;
+            current = current.offsetParent as HTMLElement | null;
+          }
+          return { left, top, right: left + element.offsetWidth, bottom: top + element.offsetHeight };
+        };
+        return (elements as HTMLElement[]).flatMap((element, index) => {
+        const a = box(element);
         return (elements as HTMLElement[]).slice(index + 1).flatMap((other) => {
-          const b = { left: other.offsetLeft, top: other.offsetTop, right: other.offsetLeft + other.offsetWidth, bottom: other.offsetTop + other.offsetHeight };
+          const b = box(other);
           return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
             ? [[element.getAttribute('data-panel'), other.getAttribute('data-panel')]]
             : [];
         });
-      }));
+        });
+      });
       expect(overlaps).toEqual([]);
       expect(faults).toEqual([]);
       // Every real assertion for this page/mode has already run and passed above. This capture is

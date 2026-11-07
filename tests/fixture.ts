@@ -33,6 +33,21 @@ export interface AnswerOpts {
 }
 
 const AI_APPS = ['kilo', 'lima', 'mike'];
+const MC4_APP_SCORES: Array<[string, number]> = [
+  ['sonarr', 9], ['radarr', 7], ['prowlarr', 8], ['seerr', 6], ['qbittorrent', 9], ['plex', 10],
+];
+const MC4_TORRENT_TITLES = [
+  'The Life and Passion of Jesus Christ (1903)', 'A Trip to the Moon (1902)', 'The Great Train Robbery (1903)',
+  'The Cabinet of Dr. Caligari (1920)', 'Nosferatu (1922)', 'The Phantom of the Opera (1925)',
+  'The General (1926)', 'Metropolis (1927)', 'The Hunchback of Notre Dame (1923)', 'The Kid (1921)',
+  'Sherlock Jr. (1924)', 'Safety Last! (1923)', 'The Mark of Zorro (1920)', 'The Sheik (1921)',
+  'The Gold Rush (1925)', 'ubuntu-24.04-desktop-amd64.iso', 'debian-13.2-netinst.iso', 'archlinux-2026.09.01.iso',
+];
+const MC4_RECENT_TITLES = [
+  'Metropolis (1927)', 'Nosferatu (1922)', 'The General (1926)', 'The Kid (1921)',
+  'The Phantom of the Opera (1925)', 'A Trip to the Moon (1902)', 'The Cabinet of Dr. Caligari (1920)',
+  'The Great Train Robbery (1903)', 'The Hunchback of Notre Dame (1923)', 'Sherlock Jr. (1924)',
+];
 
 // Per-request router and engine readings for the MC1 and MC3 model lists, matched by exact query.
 // model-unused is deployed (litellm_deployment_state below) but served no real request in 4d, so
@@ -66,7 +81,56 @@ export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
   }
   if (q.includes('gatus_results_total') && q.includes('by (name)')) {
     const rows = config.groups.flatMap((g) => g.apps).map((n, i): [Record<string, string>, number] => [{ name: n }, sampleAppScore(i)]);
-    return vec(rows.filter(([metric]) => metric.name !== 'juliet'));
+    return vec([
+      ...rows.filter(([metric]) => metric.name !== 'juliet'),
+      ...MC4_APP_SCORES.map(([name, score]): [Record<string, string>, number] => [{ name }, score]),
+    ]);
+  }
+  if (q === Q.mc4QbitDownloadRate) return vec([[{}, 5 * 1024 ** 2]]);
+  if (q === Q.mc4QbitUploadRate) return vec([[{}, 0.75 * 1024 ** 2]]);
+  if (q === Q.mc4QbitDhtNodes) return vec([[{}, 432]]);
+  if (q === Q.mc4QbitConnection) return vec([[{ status: 'connected' }, 1]]);
+  if (q === Q.mc4TorrentProgress) return vec(MC4_TORRENT_TITLES.map((name, i) => [
+    { name, state: i % 5 === 0 ? 'seeding' : 'downloading', category: name.endsWith('.iso') ? 'linux' : 'movies' },
+    i % 5 === 0 ? 1 : Math.max(0.12, 0.94 - i * 0.035),
+  ]));
+  if (q === Q.mc4TorrentDownloadRate) return vec(MC4_TORRENT_TITLES.map((name, i) => [
+    { name, state: i % 5 === 0 ? 'seeding' : 'downloading', category: name.endsWith('.iso') ? 'linux' : 'movies' },
+    (MC4_TORRENT_TITLES.length - i) * 0.65 * 1024 ** 2,
+  ]));
+  if (q === Q.mc4TorrentUploadRate) return vec(MC4_TORRENT_TITLES.map((name, i) => [
+    { name, state: i % 5 === 0 ? 'seeding' : 'downloading', category: name.endsWith('.iso') ? 'linux' : 'movies' },
+    (i % 4) * 0.12 * 1024 ** 2,
+  ]));
+  if (q === Q.mc4TorrentShareRatio) return vec(MC4_TORRENT_TITLES.map((name, i) => [
+    { name, state: i % 5 === 0 ? 'seeding' : 'downloading', category: name.endsWith('.iso') ? 'linux' : 'movies' },
+    0.4 + i * 0.18,
+  ]));
+  if (q === Q.mc4LibraryDiskTotal) return vec([[{}, 48 * 1024 ** 4]]);
+  if (q === Q.mc4LibraryDiskAvailable) return vec([[{}, 17 * 1024 ** 4]]);
+  if (q === Q.mc4LibraryItems) return vec([
+    [{ app: 'radarr' }, 18 * 1024 ** 4],
+    [{ app: 'sonarr' }, 10 * 1024 ** 4],
+  ]);
+  if (q === Q.mc4PlexActiveSessions) return vec([[{}, 3]]);
+  if (q === Q.mc4PlexSessions) return vec([
+    [{ title: 'The General (1926)', decision: 'direct play', player: 'living room TV' }, 1],
+    [{ title: 'Metropolis (1927)', decision: 'transcode', player: 'desktop browser' }, 1],
+    [{ title: 'Nosferatu (1922)', decision: 'direct play', player: 'tablet' }, 1],
+  ]);
+  if (q === Q.mc4ArrQueue) return vec([
+    [{ app: 'sonarr' }, 4], [{ app: 'radarr' }, 2], [{ app: 'prowlarr' }, 3], [{ app: 'seerr' }, 1],
+  ]);
+  if (q === Q.mc4ArrHealthIssues) return vec([
+    [{ app: 'sonarr' }, 1], [{ app: 'radarr' }, 2],
+  ]);
+  if (q === Q.mc4VpnTunnel) return vec([[{}, 1]]);
+  if (q === Q.mc4VpnHandshake) return vec([[{}, Date.now() / 1000 - 42]]);
+  if (q === Q.mc4VpnKillswitch) return vec([[{}, 1]]);
+  if (q === Q.mc4VpnPortForward) return vec([[{}, 1]]);
+  if (q === Q.mc4RecentlyAdded) {
+    const now = Date.now() / 1000;
+    return vec(MC4_RECENT_TITLES.slice(0, 8).map((title, i) => [{ title }, now - (i + 1) * 3600]));
   }
   if (q.includes('gatus_results_total')) return vec([[{}, 99.93]]);
   if (q.includes('mode="idle"') && q.startsWith('count')) return vec(NODES.map((n, i) => [inst(n), [48, 24, 32][i]]));
