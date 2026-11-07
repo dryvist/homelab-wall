@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { query, range, settle, shortHost } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
+import { listedModels } from '/lib/modelPerf.js';
 import {
   clamp, hue, lerp, esc, observeCanvas, hardwareGL, loop, loadConfig, setState,
   SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct, setSampleBadge, setStandIn,
@@ -55,6 +56,8 @@ async function refresh() {
     fsSize: () => query(Q.fsSize),
     fsAvail: () => query(Q.fsAvail),
     llmState: () => query(Q.llmState),
+    llmUsed: () => query(Q.llmUsed4d),
+    llmReq: () => query(Q.llmRequests1h),
     llmTok: () => query(Q.llmTokRate),
     vlan: () => query(Q.vlanFwRate),
   });
@@ -141,15 +144,17 @@ async function refresh() {
       .sort((a, b) => b.size - a.size).slice(0, 12);
   }
 
-  model.llmFailed = r.llmState === null;
+  // Only models with a real request in the last 4d (Q.llmUsed4d), busiest hour first; the summary
+  // line counts the same models. A failed Q.llmUsed4d lists every deployment and marks the panel.
+  model.llmFailed = r.llmState === null || r.llmUsed === null;
   if (r.llmState) {
     const tok = Object.fromEntries((r.llmTok || []).map((x) => [x.labels.model, x.value]));
-    model.llmAll = r.llmState.map((x) => {
+    model.llmAll = listedModels(r.llmState, r.llmUsed, r.llmReq).map((x) => {
       const n = x.labels.litellm_model_name;
       const prev = model.llmAll?.find((m) => m.n === n);
       const t = tok[n] ?? 0;
       return { n, state: x.value, tok: t, hist: [...(prev?.hist || Array(29).fill(0)), t].slice(-30) };
-    }).sort((a, b) => b.state - a.state || b.tok - a.tok || a.n.localeCompare(b.n));
+    });
     model.llm = model.llmAll.slice(0, 9);
   }
   // Per-VLAN firewall event rate (Q.vlanFwRate) — empty until the Cribl pipeline (apps #2214)
