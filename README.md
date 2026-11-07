@@ -145,14 +145,16 @@ prefill counter rates with timestamped, gap-preserving history, latency
 percentiles, concurrency, cache usage, prefix hits, and speculative acceptance.
 Router cards use LiteLLM `_bucket` histograms for TTFT p50/p95 and E2E p95,
 aggregated per model. Engine histograms also use standard `_bucket` names.
+Percentiles come from bucket increases over the trailing 5 minutes, which also
+count a new series' first small bucket counts.
 
 Missing measurements show `NO DATA`. A failed poll keeps each last measured
 value with its source sample time, and the tooltip shows that time, not the
 poll time. A reading shows `STALE` with its age once that source sample is more
 than 5 minutes old, or when no source time is available. A held value keeps the
 source time of its last measurement, and a reading unmeasured for an hour leaves
-the page. A percentile with no requests in its window reads `Idle` while its
-source is fresh.
+the page. A percentile has no row when its window holds no requests; it reads
+`Idle` while its source is fresh.
 Device watts use a 5-minute mean; tokens/joule divides the recorded hourly
 generation rate by hourly mean power. These are device totals, shown only when
 an engine exposes an accelerator association, not per-model power allocations.

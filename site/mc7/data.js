@@ -41,7 +41,8 @@ function retainByIdentity(current, previous = [], removed = []) {
 const sameIdentity = (row, age) => matches(row, age.labels)
   && Object.keys(row.labels).length === Object.keys(age.labels).length;
 
-// Any percentile is NaN when its window holds no requests.
+// Any percentile is NaN when its window holds no requests, and the store drops NaN, so a percentile with a
+// fresh source but no reading is idle. Ratios are not: a first sample too big for increase() hides requests.
 const QUANTILE_KEY = /P\d+$/;
 // A held reading unmeasured for longer than this is dropped, so retired engines and models leave the page.
 const HOLD_SECONDS = 3600;
@@ -62,18 +63,20 @@ export function retainMeasurements(raw) {
         .map(({ labels, value }) => ({ labels, value })), heldAges))
       .filter((age) => now - age.value <= HOLD_SECONDS);
     if (raw[ageKey] != null) lastGoodSet(`mc7:${ageKey}`, ages);
+    const fresh = (age) => age.value <= now + 5 && now - age.value <= 300;
     const freshAge = (row) => {
       const source = ages.find((age) => sameIdentity(row, age));
-      return source && source.value <= now + 5 && now - source.value <= 300 ? source : null;
+      return source && fresh(source) ? source : null;
     };
     const quantile = QUANTILE_KEY.test(key);
-    const idleRows = raw[key]?.filter((row) => quantile && Number.isNaN(row.value)
-      && freshAge(row)).map((row) => ({ ...row, value: null, idle: true })) || [];
-    const removed = raw[key]?.filter((row) => !Number.isFinite(row.value)
-      && !(quantile && Number.isNaN(row.value) && !freshAge(row))) || [];
+    const idleRows = quantile && raw[key] != null ? ages.filter((age) => fresh(age)
+      && !raw[key].some((row) => Number.isFinite(row.value) && sameIdentity(row, age)))
+      .map(({ labels }) => ({ labels, value: null, idle: true })) : [];
+    const removed = [...raw[key]?.filter((row) => !Number.isFinite(row.value)
+      && !(quantile && Number.isNaN(row.value) && !freshAge(row))) || [], ...idleRows];
     const values = raw[key] == null ? heldValues
       : retainByIdentity(raw[key].filter((row) => Number.isFinite(row.value)), heldValues, removed);
-    const measured = new Set((raw[key] || []).map(identity));
+    const measured = new Set([...raw[key] || [], ...idleRows].map(identity));
     // Rows stored before measuredAt existed take the time of the stored poll once.
     const heldAt = (held?.at ?? 0) / 1000;
     const stamp = (row) => {

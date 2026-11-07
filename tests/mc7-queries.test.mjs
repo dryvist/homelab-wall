@@ -29,7 +29,7 @@ test('engine and router percentiles use standard buckets, aggregate le, and drop
     if (!/P\d+$/.test(key)) continue;
     assert.match(expr, /histogram_quantile\(/);
     assert.match(expr, /sum by \((?:model_name|model), le\)/);
-    assert.match(expr, /_bucket\{job="llm_(gpu_engine|router)"\}\[5m\]/);
+    assert.match(expr, /increase\([^()]*_bucket\{job="llm_(gpu_engine|router)"\}\[5m\]\)/);
     assert.doesNotMatch(expr, /by \([^)]*accelerator/);
     const p = Number(key.match(/P(\d+)$/)[1]) / 100;
     assert.ok(expr.includes(`histogram_quantile(${p},`));
