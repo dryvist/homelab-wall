@@ -38,6 +38,14 @@ export function modelCountPair(counts, upOnly = false) {
   return `local ${side('local')} · cloud ${side('cloud')}${upOnly ? ' UP' : ' MODELS'}`;
 }
 
+export function splitByClass(models, localNames) {
+  const local = new Set(localNames || []);
+  return {
+    local: models.filter((model) => local.has(model.n)),
+    cloud: models.filter((model) => !local.has(model.n)),
+  };
+}
+
 const VENDOR_WORD = /^[A-Z]{4,}\s+/;
 
 export function shortDevice(raw) {
