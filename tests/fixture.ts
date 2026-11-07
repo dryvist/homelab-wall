@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test';
+import { Q } from '../site/lib/queries.js';
 import { sampleAppScore } from '../site/lib/sampleData.js';
 
 export const config = {
@@ -33,7 +34,32 @@ export interface AnswerOpts {
 
 const AI_APPS = ['kilo', 'lima', 'mike'];
 
+// Per-request router and engine readings for the MC1 and MC3 model lists, matched by exact query.
+// model-unused is deployed (litellm_deployment_state below) but served no real request in 4d, so
+// no list shows it. model-mini served none in the last hour (Idle); only model-large has engine
+// decode rows. Percentiles are seconds per request; decode readings are already tok/s.
+function modelPerf(q: string): unknown[] | undefined {
+  const rows = (pairs: Array<[string, number]>, label = 'model') =>
+    vec(pairs.map(([name, v]): [Record<string, string>, number] => [{ [label]: name }, v]));
+  const now = Date.now() / 1000;
+  switch (q) {
+    case Q.llmUsed4d: return rows([['model-large', 310], ['model-coder', 880], ['model-small', 12], ['model-mini', 4]]);
+    case Q.llmRequests1h: return rows([['model-large', 42], ['model-coder', 120], ['model-small', 6], ['model-mini', 0]]);
+    case Q.llmRequestP50: return rows([['model-large', 1.84], ['model-coder', 0.62], ['model-small', 12.3]]);
+    case Q.llmRequestP90: return rows([['model-large', 3.2], ['model-coder', 1.4], ['model-small', 48]]);
+    case Q.llmRequestP99: return rows([['model-large', 5.6], ['model-coder', 2.9], ['model-small', 96.4]]);
+    case Q.llmTtftP50: return rows([['model-large', 0.31], ['model-coder', 0.18]]);
+    case Q.llmDecodeP50: return rows([['model-large', 104.2]], 'model_name');
+    case Q.llmDecodeP90: return rows([['model-large', 88.4]], 'model_name');
+    case Q.llmDecodeP99: return rows([['model-large', 61]], 'model_name');
+    case Q.llmLastRequest: return rows([['model-large', now - 20], ['model-coder', now - 5], ['model-small', now - 600], ['model-mini', now - (3 * 3600 + 12 * 60)]]);
+    default: return undefined;
+  }
+}
+
 export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
+  const perf = modelPerf(q);
+  if (perf) return perf;
   if (q.includes('AI · .+')) {
     const flat = config.groups.flatMap((g) => g.apps);
     return vec(AI_APPS.map((n): [Record<string, string>, number] => [{ name: n }, sampleAppScore(flat.indexOf(n))]));
@@ -90,9 +116,7 @@ export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
   ]);
   if (q.includes('llamacpp:requests_processing')) return vec([[{ instance: 'gpu-host-b.example.test:8080' }, opts.llamaRunning ?? 0]]);
   if (q.includes('litellm_in_flight_requests')) return vec([[{}, opts.inflight ?? 3]]);
-  if (q.includes('litellm_deployment_state')) return vec([[{ litellm_model_name: 'model-large' }, 0], [{ litellm_model_name: 'model-coder' }, 0], [{ litellm_model_name: 'model-small' }, 2], [{ litellm_model_name: 'model-mini' }, 0]]);
-  if (q.includes('litellm_request_queue_time_seconds_sum')) return vec([[{ model: 'model-large' }, 4.5]]);
-  if (q.includes('litellm_llm_api_latency_metric_sum')) return vec([[{ model: 'model-large' }, 0.842], [{ model: 'model-mini' }, 203.361]]);
+  if (q.includes('litellm_deployment_state')) return vec([[{ litellm_model_name: 'model-large' }, 0], [{ litellm_model_name: 'model-coder' }, 0], [{ litellm_model_name: 'model-small' }, 2], [{ litellm_model_name: 'model-mini' }, 0], [{ litellm_model_name: 'model-unused' }, 0]]);
   if (q.includes('litellm_output_tokens')) return vec([[{ model: 'model-large' }, 38], [{ model: 'model-coder' }, 91]]);
   if (q.includes('litellm_total_tokens_metric_total')) return vec([[{}, 4_810_000]]);
   if (q.includes('litellm_proxy_total_requests_metric_total')) return vec([[{}, 142]]);

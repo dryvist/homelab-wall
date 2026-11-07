@@ -1,9 +1,10 @@
 // Mission Control 3: AI inference core, driven by live litellm_router + Gatus data, the accelerator
 // busy and device queries (Q.acceleratorBusy, Q.gpuModel, Q.macChip), the router's request counts
-// and the same-origin /api/llm/recent request feed. Four device anchors and a cloud node are always
-// drawn; each model hangs off the anchor of the device that serves it.
+// and per-request percentiles, and the same-origin /api/llm/recent request feed. Four device anchors
+// and a cloud node are always drawn; each model hangs off the anchor of the device that serves it.
 import { query, settle } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
+import { listedModels, perfReader, perfCard } from '/lib/modelPerf.js';
 import {
   clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct,
   setSampleBadge, onDispose, hardwareGL, adaptiveDpr,
@@ -51,25 +52,38 @@ const isDim = (d) => (d.kind === 'cloud' ? d.active === 0 && d.models === 0 : d.
 // /config.json may override an anchor's display name; a missing or blank entry keeps the label.
 const overrides = cfg.accelerators && typeof cfg.accelerators === 'object' ? cfg.accelerators : {};
 
-const model = { models: [], tokensToday: null, reqPerMin: null, gpuBusy: null, inflight: null };
+// listFailed: Q.llmUsed4d failed, so models lists every deployment (site/lib/modelPerf.js).
+const model = { models: [], listFailed: false, tokensToday: null, reqPerMin: null, gpuBusy: null, inflight: null };
 // Fleet list: the AI-category services and their 0-10 scores (Q.aiAppScore), sorted by name.
 let aiApps = [];
 // Anchor state, rebuilt on every refresh: name, busy % (null when its busy series is absent),
 // active requests and attached model count.
 let accel = ANCHOR_DEFS.map((d) => ({ ...d, name: d.id, busy: null, active: 0, models: 0 }));
 
-// Sample models for the scene before any real model arrives; they sit on the cloud node.
-const sampleModels = () => SAMPLE_LLM.map((m) => ({ n: m.n, up: m.state < 2, tok: m.tok, anchor: CLOUD }));
+// Sample models for the scene before any real model arrives; they sit on the cloud node, and each
+// card reads its sample tok/s as a decode speed, or Idle at zero.
+const sampleModels = () => SAMPLE_LLM.map((m) => ({
+  n: m.n, up: m.state < 2, tok: m.tok, anchor: CLOUD, perf: { idle: !(m.tok > 0), decode: { p50: m.tok } },
+}));
 
 async function refresh() {
   const r = await settle({
     score: () => query(Q.aiAppScore),
     state: () => query(Q.llmState),
+    used: () => query(Q.llmUsed4d),
+    // The 5m output rate drives the scene's streams only; the cards read per-request readings.
     tok: () => query(Q.llmTokRate),
+    requests: () => query(Q.llmRequests1h),
+    requestP50: () => query(Q.llmRequestP50),
+    requestP90: () => query(Q.llmRequestP90),
+    requestP99: () => query(Q.llmRequestP99),
+    ttftP50: () => query(Q.llmTtftP50),
+    decodeP50: () => query(Q.llmDecodeP50),
+    decodeP90: () => query(Q.llmDecodeP90),
+    decodeP99: () => query(Q.llmDecodeP99),
+    lastRequest: () => query(Q.llmLastRequest),
     tokensToday: () => query(Q.llmTokensToday),
     reqPerMin: () => query(Q.llmReqPerMin),
-    queue: () => query(Q.llmQueueSeconds),
-    latency: () => query(Q.llmLatencySeconds),
     gpu: () => query(Q.acceleratorBusy),
     gpuModel: () => query(Q.gpuModel),
     macChip: () => query(Q.macChip),
@@ -88,17 +102,18 @@ async function refresh() {
 
   const hostRole = deriveAccelerators(r);
 
+  model.listFailed = r.used === null;
   if (r.state) {
     const tok = Object.fromEntries((r.tok || []).map((x) => [x.labels.model, x.value]));
-    const queue = Object.fromEntries((r.queue || []).map((x) => [x.labels.model, x.value]));
-    const latency = Object.fromEntries((r.latency || []).map((x) => [x.labels.model, x.value]));
+    const perf = perfReader(r);
     // A model can have several serving-URL rows, so the URLs are grouped under their model name.
     const apiBase = new Map();
     for (const x of r.apiBase || []) {
       const n = x.labels.litellm_model_name;
       apiBase.set(n, [...(apiBase.get(n) ?? []), x.labels.api_base]);
     }
-    model.models = r.state.map((x) => {
+    // Only models with a real request in the last 4d, busiest first.
+    model.models = listedModels(r.state, r.used, r.requests).slice(0, 8).map((x) => {
       const n = x.labels.litellm_model_name;
       // Attached to the first device, in anchor order, that one of its serving URLs names. A model
       // whose URLs name no device (hosted rungs, an empty URL) belongs to the cloud node.
@@ -107,14 +122,8 @@ async function refresh() {
         const role = hostRole.get(hostOf(url));
         if (role != null) anchor = Math.min(anchor, ROLE.get(role));
       }
-      return {
-        n, up: x.value < 2, tok: tok[n] ?? 0,
-        // Both undefined for an idle model (no requests in the window -> no series) — real
-        // absence, not a failed query, so it renders a quiet idle state, never a stand-in badge.
-        queue: queue[n], latencyMs: Number.isFinite(latency[n]) ? latency[n] * 1000 : undefined,
-        anchor,
-      };
-    }).sort((a, b) => (b.up - a.up) || b.tok - a.tok || a.n.localeCompare(b.n)).slice(0, 8);
+      return { n, up: x.value < 2, tok: tok[n] ?? 0, perf: perf(n), anchor };
+    });
   }
   for (const m of model.models) accel[m.anchor].models += 1;
 
@@ -246,41 +255,28 @@ function renderApps() {
 
 /* ---------------- AI core (models table + reactor) ---------------- */
 // The router metrics feed is real (Q.llmState), but has nothing yet on some deployments — the
-// shared LLM sample dataset (site/lib/sampleData.js), reshaped to this page's {n,up,tok}, stands
+// shared LLM sample dataset (site/lib/sampleData.js), reshaped to this page's {n,up,tok,perf}, stands
 // in instead of a blank/pending table. reactorList mirrors whichever list rendered last, so the
 // decorative reactor canvas (drawReactor below) always animates real or stand-in state, never "N/A".
 let reactorList = sampleModels();
-// Queue time and API latency (Q.llmQueueSeconds/Q.llmLatencySeconds, site/lib/queries.js) are real
-// per-model averages from litellm's own sum/count metrics — litellm exposes no _bucket histogram,
-// so this is an average, not a true p50. A model with no requests in the 5m window (queue/latencyMs
-// both undefined on the model object) is genuinely idle, not a failed query: it renders a quiet
-// "idle" state, never a stand-in badge.
-// Human-readable duration from milliseconds: sub-second as whole ms, sub-minute as one-decimal
-// seconds, else minutes — the same three ranges shown across queue time and API latency, so
-// both go through this one formatter instead of separate ad-hoc toFixed calls.
-function fmtDur(ms) {
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${(ms / 60000).toFixed(1)}m`;
-}
-function modelStats(m) {
-  if (!m.up) return { queue: 'offline', avg: 'offline' };
-  return {
-    queue: m.queue == null ? 'idle' : fmtDur(m.queue * 1000),
-    avg: m.latencyMs == null ? 'idle' : fmtDur(m.latencyMs),
-  };
-}
-// Rolling per-model tok/s history for the sparklines (model cards + fleet-health column). Real
-// once the router feed answers (each refresh tick appends the live tok value); a brand-new name
-// seeds flat at its first-seen value, same technique SAMPLE_LLM.hist already uses, so a sparkline
-// never has to fabricate a past it doesn't know.
+// Each card's large number is a per-request reading (site/lib/modelPerf.js perfCard): the engine's
+// p50 decode speed, else the router's p50 request time. A model with no real request in the hour
+// reads Idle, a real absence rather than a failed query, so it never shows a stand-in badge.
+// Rolling per-model history of that large number for the sparklines (model cards + fleet-health
+// column). An idle poll appends a gap (null), never a zero. A brand-new name seeds flat at its
+// first-seen reading, same technique SAMPLE_LLM.hist already uses, and a model whose large number
+// changes unit starts over, so one line never mixes tok/s and seconds.
 const HIST_N = 24;
-const tokHistory = new Map();
-function pushHist(name, tok) {
-  let h = tokHistory.get(name);
-  if (!h) { h = Array(HIST_N).fill(tok); tokHistory.set(name, h); }
-  else { h.push(tok); h.shift(); }
-  return h;
+const perfHistory = new Map();
+function pushHist(name, { spark, unit }) {
+  let h = perfHistory.get(name);
+  if (!h || (spark != null && h.unit != null && h.unit !== unit)) {
+    h = { unit: null, values: Array(HIST_N).fill(spark) };
+    perfHistory.set(name, h);
+  } else {
+    h.values.push(spark); h.values.shift();
+  }
+  if (spark != null) h.unit = unit;
 }
 function drawSpark(canvas, hist, color) {
   const dpr = adaptiveDpr();
@@ -289,11 +285,19 @@ function drawSpark(canvas, hist, color) {
   if (canvas.height !== h) canvas.height = h;
   const c = canvas.getContext('2d');
   c.clearRect(0, 0, w, h);
-  const max = Math.max(1, ...hist);
+  // A faint dotted guide under every line, so an all-idle history still draws its frame.
+  c.setLineDash([2 * dpr, 3 * dpr]);
+  c.beginPath(); c.moveTo(0, h - dpr); c.lineTo(w, h - dpr);
+  c.strokeStyle = `${color}40`; c.lineWidth = dpr; c.stroke();
+  c.setLineDash([]);
+  const max = Math.max(0, ...hist.filter(Number.isFinite)) || 1;
   c.beginPath();
+  let pen = false; // a gap lifts the pen, so idle polls draw nothing
   hist.forEach((v, i) => {
+    if (!Number.isFinite(v)) { pen = false; return; }
     const x = (i / (hist.length - 1)) * w, y = h - (v / max) * (h - 2 * dpr) - dpr;
-    i === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+    pen ? c.lineTo(x, y) : c.moveTo(x, y);
+    pen = true;
   });
   c.strokeStyle = color; c.lineWidth = 1.5 * dpr; c.lineJoin = 'round'; c.stroke();
 }
@@ -302,7 +306,9 @@ function renderCore() {
   const sample = !model.models.length;
   const list = sample ? sampleModels() : model.models;
   reactorList = list;
-  list.forEach((m) => pushHist(m.n, m.tok));
+  const now = Date.now() / 1000;
+  const cards = new Map(list.map((m) => [m.n, perfCard(m.perf, now)]));
+  list.forEach((m) => pushHist(m.n, cards.get(m.n)));
   const tab = $('modeltab');
   // One row, always: an explicit column count (not auto-fit's width-based wrap) so N models
   // never orphan a lone tile onto a second row. Compact type kicks in once the row is dense
@@ -311,24 +317,25 @@ function renderCore() {
   tab.classList.toggle('dense', list.length > 5);
   tab.innerHTML = list.map((m) => {
     const col = m.up ? (m.tok > 0.05 ? 'var(--green)' : 'var(--cyan)') : 'var(--red)';
-    const status = m.up ? 'tok/s' : 'health check failing';
-    const { queue, avg } = modelStats(m);
+    const card = cards.get(m.n);
+    const stats = m.up ? card.stats : ['health check failing', ...card.stats];
     const device = accel[m.anchor].name;
     return `<div class="mc"><div class="mch"><b title="${esc(m.n)}">${esc(m.n.split('/').pop())}</b><span style="color:${col}">${m.up ? 'UP' : 'DOWN'}</span></div>
       <div class="mcat" title="${esc(device)}">${esc(device)}</div>
-      <div class="mctok" style="color:${col}">${m.up ? m.tok.toFixed(0) : '0'}<i>${status}</i></div>
+      <div class="mctok" style="color:${col}">${esc(card.value)}${card.unit ? `<i>${esc(card.unit)}</i>` : ''}</div>
       <canvas class="mcspark" data-model="${esc(m.n)}"></canvas>
       <div class="mcbar"><div style="width:${m.up ? clamp(m.tok * 2, 6, 100) : 100}%;background:${col}"></div></div>
-      <div class="mcstats">queue <b>${queue}</b> &middot; avg <b>${avg}</b></div></div>`;
+      <div class="mcstats">${stats.map((s) => `<span>${esc(s)}</span>`).join('')}</div></div>`;
   }).join('');
   for (const canvas of $('modeltab').querySelectorAll('.mcspark')) {
     const m = list.find((x) => x.n === canvas.dataset.model);
-    drawSpark(canvas, tokHistory.get(m.n) || [0], m.up ? (m.tok > 0.05 ? '#38ff9c' : '#3ee6ff') : '#ff3b5c');
+    drawSpark(canvas, perfHistory.get(m.n).values, m.up ? (m.tok > 0.05 ? '#38ff9c' : '#3ee6ff') : '#ff3b5c');
   }
   const up = list.filter((m) => m.up).length;
   $('coresum').textContent = `${up}/${list.length} UP`;
   setSampleBadge($('cores'), sample);
-  setState($('cores'), 'ok');
+  // A failed Q.llmUsed4d lists every deployment; the panel carries the machine-readable error marker.
+  setState($('cores'), model.listFailed ? 'error' : 'ok');
   renderCoreExtra(list);
 }
 
@@ -354,7 +361,7 @@ function renderCoreExtra(list) {
   $('modelSparks').innerHTML = list.map((m) => `<div class="spk"><canvas class="spkc" data-model="${esc(m.n)}"></canvas><b>${esc(m.n.split('/').pop())}</b></div>`).join('');
   for (const canvas of $('modelSparks').querySelectorAll('.spkc')) {
     const m = list.find((x) => x.n === canvas.dataset.model);
-    drawSpark(canvas, tokHistory.get(m.n) || [0], m.up ? '#3ee6ff' : '#ff3b5c');
+    drawSpark(canvas, perfHistory.get(m.n).values, m.up ? '#3ee6ff' : '#ff3b5c');
   }
 }
 

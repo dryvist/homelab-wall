@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
+import { Q } from '../site/lib/queries.js';
 import { mockFeeds, recentRows, type FeedOpts } from './fixture';
 
 // mc3-specific contract: the request feed is real metadata rows from GET /api/llm/recent (never
@@ -105,6 +106,36 @@ test('mc3: a missing /api/llm/recent renders an explicit NO FEED state with no i
   // else may fault (no pageerror, no other request failure).
   // Chromium also logs the 404 as a generic console resource error.
   expect(faults.filter((f) => !(f.startsWith('404 ') && f.includes('/api/llm/recent')) && !f.includes('status of 404'))).toEqual([]);
+});
+
+// The model cards list only models with a real request in the last 4d (Q.llmUsed4d), busiest hour
+// first (Q.llmRequests1h). model-unused is deployed but served only the router's health check.
+test('mc3: only recently used models are listed, busiest first', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+  const faults = watchFaults(page);
+  await mockFeeds(page);
+  await page.goto('/mc3/?gl=2d');
+  await awaitReady(page, '2d');
+  await expect(page.locator('#modeltab .mch b')).toHaveText(['model-coder', 'model-large', 'model-small', 'model-mini']);
+  await expect(page.locator('#modeltab')).not.toContainText('model-unused');
+  await expect(page.locator('#subtitle')).toContainText('4 MODELS');
+  await expect(page.locator('[data-panel="cores"]')).toHaveAttribute('data-state', 'ok');
+  expect(faults).toEqual([]);
+});
+
+// A failed Q.llmUsed4d lists every deployment as before, with the panel's error marker, never an empty wall.
+test('mc3: a failed used-models query lists every deployment and marks the panel', async ({ page }) => {
+  test.skip(!!wallUrl, 'forces a query failure against the fixture server only');
+  const faults = watchFaults(page);
+  await mockFeeds(page, { failQuery: (q) => q === Q.llmUsed4d });
+  await page.goto('/mc3/?gl=2d');
+  await awaitReady(page, '2d');
+  await expect(page.locator('#modeltab .mc')).toHaveCount(5);
+  await expect(page.locator('#modeltab')).toContainText('model-unused');
+  await expect(page.locator('[data-panel="cores"]')).toHaveAttribute('data-state', 'error');
+  await expect(page.locator('[data-panel="cores"]')).toHaveAttribute('data-source', 'live');
+  // Only the forced 500 from the query under test is expected; anything else is a fault.
+  expect(faults.filter((f) => !(f.startsWith('500 ') && f.includes('/api/prom/')) && !f.includes('status of 500'))).toEqual([]);
 });
 
 // The fleet list shows only AI-category services, and the accelerator anchors are always drawn:

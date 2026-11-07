@@ -65,19 +65,30 @@ test('mc4 throughput numerals keep changing within 10s on a frozen-data fixture'
   await expect.poll(() => page.locator('#acqbody').innerText(), { timeout: 10_000, message: '#acqbody never repainted' }).not.toBe(before);
 });
 
-test('mc3 model tiles show real queue/avg values and render a quiet idle state when a model has none', async ({ page }) => {
-  test.skip(!!wallUrl, 'exercises the fixture-shaped queue/latency response only');
+// The per-request readout replaced the queue/avg line, so each earlier expectation reads its new
+// counterpart: queue "4.5s" -> the request-time line, avg "842ms" -> the decode slow tail and TTFT,
+// model-coder "idle" -> model-mini's Idle (model-coder now serves requests), and the 203s average
+// "3.4m" -> a long request time in whole seconds.
+test('mc3 model tiles show per-request percentiles and read Idle when a model had no real request this hour', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped percentile response only');
   await mockFeeds(page);
   await page.goto('/mc3/');
   const tiles = page.locator('#modeltab .mc');
-  await expect(tiles.filter({ hasText: 'model-large' }).locator('.mcstats')).toContainText('4.5s');
-  await expect(tiles.filter({ hasText: 'model-large' }).locator('.mcstats')).toContainText('842ms');
-  await expect(tiles.filter({ hasText: 'model-large' }).locator('.mcstats')).not.toHaveAttribute('data-source', 'stand-in');
-  await expect(tiles.filter({ hasText: 'model-coder' }).locator('.mcstats')).toContainText('idle');
-  // model-mini's 203.361s average is the reported bug ("avg 203361ms") — must render as "3.4m",
-  // never raw milliseconds. Covers all three human-duration ranges together with the two above:
-  // sub-second ("842ms"), sub-minute ("4.5s"), and minutes-and-up ("3.4m").
-  await expect(tiles.filter({ hasText: 'model-mini' }).locator('.mcstats')).toContainText('3.4m');
+  const large = tiles.filter({ hasText: 'model-large' });
+  // The engine's p50 decode speed is the large number; its slow tail is labelled as the slowest share.
+  await expect(large.locator('.mctok')).toHaveText(/^104\s*tok\/s$/);
+  await expect(large.locator('.mcstats')).toContainText('p50 1.8 s · p90 3.2 s · p99 5.6 s per request · 42 req/h');
+  await expect(large.locator('.mcstats')).toContainText('decode p90 88 · p99 61 tok/s (slowest 10% / 1%)');
+  await expect(large.locator('.mcstats')).toContainText('TTFT p50 0.31 s');
+  await expect(large.locator('.mcstats')).not.toHaveAttribute('data-source', 'stand-in');
+  // No engine row: the router's p50 request time is the large number.
+  await expect(tiles.filter({ hasText: 'model-coder' }).locator('.mctok')).toHaveText(/^0\.62\s*s per request$/);
+  // No real request this hour: Idle with the last request's age, never 0 tok/s.
+  const mini = tiles.filter({ hasText: 'model-mini' });
+  await expect(mini.locator('.mctok')).toHaveText('Idle');
+  await expect(mini.locator('.mcstats')).toContainText('last request 3h 12m ago');
+  // A long request time reads in whole seconds, never raw milliseconds.
+  await expect(tiles.filter({ hasText: 'model-small' }).locator('.mcstats')).toContainText('p99 96 s');
 });
 
 test('the SAMPLE DATA badge never appears on a panel that has real data', async ({ page }) => {
