@@ -71,7 +71,8 @@ test('MC7 keeps held values through a failed poll, marks them STALE once the sou
   state = 'failed';
   await expect(page.locator('#status')).toContainText('Telemetry incomplete');
   await expect(decode).toHaveText('120.0');
-  await expect(page.locator('canvas').first()).toHaveAttribute('data-samples', '0');
+  await expect(page.locator('canvas').first()).toHaveAttribute('data-samples', '41');
+  await expect(page.locator('canvas').first()).toHaveAttribute('data-state', 'stale');
   state = 'aged';
   await expect(decode).toHaveText(/^120\.0 · STALE 5m \d+s$/);
   state = 'gap';
