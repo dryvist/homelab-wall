@@ -35,6 +35,23 @@ async function awaitReady(page: Page, mode: '2d' | '3d') {
   await expect(page.locator('#reactor')).toHaveAttribute('data-scene', 'ready', { timeout: READY_TIMEOUT });
 }
 
+test('mc3: direct mouse movement keeps the page ready without page errors', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
+  test.slow();
+  const faults = watchFaults(page);
+  await mockFeeds(page);
+  await page.goto('/mc3/');
+  await expect(page.locator('[data-panel="apps"]')).toHaveAttribute('data-state', 'ok', { timeout: READY_TIMEOUT });
+  await expect(page.locator('#reactor')).toHaveAttribute('data-scene', 'ready', { timeout: READY_TIMEOUT });
+
+  const { width, height } = page.viewportSize() ?? { width: 1920, height: 1080 };
+  await page.mouse.move(width * 0.08, height * 0.12, { steps: 6 });
+  await page.mouse.move(width * 0.5, height * 0.5, { steps: 6 });
+  await page.mouse.move(width * 0.92, height * 0.88, { steps: 6 });
+  await expect(page.locator('#reactor')).toHaveAttribute('data-scene', 'ready');
+  expect(faults).toEqual([]);
+});
+
 for (const mode of ['2d', '3d'] as const) {
   test(`mc3 ${mode}: ready message, live feed rows, and no console errors`, async ({ page }) => {
     test.skip(!!wallUrl, 'exercises the fixture-shaped feeds only');
