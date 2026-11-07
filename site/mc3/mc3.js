@@ -203,9 +203,8 @@ function render() {
   renderCore();
   renderKpis();
   renderAnchors();
-  const sceneModels = model.models.length ? model.models : reactorList;
-  reactor.dataset.modelColors = JSON.stringify(sceneModels.map(({ n, color }) => ({ n, color })));
-  core3d?.sync(sceneModels, model.tokensToday, sceneAnchors());
+  reactor.dataset.modelColors = JSON.stringify(reactorList.map(({ n, color }) => ({ n, color })));
+  core3d?.sync(model.models, model.tokensToday, sceneAnchors());
   markPending(); // the inputs changed: the next drawn frame takes them in and marks the signal ready
 }
 

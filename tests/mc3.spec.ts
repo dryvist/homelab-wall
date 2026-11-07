@@ -153,8 +153,8 @@ test('mc3: a failed used-models query lists every deployment and marks the panel
 // dropped, the role tag added where two anchors read alike). A model sits on the anchor whose host
 // its serving URL names. Each anchor's request beads are counted on its label, on both render paths.
 const ANCHOR_NAMES = {
-  'gpu-primary': 'Example GPU 1',
-  'gpu-secondary': 'Example GPU 2',
+  'gpu-primary': 'GPU 1',
+  'gpu-secondary': 'GPU 2',
   'mac-primary': 'Example Chip 3 · PRIMARY',
   'mac-secondary': 'Example Chip 3 · SECONDARY',
   cloud: 'cloud',
