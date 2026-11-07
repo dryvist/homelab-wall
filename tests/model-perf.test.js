@@ -18,9 +18,7 @@ test('per-request model queries read real callers from bucket series only and st
     assert.equal(Q[key], `1 / histogram_quantile(${q}, sum by (model_name, le) (increase(vllm:request_time_per_output_token_seconds_bucket[1h])))`);
   }
   assert.equal(Q.llmLastRequest, `tlast_change_over_time(sum by (model) (litellm_request_total_latency_metric_bucket{le="+Inf",${H}})[4d:1m])`);
-  // MC7 still reads the 5m output rate.
-  assert.equal(Q.llmTokRate, 'sum by (model) (rate(litellm_output_tokens_metric_total[5m]))');
-  assert.equal(Q.llmLocalModels, 'group by (model) (litellm_total_tokens_metric_total{tag_telemetry_billing_class_local="true"})');
+  assert.equal(Q.llmLocalModels, `group by (model) (litellm_total_tokens_metric_total{tag_telemetry_billing_class_local="true",${H}})`);
   assert.equal(Q.llmTokensToday, `sum by (tag_telemetry_billing_class_local) (increase(litellm_total_tokens_metric_total{${H}}[24h]))`);
   assert.equal(Q.llmReqPerMin, `sum by (tag_telemetry_billing_class_local) (rate(litellm_proxy_total_requests_metric_total{${H}}[5m])) * 60`);
   assert.equal(new Set(Object.values(Q)).size, Object.keys(Q).length);

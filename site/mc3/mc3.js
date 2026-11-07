@@ -75,7 +75,7 @@ async function refresh() {
     used: () => query(Q.llmUsed4d),
     localModels: () => query(Q.llmLocalModels),
     // The 5m output rate drives the scene's streams only; the cards read per-request readings.
-    tok: () => query(Q.llmTokRate),
+    tok: () => query(Q.routerOutput),
     requests: () => query(Q.llmRequests1h),
     requestP50: () => query(Q.llmRequestP50),
     requestP90: () => query(Q.llmRequestP90),

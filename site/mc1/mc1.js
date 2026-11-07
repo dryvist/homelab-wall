@@ -68,7 +68,7 @@ async function refresh() {
     vlanTx: () => query(Q.vlanTxBytes),
     llmState: () => query(Q.llmState),
     llmUsed: () => query(Q.llmUsed4d),
-    llmTok: () => query(Q.llmTokRate),
+    llmTok: () => query(Q.routerOutput),
     llmLocalModels: () => query(Q.llmLocalModels),
   });
 

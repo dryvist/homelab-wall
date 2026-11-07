@@ -19,12 +19,9 @@ export function billingClassValues(rows) {
 
 export function modelCounts(models, localModelRows) {
   if (!Array.isArray(models) || !Array.isArray(localModelRows)) return null;
-  const localNames = new Set(localModelRows.map((row) => row.labels?.model).filter(Boolean));
-  return ['local', 'cloud'].reduce((counts, kind) => {
-    const list = models.filter((model) => localNames.has(model.n) === (kind === 'local'));
-    counts[kind] = { up: list.filter((model) => model.up).length, total: list.length };
-    return counts;
-  }, {});
+  const split = splitByClass(models, localModelRows.map((row) => row.labels?.model));
+  const count = (list) => ({ up: list.filter((model) => model.up).length, total: list.length });
+  return { local: count(split.local), cloud: count(split.cloud) };
 }
 
 export function classPair(local, cloud, format = (value) => String(value)) {
