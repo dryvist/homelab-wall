@@ -14,9 +14,12 @@ import {
 import { sampleAppScore } from '/lib/sampleData.js';
 import { poissonLoop } from '/lib/liveJitter.js';
 import { serviceScoreState } from '/lib/serviceScoreState.js';
+import { createPointer } from '/lib/pointer.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const { pointer, dispose: disposePointer } = createPointer();
+onDispose(disposePointer);
 
 const cfg = await loadConfig();
 $('title').textContent = cfg.title || 'HOMELAB';
@@ -309,8 +312,8 @@ function buildGlobe() {
     // on the visible face), so the "alive, not static" motion comes from the camera instead — a
     // slow figure-eight-ish orbit around the default position, never enough to lose the globe.
     if (!RM) {
-      cam.position.x = Math.sin(now / 14000) * 18;
-      cam.position.y = Math.sin(now / 21000) * 10;
+      cam.position.x = Math.sin(now / 14000) * 18 + pointer.x * 16;
+      cam.position.y = Math.sin(now / 21000) * 10 + pointer.y * 9;
       cam.lookAt(0, 0, 0);
     }
     homeMarker.scale.setScalar(1 + 0.22 * Math.sin(now / 260));
