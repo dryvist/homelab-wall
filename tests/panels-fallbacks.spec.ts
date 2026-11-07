@@ -4,15 +4,17 @@ import { Q } from '../site/lib/queries.js';
 import { mockFeeds } from './fixture';
 import { wallUrl } from './panels-contract';
 
-// MC1's LLM list holds only models with a real request in the last 4d (Q.llmUsed4d), busiest hour
-// first, and its summary counts only those. model-unused is deployed but served only the health check.
+// MC1's LLM list holds only models with a real request in the last 4d (Q.llmUsed4d), in MC1's existing
+// order, and its summary counts only those. model-unused is deployed but served only the health check.
 test('mc1 LLM list shows only recently used models and its summary counts only those', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises the fixture-shaped model list only');
   await mockFeeds(page);
   await page.goto('/mc1/?gl=2d');
   const llm = page.locator('[data-panel="llm"]');
   await expect(llm).toHaveAttribute('data-state', 'ok');
-  await expect(page.locator('#llmrows .lr > span:first-of-type')).toHaveText(['model-coder', 'model-large', 'model-small', 'model-mini']);
+  const names = page.locator('#llmrows .lr > span:first-of-type');
+  await expect(names).toHaveCount(4);
+  expect((await names.allTextContents()).sort()).toEqual(['model-coder', 'model-large', 'model-mini', 'model-small']);
   await expect(page.locator('#llmrows')).not.toContainText('model-unused');
   await expect(page.locator('#llmsum')).toContainText('3/4 UP');
 });

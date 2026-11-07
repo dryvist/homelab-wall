@@ -144,7 +144,7 @@ async function refresh() {
       .sort((a, b) => b.size - a.size).slice(0, 12);
   }
 
-  // Only models with a real request in the last 4d (Q.llmUsed4d), busiest hour first; the summary
+  // Only models with a real request in the last 4d (Q.llmUsed4d), in the existing order; the summary
   // line counts the same models. A failed Q.llmUsed4d lists every deployment and marks the panel.
   model.llmFailed = r.llmState === null || r.llmUsed === null;
   if (r.llmState) {
@@ -154,7 +154,7 @@ async function refresh() {
       const prev = model.llmAll?.find((m) => m.n === n);
       const t = tok[n] ?? 0;
       return { n, state: x.value, tok: t, hist: [...(prev?.hist || Array(29).fill(0)), t].slice(-30) };
-    });
+    }).sort((a, b) => b.state - a.state || b.tok - a.tok || a.n.localeCompare(b.n));
     model.llm = model.llmAll.slice(0, 9);
   }
   // Per-VLAN firewall event rate (Q.vlanFwRate) — empty until the Cribl pipeline (apps #2214)
