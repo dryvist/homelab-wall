@@ -1,14 +1,15 @@
 import { expect, test } from '@playwright/test';
-import { mockFeeds } from './fixture';
+import { config, mockFeeds } from './fixture';
 import { PAGES, MODES, pending, invalidMetric, wallUrl } from './panels-contract';
 
 for (const pageSpec of PAGES) {
   for (const mode of MODES) {
     test(`${pageSpec.id} ${mode} panels honor the data contract`, async ({ page }) => {
-      // mc3's forced 3D core runs WebGPURenderer's WebGL2 backend on CI's software rasterizer,
-      // where the first painted frame takes far longer than on the wall's GPU.
-      const slowFirstFrame = pageSpec.id === 'mc3' && mode === '3d';
+      // A forced 3D page runs WebGL2 on CI's software rasterizer, where the first painted frame, and the
+      // first poll's render behind it, take far longer than on the wall's GPU; mc3's core is the slowest.
+      const slowFirstFrame = mode === '3d' && !wallUrl;
       if (slowFirstFrame) test.slow();
+      const firstState = slowFirstFrame ? { timeout: 15_000 } : {};
       const faults: string[] = [];
       page.on('pageerror', (error) => faults.push(error.message));
       page.on('console', (message) => {
@@ -19,7 +20,12 @@ for (const pageSpec of PAGES) {
         if (response.status() >= 400) faults.push(`${response.status()} ${response.url()}`);
       });
 
-      if (!wallUrl) await mockFeeds(page);
+      if (!wallUrl) {
+        await mockFeeds(page);
+        // A transient failed first poll recovers on the next one, as on the wall; poll often enough
+        // that the next one lands inside the first-state wait.
+        await page.route('**/config.json', (r) => r.fulfill({ json: { ...config, refreshSeconds: 4 } }));
+      }
       await page.goto(`${pageSpec.path}?gl=${mode}`);
       const panels = page.locator('[data-panel]');
       await expect(panels).not.toHaveCount(0);
@@ -34,7 +40,7 @@ for (const pageSpec of PAGES) {
         expect(id).not.toBeNull();
         // Web-first assertion: the state is set once the panel's feed resolves, not on insert.
         if (allowed.has(id!)) {
-          await expect(panel).toHaveAttribute('data-state', 'pending');
+          await expect(panel).toHaveAttribute('data-state', 'pending', firstState);
           // A permanently-pending panel is marked data-source stand-in (invisible) and still has
           // real-looking content, never a blank panel — no visible marker distinguishes it. mc1's
           // "nodes" panel is the one exception: it's pending only while its GPU feed has no series,
@@ -44,7 +50,7 @@ for (const pageSpec of PAGES) {
           }
           await expect.poll(() => panel.innerText()).not.toBe('');
         } else {
-          await expect(panel).toHaveAttribute('data-state', 'ok');
+          await expect(panel, `request faults: ${faults.join(' | ') || 'none'}`).toHaveAttribute('data-state', 'ok', firstState);
           // Poll, not a one-shot read: a panel can flip to data-state="ok" (set synchronously
           // by renderStatic) a frame before its own rAF-scheduled repaint (e.g. mc1's #appsum)
           // has actually painted over its placeholder "—".
@@ -79,7 +85,7 @@ for (const pageSpec of PAGES) {
 
       await expect.poll(() => page.locator('canvas').evaluateAll((canvases) => Array.from(canvases).every((canvas) =>
         canvas instanceof HTMLCanvasElement && canvas.toDataURL().length > 200,
-      )), { timeout: slowFirstFrame ? 45_000 : 5_000 }).toBe(true);
+      )), slowFirstFrame ? { timeout: 45_000 } : {}).toBe(true);
 
       const overlaps = await panels.evaluateAll((elements) => (elements as HTMLElement[]).flatMap((element, index) => {
         const a = { left: element.offsetLeft, top: element.offsetTop, right: element.offsetLeft + element.offsetWidth, bottom: element.offsetTop + element.offsetHeight };

@@ -7,11 +7,18 @@ const wallUrl = process.env.WALL_URL;
 
 export default defineConfig({
   testDir: 'tests',
+  // Specs only: the node:test unit files (*.test.js, *.test.mjs) run under `node --test`.
+  testMatch: '**/*.spec.ts',
   testIgnore: ['**/wall.live.spec.ts'],
   timeout: 60_000,
-  // ci.yml runs one Playwright project per job (its own runner) instead of the full 8-project
+  // CI renders WebGL and DPR 2 pages in software on a shared 4-vCPU runner, so a poll's render can take
+  // longer than locally; assertions still have to pass, only the wait is longer.
+  expect: { timeout: process.env.CI ? 10_000 : 5_000 },
+  // Shards split by test, not by file, so ci.yml's three shards per project stay balanced.
+  fullyParallel: true,
+  // ci.yml runs a third of one Playwright project per job (its own runner) instead of the full 8-project
   // matrix on one runner — that's what fixed the resource contention (see ci.yml). Each shard's
-  // ~40 tests still get the CPU-based default worker count, same as a local run.
+  // tests still get the CPU-based default worker count, same as a local run.
   use: {
     baseURL: wallUrl || 'http://127.0.0.1:4173',
     viewport: { width: 1920, height: 1080 },

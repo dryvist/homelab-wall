@@ -75,7 +75,8 @@ it is unknown when no activity was observed. Lines show agent grouping only.
 Requests time out after 10 seconds. Current readings become stale after
 300 seconds even during an unfinished poll. History becomes stale when its
 refresh fails or its last successful refresh is over 10 minutes old; a series
-that has gone quiet keeps current history. An empty 24h ring is pending.
+that has gone quiet keeps current history. An empty 24h ring is pending, and
+stale history marks the page header only where its ring is drawn.
 No host, session, or user identities appear. Pause and reduced motion stop
 glow animation. The default rotator lists MC9 last, after MC8.
 
@@ -94,7 +95,8 @@ itself always comes from `config.json` (`nodeRoles` + `extraNodes`), never
 from whichever series a poll happens to return.
 MC8 uses real measurements only. Failed queries, and empty ones not covered
 below, show `Pending` until the first reading; later gaps retain the last
-measurement with a visible `STALE` age. An empty failure, fallback or spend
+measurement with a visible `STALE` age. A reading never measured shows
+`Pending`, and a share that cannot be computed shows `Unavailable`. An empty failure, fallback or spend
 result reads as zero while the router is live. TTFT p95 comes from bucket
 increases, which also count a new series' first small bucket counts; an empty
 TTFT result reads `Idle` while the histogram's sample time is fresh. Zero token

@@ -17,14 +17,13 @@ test('a node missing from a later poll stays rendered, marked stale, with its la
   const cores = (n: string) => (n === dropped ? 80 : 16);
 
   let cpuPolls = 0;
-  // refreshSeconds is as short as the page allows, and the assertions below poll the route's
-  // own call count / the DOM directly instead of a fixed wall-clock wait, so this test holds
-  // its page (and its 30fps WebGL/canvas draw loop) busy for as little real CI time as
-  // possible — it runs alongside other projects' pages on a shared CI runner, and a long fixed
-  // wait here previously starved an unrelated webkit test's own 5s poll deadline.
+  // A 1s refresh brings the second poll within a second. The page's setInterval does not wait for
+  // a slow refresh, so a shorter one stacked overlapping refreshes on a loaded runner and the
+  // dropped-node render arrived after the 5s assertion. The assertions below poll the route's own
+  // call count and the DOM directly instead of a fixed wall-clock wait.
   await page.route('**/config.json', (r: Route) => r.fulfill({
     json: {
-      title: 'HOMELAB', refreshSeconds: 0.2, guestCount: 4,
+      title: 'HOMELAB', refreshSeconds: 1, guestCount: 4,
       nodeRoles: Object.fromEntries(nodeNames.map((n) => [n, n])), extraNodes: [],
       groups: [{ name: 'apps', apps: ['alpha'] }],
     },

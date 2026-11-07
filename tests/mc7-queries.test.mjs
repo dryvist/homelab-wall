@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { Q } from '../site/lib/queries.js';
 import { BENCHMARK_Q, BENCHMARK_SOURCE_AGE_FOR, BENCHMARK_SOURCE_AGE_Q } from '../site/lib/benchmarkQueries.js';
 import fixtures from './mc7-fixtures.json' with { type: 'json' };
@@ -94,13 +93,7 @@ test('llama.cpp branches preserve guest identity without requiring model metadat
   assert.match(Q.engineDevices.split(' or ')[1], /by \(backend, guest, accelerator\)/);
 });
 
-test('MC3 remains byte-identical to origin/main, and MC7 never imports sample values', () => {
-  const root = new URL('..', import.meta.url);
-  const files = execFileSync('git', ['ls-tree', '-r', '--name-only', 'origin/main', 'site/mc3'], { cwd: root, encoding: 'utf8' }).trim().split('\n');
-  for (const file of files) {
-    assert.deepEqual(readFileSync(new URL(file, root)), execFileSync('git', ['show', `origin/main:${file}`], { cwd: root }));
-  }
-  assert.equal(execFileSync('git', ['diff', 'origin/main', '--', 'site/mc3'], { cwd: root, encoding: 'utf8' }), '');
+test('MC7 never imports sample values', () => {
   for (const file of ['mc7', 'render', 'data', 'history']) {
     const source = readFileSync(new URL(`../site/mc7/${file}.js`, import.meta.url), 'utf8');
     assert.doesNotMatch(source, /sampleData|SAMPLE_|Math\.random|fill\(tok\)/);

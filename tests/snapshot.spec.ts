@@ -30,7 +30,7 @@ function buildSnapshot() {
 
 async function mockSnapshotFeeds(page: import('@playwright/test').Page) {
   // mc5 fetches the public GitHub API directly (no token, no Prometheus query) — route it the
-  // same way fixture.ts's mockGithub does for panels.spec.ts, or CI hits the real network and
+  // same way fixture.ts's mockGithub does for the panels specs, or CI hits the real network and
   // mc5's ticker/releases/repos panels stay 'pending' past the test's 5s budget. mc6's
   // /api/words is likewise its own same-origin endpoint, orthogonal to snapshot mode.
   await mockGithub(page);
