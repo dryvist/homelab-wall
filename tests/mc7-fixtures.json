@@ -1,0 +1,250 @@
+{
+  "engineDecode": [
+    {
+      "labels": {
+        "backend": "vllm",
+        "model": "engine-large"
+      },
+      "value": 120
+    },
+    {
+      "labels": {
+        "backend": "llamacpp",
+        "guest": "engine-embed"
+      },
+      "value": 25
+    }
+  ],
+  "enginePrefill": [
+    {
+      "labels": {
+        "backend": "vllm",
+        "model": "engine-large"
+      },
+      "value": 800
+    },
+    {
+      "labels": {
+        "backend": "llamacpp",
+        "guest": "engine-embed"
+      },
+      "value": 300
+    }
+  ],
+  "engineTtftP50": [
+    {
+      "labels": {
+        "backend": "vllm",
+        "model": "engine-large"
+      },
+      "value": 0.1
+    }
+  ],
+  "engineTtftP95": [
+    {
+      "labels": {
+        "backend": "vllm",
+        "model": "engine-large"
+      },
+      "value": 0.25
+    }
+  ],
+  "engineTtftP99": [
+    {
+      "labels": {
+        "backend": "vllm",
+        "model": "engine-large"
+      },
+      "value": 0.5
+    }
+  ],
+  "engineItlP50": [
+    {
+      "labels": {
+        "backend": "vllm",
+        "model": "engine-large"
+      },
+      "value": 0.01
+    }
+  ],
+  "engineItlP99": [
+    {
+      "labels": {
+        "backend": "vllm",
+        "model": "engine-large"
+      },
+      "value": 0.05
+    }
+  ],
+  "engineE2eP95": [
+    {
+      "labels": {
+        "backend": "vllm",
+        "model": "engine-large"
+      },
+      "value": 2.5
+    }
+  ],
+  "engineDevices": [
+    {
+      "labels": {
+        "backend": "vllm",
+        "model": "engine-large",
+        "accelerator": "gpu-primary"
+      },
+      "value": 1
+    }
+  ],
+  "engineRunning": [
+    {
+      "labels": {
+        "backend": "vllm",
+        "model": "engine-large"
+      },
+      "value": 3
+    },
+    {
+      "labels": {
+        "backend": "llamacpp",
+        "guest": "engine-embed"
+      },
+      "value": 1
+    }
+  ],
+  "engineWaiting": [
+    {
+      "labels": {
+        "backend": "vllm",
+        "model": "engine-large"
+      },
+      "value": 2
+    },
+    {
+      "labels": {
+        "backend": "llamacpp",
+        "guest": "engine-embed"
+      },
+      "value": 0
+    }
+  ],
+  "engineKvPercent": [
+    {
+      "labels": {
+        "backend": "vllm",
+        "model": "engine-large"
+      },
+      "value": 65
+    }
+  ],
+  "enginePrefixPercent": [
+    {
+      "labels": {
+        "backend": "vllm",
+        "model": "engine-large"
+      },
+      "value": 40
+    }
+  ],
+  "engineSpecPercent": [
+    {
+      "labels": {
+        "backend": "vllm",
+        "model": "engine-large"
+      },
+      "value": 75
+    },
+    {
+      "labels": {
+        "backend": "llamacpp",
+        "guest": "engine-embed"
+      },
+      "value": 60
+    }
+  ],
+  "routerInput": [
+    {
+      "labels": {
+        "model": "model-large"
+      },
+      "value": 450
+    },
+    {
+      "labels": {
+        "model": "model-coder"
+      },
+      "value": 100
+    }
+  ],
+  "routerTtftP50": [
+    {
+      "labels": {
+        "model": "model-large"
+      },
+      "value": 0.2
+    },
+    {
+      "labels": {
+        "model": "model-coder"
+      },
+      "value": 0.4
+    }
+  ],
+  "routerTtftP95": [
+    {
+      "labels": {
+        "model": "model-large"
+      },
+      "value": 0.8
+    },
+    {
+      "labels": {
+        "model": "model-coder"
+      },
+      "value": 1.2
+    }
+  ],
+  "routerE2eP95": [
+    {
+      "labels": {
+        "model": "model-large"
+      },
+      "value": 4
+    },
+    {
+      "labels": {
+        "model": "model-coder"
+      },
+      "value": 8
+    }
+  ],
+  "acceleratorWatts": [
+    {
+      "labels": {
+        "accelerator": "gpu-primary"
+      },
+      "value": 240
+    }
+  ],
+  "acceleratorTokensPerJoule": [
+    {
+      "labels": {
+        "accelerator": "gpu-primary"
+      },
+      "value": 0.5
+    }
+  ],
+  "llmTokRate": [
+    {
+      "labels": {
+        "model": "model-large"
+      },
+      "value": 38
+    },
+    {
+      "labels": {
+        "model": "model-coder"
+      },
+      "value": 91
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MC7 · AI Benchmark Cockpit</title>
+<link rel="stylesheet" href="/mc7/mc7.css">
+</head>
+<body>
+<main id="stage">
+  <header><div><p>MC7 / Beta</p><h1>AI Benchmark Cockpit</h1></div><p id="status" role="status">Waiting for telemetry</p></header>
+  <section aria-labelledby="engine-heading"><h2 id="engine-heading">Engine workbench</h2>
+    <p class="caption">Decode and prefill throughput · 5-minute rates · 10-minute history</p>
+    <div id="engines" class="cards" data-panel="engines" data-state="pending">NO DATA</div>
+  </section>
+  <section aria-labelledby="router-heading"><h2 id="router-heading">Router latency</h2>
+    <p class="caption">Per-model percentiles across requests · 5-minute window</p>
+    <div id="routers" class="cards routers" data-panel="routers" data-state="pending">NO DATA</div>
+  </section>
+  <footer>TTFT: time to first token. ITL: inter-token latency. E2E: end-to-end latency. Power and efficiency are device totals, not model allocations. Missing measurements show NO DATA.</footer>
+</main>
+<script type="module" src="/mc7/mc7.js"></script>
+</body>
+</html>

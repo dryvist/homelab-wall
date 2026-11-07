@@ -84,18 +84,18 @@ test('?gl=2d on the wall is passed to same-origin wall slides only', async ({ pa
   expect(srcs[2]).toBe('https://remote.example.test/board');
 });
 
-// MC8 (SWITCHBOARD) joins DEFAULT_SLIDES after MC6 (LEXICON) and before MC9. With no `slides` in config.json the defaults
+// MC7, MC8 (SWITCHBOARD) and MC9 follow MC6 (LEXICON) in DEFAULT_SLIDES. With no `slides` in config.json the defaults
 // apply: one persistent iframe per default slide, titled by slide name (buildLayers). The
 // slide documents themselves are aborted — this asserts the rotator's own bookkeeping, not
 // the pages' health (the panel suites cover that).
-test('default slides include SWITCHBOARD after LEXICON', async ({ page }) => {
+test('default slides place MC7, MC8 and MC9 after LEXICON', async ({ page }) => {
   await page.route('**/config.json', (r) => r.fulfill({ json: {} })); // no slides key -> DEFAULT_SLIDES
-  for (const path of ['/mc1/', '/mc2/', '/mc3/', '/mc4/', '/mc5/', '/mc6/', '/mc8/', '/mc9/']) {
+  for (const path of ['/mc1/', '/mc2/', '/mc3/', '/mc4/', '/mc5/', '/mc6/', '/mc7/', '/mc8/', '/mc9/']) {
     await page.route(`**${path}`, (r) => r.abort());
   }
   await page.goto('/');
   const titles = await page.locator('iframe').evaluateAll((els) => els.map((el) => (el as HTMLIFrameElement).title));
-  expect(titles).toEqual(['MC1', 'MC2', 'MC3', 'MC4', 'MC5', 'LEXICON', 'SWITCHBOARD', 'Agent Constellation']);
+  expect(titles).toEqual(['MC1', 'MC2', 'MC3', 'MC4', 'MC5', 'LEXICON', 'AI Benchmark Cockpit', 'SWITCHBOARD', 'Agent Constellation']);
 });
 
 // The rotator keeps at most 10 layers. The deployed wall configures 8, so all of them get a

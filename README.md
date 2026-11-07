@@ -10,6 +10,7 @@ other dashboards.
 | --- | --- |
 | `site/mc1/` | Nodes, storage, topology, app health, LLM status, firewall |
 | `site/mc6/` | LEXICON: rotating hero word cloud and per-source clouds |
+| `site/mc7/` | AI Benchmark Cockpit (beta): engine and router benchmarks |
 | `site/mc8/` | Router Switchboard (beta): caller-to-model token paths |
 | `site/mc9/` | Agent Constellation (beta): agent activity rates and 24h rings |
 | `site/lib/` | Prometheus client, PromQL, app health score, stage/GL helpers |
@@ -36,8 +37,9 @@ releases.
 The shared client keeps `query(expr)` rows as `{labels, value}` and
 `range(expr, minutes, stepSeconds)` rows as `{labels, values: [number]}`.
 Pass `{timestamps: true}` as the final argument to include `timestamp` in
-instant rows or `[timestamp, value]` pairs in range `values`. Timestamps are
-seconds from the source samples, including when replaying an old snapshot.
+instant rows or `[timestamp, value]` pairs in range `values`. Instant timestamps
+are evaluation times; range timestamps are step times, including when replaying
+an old snapshot.
 Range also accepts `{align: true}` to floor the live request's end to a step
 boundary; it keeps the requested duration and leaves snapshot samples intact.
 Run the client tests offline with `node --test tests/*.test.js`.
@@ -129,6 +131,27 @@ The feed has no per-request token counts, generation rate, or time to first
 token, so the ribbon does not display those measurements.
 On a software WebGL renderer the topology drops to a 2D mode; `?gl=3d` or
 `?gl=2d` forces either.
+
+## MC7 benchmark beta
+
+`/mc7/` is an independent AI Benchmark Cockpit. Engine cards show decode and
+prefill counter rates with timestamped, gap-preserving history, latency
+percentiles, concurrency, cache usage, prefix hits, and speculative acceptance.
+Router cards use LiteLLM `_bucket` histograms for TTFT p50/p95 and E2E p95,
+aggregated per model. Engine histograms also use standard `_bucket` names.
+
+Missing measurements show `NO DATA`. A failed poll keeps each last measured
+value with its source sample time, and the tooltip shows that time, not the
+poll time. A reading shows `STALE` with its age once that source sample is more
+than 5 minutes old, or when no source time is available. A held value keeps the
+source time of its last measurement, and a reading unmeasured for an hour leaves
+the page. A percentile with no requests in its window reads `Idle` while its
+source is fresh.
+Device watts use a 5-minute mean; tokens/joule divides the recorded hourly
+generation rate by hourly mean power. These are device totals, shown only when
+an engine exposes an accelerator association, not per-model power allocations.
+The router is the only telemetry source for the MLX engine today; engine-level
+cache and latency breakdowns remain unavailable there.
 
 ## Health score
 

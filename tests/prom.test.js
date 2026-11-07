@@ -50,7 +50,7 @@ for (const source of ['live', 'snapshot']) {
     }
   });
 
-  test(`${source}: timestamps preserve source times through a later poll`, async (t) => {
+  test(`${source}: instant evaluation and range step times survive a later poll`, async (t) => {
     const prom = await client(t, source);
     for (let poll = 0; poll < 2; poll += 1) {
       assert.deepEqual(await prom.query(Q.nodeCpu, { timestamps: true }), [
@@ -61,6 +61,20 @@ for (const source of ['live', 'snapshot']) {
     }
     if (source === 'snapshot') {
       assert.deepEqual(prom.requests, ['/config.json', '/data/snapshot.json', '/data/snapshot.json']);
+    }
+  });
+
+  test(`${source}: optional range bounds preserve request samples and default result shape`, async (t) => {
+    const prom = await client(t, source);
+    const bounds = { start: captured - 240, end: captured + 60 };
+    assert.deepEqual(await prom.range(Q.nodeCpu, 5, 30, { bounds }), [{ labels, values: [10, 12.5] }]);
+    if (source === 'live') {
+      const params = new URL(prom.requests.at(-1), 'https://wall.example.test').searchParams;
+      assert.equal(params.get('start'), String(bounds.start));
+      assert.equal(params.get('end'), String(bounds.end));
+      assert.equal(params.get('step'), '30');
+    } else {
+      assert.deepEqual(prom.requests, ['/config.json', '/data/snapshot.json']);
     }
   });
 
