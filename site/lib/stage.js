@@ -6,19 +6,17 @@ export const lerp = (a, b, t) => a + (b - a) * t;
 export const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 // 'stale': the panel has real data, but it is a held-over last-good value rather than a fresh
-// read (a source that dropped out of the current poll) — distinct from 'pending' (no source
-// wired up yet) and 'error' (the query itself failed).
-const STATES = new Set(['ok', 'empty', 'pending', 'error', 'stale']);
+// read (a source that dropped out of the current poll). 'pending': no reading yet. 'error': the
+// query itself failed. 'empty': the query succeeded with zero rows. 'no-feed': the panel has no
+// data source at all, so it draws no values and says so (site/lib/wall.css).
+const STATES = new Set(['ok', 'empty', 'pending', 'error', 'stale', 'no-feed']);
 
-// `message` is recorded on the panel (data-panel-message-text, invisible) for automation/tests,
-// but only ever painted into the visible [data-panel-message] node for state 'ok' — every other
-// state (pending/empty/error/stale) always has stand-in content on screen instead (sampleData.js,
-// setSampleBadge below), so its message never needs to be, and must not be, visible.
+// `message` is painted into the panel's visible [data-panel-message] node in every state.
 export function setState(panel, state, message = '') {
   if (!STATES.has(state)) throw new Error(`unknown panel state: ${state}`);
   panel.dataset.state = state;
   const notice = panel.querySelector('[data-panel-message]');
-  if (notice) notice.textContent = state === 'ok' ? message : '';
+  if (notice) notice.textContent = message;
 }
 
 // App health score scale (site/lib/queries.js APP_HEALTH_SCORE): 0-9 is the normal range; 10 is

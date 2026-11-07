@@ -32,4 +32,8 @@ body{font-family:var(--mono);color:var(--ink)}
 .stage{width:100vw;height:100vh;height:100dvh;box-sizing:border-box}
 .num{font-variant-numeric:tabular-nums}
 .pending{color:var(--faint);letter-spacing:.2em;text-transform:uppercase;font-size:var(--fs-xs)}
+/* A panel with no data source keeps its title and its grid cell, and says so instead of drawing values. */
+[data-state="no-feed"]>:not(h2){display:none}
+[data-state="no-feed"]::after{content:"No feed";display:grid;place-items:center;flex:1;min-height:3em;
+  color:var(--dim);letter-spacing:.2em;text-transform:uppercase;font-size:var(--fs-md)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
