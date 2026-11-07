@@ -7,6 +7,8 @@ import { MC9_QUERIES } from '../mc9/queries.js';
 // KNOWN GAP: that precomputed metric is defined in a separate repo and still encodes the old
 // 0-100 formula. Q.appScore's "or" prefers it when present, so the live wall keeps showing 0-100
 // values until that definition is updated to match this expression — this file alone cannot fix it.
+import { BENCHMARK_Q, BENCHMARK_SOURCE_AGE_Q } from './benchmarkQueries.js';
+
 const CATALOG = 'group=~".+ · (UI|API)"';
 const NODE = 'job="pve_node_exporter"';
 // A network mount of another node's own pool reports the same bytes as that pool's own local
@@ -29,6 +31,8 @@ const APP_SCORE = `homelab:app_health_score or (${APP_HEALTH_SCORE})`;
 
 export const Q = {
   ...MC9_QUERIES,
+  ...BENCHMARK_Q,
+  ...BENCHMARK_SOURCE_AGE_Q,
   appScore: APP_SCORE,
   // mc3 fleet list: the same per-name score, kept only for names with a Gatus series in the AI
   // catalog category (group "AI · UI" or "AI · API"). Q.appScore carries no group label to filter on.
@@ -56,8 +60,7 @@ export const Q = {
   // mc3
   llmTokensToday: 'sum(increase(litellm_total_tokens_metric_total[24h]))',
   llmReqPerMin: 'sum(rate(litellm_proxy_total_requests_metric_total[5m])) * 60',
-  // Average, not p50: litellm exports only a sum/count pair per model, no _bucket histogram, so a
-  // true percentile isn't derivable from this feed.
+  // MC3 retains its averages; MC7 uses the router bucket histograms for percentiles.
   llmQueueSeconds: 'sum by (model) (increase(litellm_request_queue_time_seconds_sum[5m])) / sum by (model) (increase(litellm_request_queue_time_seconds_count[5m]))',
   llmLatencySeconds: 'sum by (model) (increase(litellm_llm_api_latency_metric_sum[5m])) / sum by (model) (increase(litellm_llm_api_latency_metric_count[5m]))',
   // mc3 accelerator anchors. The per-device exporters label each device's product name and host;

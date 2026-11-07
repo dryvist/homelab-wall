@@ -8,6 +8,7 @@ const DEFAULT_SLIDES = [
   { name: 'MC4', url: '/mc4/' },
   { name: 'MC5', url: '/mc5/' },
   { name: 'LEXICON', url: '/mc6/' },
+  { name: 'AI Benchmark Cockpit', url: '/mc7/' },
   { name: 'SWITCHBOARD', url: '/mc8/' },
   { name: 'Agent Constellation', url: '/mc9/' },
 ];

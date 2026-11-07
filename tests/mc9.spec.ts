@@ -60,11 +60,11 @@ test('reduced motion and pause controls work without viewport overflow', async (
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight)).toBe(true);
 });
 
-test('default rotation places MC9 after MC6 and MC8', async ({ page }) => {
+test('default rotation places MC9 after MC6, MC7 and MC8', async ({ page }) => {
   await mockMC9(page, { empty: true });
   await page.route('**/sw.js', (route) => route.abort());
   await page.goto('/');
-  await expect(page.locator('iframe')).toHaveCount(8);
+  await expect(page.locator('iframe')).toHaveCount(9);
   const paths = await page.locator('iframe').evaluateAll((frames) => frames.map((f) => new URL((f as HTMLIFrameElement).src).pathname));
-  expect(paths.slice(-3)).toEqual(['/mc6/', '/mc8/', '/mc9/']);
+  expect(paths.slice(-4)).toEqual(['/mc6/', '/mc7/', '/mc8/', '/mc9/']);
 });

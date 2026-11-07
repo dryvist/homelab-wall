@@ -65,7 +65,7 @@ function fromSnapshot(entry, key) {
   return entry.result;
 }
 
-// Instant vector -> [{labels, value}], optionally including the source timestamp in seconds.
+// Instant vector -> [{labels, value}], optionally including the evaluation timestamp in seconds.
 export async function query(expr, { timestamps = false } = {}) {
   const cfg = await getConfig();
   let rows;
@@ -82,8 +82,8 @@ export async function query(expr, { timestamps = false } = {}) {
   }));
 }
 
-// Range vector -> [{labels, values:[number]}]; timestamps opts into [seconds, value] pairs.
-export async function range(expr, minutes, stepSeconds, { timestamps = false, align = false } = {}) {
+// Range vector -> [{labels, values:[number]}]; timestamps opts into [step time, value] pairs.
+export async function range(expr, minutes, stepSeconds, { timestamps = false, align = false, bounds } = {}) {
   const cfg = await getConfig();
   let rows;
   if (cfg.snapshot) {
@@ -92,8 +92,9 @@ export async function range(expr, minutes, stepSeconds, { timestamps = false, al
     rows = fromSnapshot(snap.range?.[key], key);
   } else {
     const quantum = align ? stepSeconds : 1;
-    const end = Math.floor(Date.now() / 1000 / quantum) * quantum;
-    rows = await get('query_range', { query: expr, start: end - minutes * 60, end, step: stepSeconds });
+    const end = bounds?.end ?? Math.floor(Date.now() / 1000 / quantum) * quantum;
+    const start = bounds?.start ?? end - minutes * 60;
+    rows = await get('query_range', { query: expr, start, end, step: stepSeconds });
   }
   return rows.map((r) => ({
     labels: r.metric,

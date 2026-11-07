@@ -176,9 +176,9 @@ test('spend query subtracts per-series UTC month baseline before sum, then conve
   assert.ok(Q.mc8SpendCents.includes('(scalar(day_of_month()) - 1) * 86400 - time() % 86400'));
   assert.match(Q.mc8SpendCents, /or max_over_time\(.+\[31d\]\) \* 0\), 0\)\)$/);
 });
-test('switchboard follows MC6 in default slides', () => {
+test('switchboard follows MC7 in default slides', () => {
   const source = readFileSync(new URL('../site/rotator/rotator.js', import.meta.url), 'utf8');
-  assert.match(source, /url: '\/mc6\/' \},\s*\{ name: 'SWITCHBOARD', url: '\/mc8\/'/);
+  assert.match(source, /url: '\/mc7\/' \},\s*\{ name: 'SWITCHBOARD', url: '\/mc8\/'/);
 });
 test('token-rate source times are raw-counter tlast values grouped exactly like their rate readings', () => {
   const group = (expr) => expr.match(/^(?:sum|max) by \(([^)]*)\)/)[1];
