@@ -12,7 +12,7 @@ const devices = (name, backend) => {
   const labels = backend === 'llamacpp' ? source : `label_replace(${source}, "model", "$1", "model_name", "(.*)")`;
   return `group by (backend, ${backend === 'llamacpp' ? 'guest' : 'model'}, accelerator) (label_replace(${labels}, "backend", "${backend}", "", ""))`;
 };
-// Power is a device total. The 1h denominator matches the recording rule's token window.
+// Power is a device total. The 1h denominator matches the hourly token rate rule's window.
 const power = (window) => `sum by (accelerator) (label_replace(avg_over_time(DCGM_FI_DEV_POWER_USAGE[${window}]), "accelerator", "gpu-primary", "accelerator", "^$")) or sum by (accelerator) (avg_over_time(macmon_gpu_power_watts[${window}]))`;
 
 const gpuAge = (metric) => `max by (backend, model) (label_replace(label_replace(tlast_over_time(${metric}{job="llm_gpu_engine"}[5m]), "model", "$1", "model_name", "(.*)"), "backend", "vllm", "", ""))`;

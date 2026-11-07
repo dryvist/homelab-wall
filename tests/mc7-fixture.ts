@@ -3,7 +3,7 @@ import { Q } from '../site/lib/queries.js';
 import { BENCHMARK_SOURCE_AGE_FOR } from '../site/lib/benchmarkQueries.js';
 import fixtures from './mc7-fixtures.json' with { type: 'json' };
 
-type Labels = Record<string, string>;
+type Labels = Record<string, string | undefined>;
 const readingRows: Record<string, Array<{ labels: Labels }>> = fixtures;
 const AGE_KEYS = [...new Set(Object.values(BENCHMARK_SOURCE_AGE_FOR))];
 
