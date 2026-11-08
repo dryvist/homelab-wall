@@ -60,8 +60,8 @@ for (const pageSpec of PAGES) {
           await expect(panel, `request faults: ${faults.join(' | ') || 'none'}`).toHaveAttribute('data-state', 'ok', firstState);
           // Poll, not a one-shot read: a panel can flip to data-state="ok" (set synchronously
           // by renderStatic) a frame before its own rAF-scheduled repaint (e.g. mc1's #appsum)
-          // has actually painted over its placeholder "—".
-          await expect.poll(() => panel.innerText()).not.toMatch(invalidMetric);
+          // has actually painted over its placeholder "—". On a slow 3D first frame that repaint waits as long as the state.
+          await expect.poll(() => panel.innerText(), firstState).not.toMatch(invalidMetric);
         }
       }
 
