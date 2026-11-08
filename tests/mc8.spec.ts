@@ -126,7 +126,7 @@ test('cloud-only caller and route figures omit the absent local side', async ({ 
   await page.goto('/mc8/');
   await expect(page.locator('#route-state')).toHaveText('cloud 40 tokens/s');
   await expect(page.locator('#callers .terminal').first().locator('.rate')).toHaveText('cloud 25 tokens/s');
-  await expect(page.locator('#callers .rate')).not.toContainText('local');
+  await expect(page.locator('#callers .rate', { hasText: 'local' })).toHaveCount(0);
 });
 
 test('local-only caller and route figures omit the absent cloud side', async ({ page }) => {

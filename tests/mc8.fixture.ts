@@ -6,7 +6,7 @@ const billing = (bank: string): Record<string, string> => Object.fromEntries(
   ['local', 'subscription', 'paid', 'free'].map((key) => [`tag_telemetry_billing_class_${key}`, String(key === bank)]),
 );
 type TokenFixtureRow = { labels: Record<string, string>; input: number; output: number };
-export const tokenRows = [
+export const tokenRows: TokenFixtureRow[] = [
   { labels: { api_key_alias: 'caller-a', team: 'engineering', model: 'local-model', api_provider: 'hosted_vllm', ...billing('local') }, input: 60, output: 30 },
   { labels: { api_key_alias: 'caller-b', team: 'automation', model: 'subscription-model', api_provider: 'openai', ...billing('subscription') }, input: 20, output: 5 },
   { labels: { api_key_alias: 'caller-a', team: 'engineering', model: 'paid-model', api_provider: 'openai', ...billing('paid') }, input: 10, output: 5 },
@@ -32,11 +32,12 @@ export const highCardinalityRows: TokenFixtureRow[] = Array.from({ length: 20 * 
 export function mc8Answer(expr: string, rows: TokenFixtureRow[] = tokenRows) {
   const vec = (answers: Array<[Record<string, string>, number]>) => answers.map(([metric, value]) => ({ metric, value: [Date.now() / 1000, String(value)] }));
   const modelRows = [...new Map(rows.map((row) => [JSON.stringify([row.labels.model, row.labels.api_provider]), row.labels])).values()];
-  const classRows = [...new Map(rows.map((row) => [JSON.stringify([row.labels.model, row.labels.tag_telemetry_billing_class_local]), {
-    model: row.labels.model || 'Unlabelled model', ...(row.labels.tag_telemetry_billing_class_local ? { tag_telemetry_billing_class_local: row.labels.tag_telemetry_billing_class_local } : {}),
+  const classOf = (labels: Record<string, string>): Record<string, string> => (labels.tag_telemetry_billing_class_local
+    ? { tag_telemetry_billing_class_local: labels.tag_telemetry_billing_class_local } : {});
+  const classRows = [...new Map(rows.map((row): [string, Record<string, string>] => [JSON.stringify([row.labels.model, row.labels.tag_telemetry_billing_class_local]), {
+    model: row.labels.model || 'Unlabelled model', ...classOf(row.labels),
   }])).values()];
-  const classLabels = [...new Map(rows.map((row) => [row.labels.tag_telemetry_billing_class_local || 'cloud',
-    row.labels.tag_telemetry_billing_class_local ? { tag_telemetry_billing_class_local: row.labels.tag_telemetry_billing_class_local } : {}])).values()];
+  const classLabels = [...new Map(rows.map((row) => [row.labels.tag_telemetry_billing_class_local || 'cloud', classOf(row.labels)])).values()];
   // Raw counter sample times: freshness reads each source value as that sample's time in seconds.
   if (expr === Q.mc8InputSourceTime || expr === Q.mc8OutputSourceTime) return vec(rows.map((row) => [row.labels, Date.now() / 1000]));
   if (expr === Q.mc8RequestsSourceTime) return vec(classLabels.map((labels) => [labels, Date.now() / 1000]));
