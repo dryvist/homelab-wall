@@ -1,37 +1,66 @@
+---
+type: Dashboard page
+title: MC2 Edge Threat Map
+description: UniFi WAN firewall drops by source country and deny rule.
+resource: /mc2/
+tags: [MC2, edge, Prometheus]
+timestamp: 2026-11-08T00:06:54Z
+---
+
 # MC2 · Edge
 
-MC2 is the edge threat map. A full-screen globe with animated arcs sits behind a service health strip and two edge
-panels. The header title comes from `config.json` `title` and defaults to `HOMELAB`.
+MC2 shows UniFi WAN firewall drops by source country. The title comes from `config.json` `title` and defaults to
+`HOMELAB`.
 
 ![MC2 Edge](screenshots/mc2.jpg)
 
 ## Panels
 
-- Globe: a full-viewport globe with a land mask, great-circle arcs that land on a home beacon, impact pulses and an
-  orbit ring.
-  - It draws in 3D on a hardware WebGL renderer and as a 2D wireframe on a software renderer.
-  - `?gl=3d` or `?gl=2d` forces either.
-  - Reduced motion stops the arcs and the camera drift, and slows the blocked list.
+- Globe: the existing full-viewport globe, home beacon, impact pulses and orbit ring. Up to 12 source countries with
+  the largest one-hour counts draw arcs to the beacon. Arc brightness and particle speed use each country's current
+  drop rate. The globe turns slowly toward the top origin country.
+  - It draws in 3D on a hardware WebGL renderer and in 2D with `?gl=2d`.
+  - `?gl=3d` or `?gl=2d` forces either mode.
+  - Reduced motion holds particles still and stops the camera drift.
 - Service health: a header strip that counts apps OK, DEGRADED and DOWN across every app in `config.json` `groups`.
-- Edge // block telemetry: blocked today, unique sources and top sources.
-- Blocked // live feed: a scrolling list of blocked sources.
+- Edge // block telemetry: current drops per minute, drops in the last hour, distinct countries in the last hour, and
+  up to five deny rules ranked by current rate.
+- Blocked // live feed: countries ranked by current drops per minute, with country code, country name, rate per minute
+  and one-hour count. The list fills the panel; an overflow row reports the number of remaining countries.
 
 ## Data
 
-- `appScore`: the health score per app, for the service health strip.
+| Query key | PromQL | Use |
+| --- | --- | --- |
+| `appScore` | Existing shared app-health query | Service health strip |
+| `mc2DropCountries` | Tagged union of the country rate and increase expressions below | Both edge panels and globe |
+| `mc2DenyRules` | `sum by (rule) (rate(unifi_fw_events_total{action=~"deny\|reject"}[5m]))` | Deny rules in edge telemetry |
+| `mc2WanDrops` | Tagged union of the rate and 1-hour increase of denied WAN events in `unifi_fw_events_total` | Drops per minute and per hour |
 
-The globe is decorative. The globe, edge stats and blocked list have no data source.
+The country query returns two label windows so the page can use one allow-listed query for both requested readings:
+
+```promql
+label_replace(sum by (country_code, country) (rate(unifi_wan_drops_total[5m])), "window", "rate", "country_code", ".+")
+or label_replace(sum by (country_code, country) (increase(unifi_wan_drops_total[1h])), "window", "hour", "country_code", ".+")
+```
+
+The query tags these rows `window="rate"` and `window="hour"`. The `window` label is removed from display data.
+The rate is in events per second at the metric boundary and is multiplied by 60 for events per minute. The increase
+is the one-hour event count. Both metrics are grouped by `country_code` and `country`, so worker labels do not create
+duplicate country rows.
+
+The globe uses an approximate centroid lookup for ISO 3166-1 alpha-2 codes, plus the commonly used `XK` code. Unknown
+codes are omitted from the globe and counted as `+N unplaced`. Their metric rows remain in the panels. Geo-block-list
+markers are not shown.
 
 ## States
 
-- No feed:
-  - The globe is decorative and does not show measured block data.
-  - The edge stats and blocked list have no feed and show `No feed`.
-- Service health:
-  - Missing app scores show `—`; the strip does not fill them with other values.
-  - With no scores, the panel records state `empty` and reads `NO SERVICE DATA`, or `NO APPS CONFIGURED` when the
-    groups list is empty.
-- Service health after a failed score query:
-  - With no held scores, the panel records state `error` and reads `SCORE QUERY FAILED`.
-  - With held scores, it keeps them and records state `stale`.
+- `ok`: one or more relevant metric series returned.
+- `no-feed`: the country query returned no rows for the live list, or both MC2 queries returned no rows for telemetry.
+  The panels show `No feed` and the globe draws no traffic arcs.
+- `error`: a relevant query failed before a successful reading; the panel message contains the query error.
+- `stale`: a relevant query failed after a reading; the last metric values remain visible with a `STALE` marker.
+- Service health: missing app scores show `—`; with no scores, its state is `empty` and it reads `NO SERVICE DATA`, or
+  `NO APPS CONFIGURED` when the groups list is empty. A failed query reads `SCORE QUERY FAILED`; prior scores remain
+  visible in `stale` state.
 - Pending, Idle, NO DATA and Unavailable: not used on MC2.

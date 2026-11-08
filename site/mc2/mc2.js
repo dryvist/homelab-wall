@@ -1,4 +1,4 @@
-// Mission Control 2: edge threat map. The edge panels have no feed; the globe is decorative.
+// Mission Control 2: edge threat map with UniFi WAN drop telemetry.
 import * as THREE from 'three';
 import { query, settle } from '/lib/prom.js';
 import { guardRefresh } from '/lib/refresh.js';
@@ -10,9 +10,12 @@ import {
 } from '/lib/stage.js';
 import { serviceScoreState } from '/lib/serviceScoreState.js';
 import { createPointer } from '/lib/pointer.js';
+import { createTrafficArcs, createTrafficMap2d, faceTraffic } from './threat-globe.js';
+import { createThreatFeed } from './threat-feed.js';
 
 const $ = (id) => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let mapTraffic = [];
 const { pointer, dispose: disposePointer } = createPointer();
 onDispose(disposePointer);
 
@@ -24,7 +27,7 @@ const model = { scoreFailed: false };
 
 /* ---------------- apps strip (real data) ---------------- */
 async function refresh() {
-  const r = await settle({ score: () => query(Q.appScore) });
+  const [r] = await Promise.all([settle({ score: () => query(Q.appScore) }), refreshThreat()]);
   model.scoreFailed = r.score === null;
   if (r.score) {
     const seen = new Set();
@@ -55,8 +58,7 @@ function renderApps() {
   setState(panel, state, message);
 }
 
-setState($('threat'), 'no-feed');
-setState($('blocked'), 'no-feed');
+const refreshThreat = createThreatFeed((countries) => { mapTraffic = countries; });
 
 const HOME_LATLON = [40, -86];
 
@@ -159,6 +161,7 @@ function buildGlobe() {
     return new THREE.Vector3(Math.cos(la) * Math.cos(lo) * h, Math.sin(la) * h, -Math.cos(la) * Math.sin(lo) * h);
   };
   const home = llToVec(...HOME_LATLON);
+  const trafficArcs = createTrafficArcs(THREE, group, home, llToVec);
   // The home marker and periodic ring pulse animate without representing traffic.
   const homeCoreMat = new THREE.MeshBasicMaterial({ color: 0x9beeff });
   homeCoreMat.color.multiplyScalar(2);
@@ -166,8 +169,7 @@ function buildGlobe() {
   homeMarker.position.copy(home);
   group.add(homeMarker);
 
-  // Orient the group once so HOME sits on the visible front-upper hemisphere instead of wherever
-  // its raw coordinates fall. Vector math keeps the marker in frame if HOME_LATLON changes.
+  // Initial orientation places the home beacon on the visible front-upper hemisphere.
   const ELEV_DEG = 18; // ~35% down from the top of the globe's rendered disc
   const targetDir = new THREE.Vector3(0, Math.sin(ELEV_DEG * Math.PI / 180), Math.cos(ELEV_DEG * Math.PI / 180));
   const alignQuat = new THREE.Quaternion().setFromUnitVectors(home.clone().normalize(), targetDir);
@@ -191,15 +193,21 @@ function buildGlobe() {
   // size the backing store from the viewport itself (document.documentElement's ResizeObserver
   // fires on viewport resize) rather than any one panel.
   observeCanvas(document.documentElement, globeCanvas, (w, h) => { renderer.setSize(w, h, false); bloomFx.setSize(w, h); cam.aspect = w / (h || 1); cam.updateProjectionMatrix(); });
+  let orientation = alignQuat.clone();
+  let previousFrame = null;
   const render = (now) => {
-    // A gentle yaw wobble around the aligned orientation (not a full spin) — HOME stays on the
-    // visible face at all times, per the alignment above, instead of orbiting away each cycle.
+    const delta = previousFrame == null ? 16 : Math.min(100, Math.max(0, now - previousFrame));
+    previousFrame = now;
+    trafficArcs.update(mapTraffic);
+    trafficArcs.render(RM ? 0 : delta);
+    const aimed = faceTraffic(THREE, home, mapTraffic[0], llToVec, alignQuat);
+    if (RM) orientation.copy(aimed);
+    else orientation.slerp(aimed, 1 - Math.exp(-delta / 6500));
+    // A gentle yaw wobble follows the home-to-origin orientation without spinning the globe away.
     const wobble = RM ? 0.08 : Math.sin(now / 9000) * 0.12;
-    group.quaternion.copy(alignQuat).multiply(new THREE.Quaternion().setFromAxisAngle(wobbleAxis, wobble));
+    group.quaternion.copy(orientation).multiply(new THREE.Quaternion().setFromAxisAngle(wobbleAxis, wobble));
     orbitRing.rotation.z += RM ? 0 : 0.0016;
-    // Slow camera drift (shock-and-awe): the globe's own orientation is pinned (HOME must stay
-    // on the visible face), so the "alive, not static" motion comes from the camera instead — a
-    // slow figure-eight-ish orbit around the default position, never enough to lose the globe.
+    // Slow camera drift keeps the scene moving while the globe turns toward the top origin country.
     if (!RM) {
       cam.position.x = Math.sin(now / 14000) * 18 + pointer.x * 16;
       cam.position.y = Math.sin(now / 21000) * 10 + pointer.y * 9;
@@ -236,6 +244,7 @@ if (forced === '3d' || (forced !== '2d' && hardwareGL())) {
 } else {
   const c = globeCanvas.getContext('2d');
   observeCanvas(document.documentElement, globeCanvas);
+  const drawTraffic = createTrafficMap2d(HOME_LATLON, RM);
   drawGlobe = (now) => {
     const w = globeCanvas.width, h = globeCanvas.height, cx = w / 2, cy = h / 2, rad = Math.min(w, h) * 0.32;
     c.clearRect(0, 0, w, h);
@@ -246,6 +255,7 @@ if (forced === '3d' || (forced !== '2d' && hardwareGL())) {
       c.beginPath(); c.ellipse(cx, cy, rad, rad * Math.abs(Math.cos(a)), 0, 0, Math.PI * 2); c.stroke();
     }
     c.strokeStyle = 'rgba(255,45,85,.4)'; c.beginPath(); c.arc(cx, cy, rad, 0, Math.PI * 2); c.stroke();
+    drawTraffic(c, mapTraffic, mapTraffic[0], cx, cy, rad, now);
   };
 }
 

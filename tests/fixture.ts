@@ -144,6 +144,24 @@ export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
     const now = Date.now() / 1000;
     return vec(MC4_RECENT_TITLES.slice(0, 8).map((title, i) => [{ title }, now - (i + 1) * 3600]));
   }
+  if (q === Q.mc2DropCountries) return vec([
+    [{ country_code: 'US', country: 'United States', window: 'rate' }, 0.35],
+    [{ country_code: 'BG', country: 'Bulgaria', window: 'rate' }, 0.12],
+    [{ country_code: 'DE', country: 'Germany', window: 'rate' }, 0.08],
+    [{ country_code: 'NL', country: 'Netherlands', window: 'rate' }, 0.05],
+    [{ country_code: 'GB', country: 'United Kingdom', window: 'rate' }, 0.03],
+    [{ country_code: 'US', country: 'United States', window: 'hour' }, 550],
+    [{ country_code: 'BG', country: 'Bulgaria', window: 'hour' }, 208],
+    [{ country_code: 'DE', country: 'Germany', window: 'hour' }, 180],
+    [{ country_code: 'NL', country: 'Netherlands', window: 'hour' }, 150],
+    [{ country_code: 'GB', country: 'United Kingdom', window: 'hour' }, 143],
+  ]);
+  if (q === Q.mc2WanDrops) return vec([[{ window: 'rate' }, 0.63], [{ window: 'hour' }, 1231]]);
+  if (q === Q.mc2DenyRules) return vec([
+    [{ rule: 'geo-deny' }, 0.24],
+    [{ rule: 'rate-limit' }, 0.12],
+    [{ rule: 'invalid-state' }, 0.04],
+  ]);
   if (q.includes('gatus_results_total')) return vec([[{}, 99.93]]);
   if (q.includes('mode="idle"') && q.startsWith('count')) return vec(NODES.map((n, i) => [inst(n), [48, 24, 32][i]]));
   if (q.includes('mode="idle"')) return vec(NODES.map((n, i) => [inst(n), [34, 18, 52][i]]));

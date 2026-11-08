@@ -4,7 +4,6 @@ import { PAGES, MODES, pending, invalidMetric, wallUrl } from './panels-contract
 
 const noFeedPanels: Record<string, string[]> = {
   mc1: [],
-  mc2: ['threat', 'blocked'],
   mc5: ['infra'],
 };
 
