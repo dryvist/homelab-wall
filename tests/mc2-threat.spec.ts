@@ -3,7 +3,7 @@ import { Q } from '../site/lib/queries.js';
 import { mockFeeds, config } from './fixture';
 import { wallUrl } from './panels-contract';
 
-const MC2_QUERIES = [Q.mc2DropCountries, Q.mc2DenyRules];
+const MC2_QUERIES = [Q.mc2DropCountries, Q.mc2DenyRules, Q.mc2WanDrops];
 
 test('mc2 renders country drop metrics, deny rules and 2D traffic arcs', async ({ page }) => {
   test.skip(!!wallUrl, 'uses the MC2 fixture responses');
