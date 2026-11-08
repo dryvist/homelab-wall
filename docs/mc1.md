@@ -19,12 +19,19 @@ title comes from `config.json` `title` and defaults to `HOMELAB`.
   - The card subtitle shows the role, the hottest temperature and the uptime in days.
   - A role that only repeats the node's own name is left out of the subtitle.
   - The panel title counts nodes up out of all nodes.
-- Network fabric · topology: one cluster per `config.json` group and hubs for returned VLAN metrics.
-  - The topology fills the page behind the panels. WAN rates come from UniFi WAN byte counters.
-  - VLAN hubs use client byte rates. Each network and VLAN pair is its own hub, named with its VLAN.
-  - Labels show group app counts and health, nodes up, apps scored, models up and the last update time.
-  - On a software WebGL renderer the topology drops to a 2D mode, labelled `2D MODE`. `?gl=3d` or `?gl=2d` forces
-    either.
+- Network fabric · topology: a gateway at the center, switches and access points on an inner ring, VLAN hubs near
+  the access device carrying the most combined client bytes, and an Internet node on the WAN link.
+  - Each network and VLAN pair with client traffic has one hub. A VLAN without device attribution connects to the
+    gateway. Every returned VLAN remains in the model and the `#vlanrates` list.
+  - Configured groups attach to a matching VLAN hub. Matching lowercases names, removes spaces, hyphens and
+    underscores, then applies aliases for `mgmt`, `svc`/`svcs`, `prod`, `dev` and `infra`. Unmatched groups remain
+    application hubs.
+  - VLAN-to-access-device, access-device-to-gateway and gateway-to-Internet edges use their measured byte rates.
+    Moving particles appear only when those rates are positive; particle density and speed follow the rates.
+  - When inter-network firewall flow series exist, the highest event-rate VLAN pairs add arcs. Accepted arcs use
+    the source hub color and denied arcs use red. The graph rotates slowly in WebGL and 2D modes.
+  - Labels show VLAN RX/TX Mbps, device throughput Mbps, and configured group app counts and health. On a software
+    WebGL renderer the topology uses its 2D mode, labelled `2D MODE`. `?gl=3d` or `?gl=2d` forces either.
 - Service health: a honeycomb of every app in `config.json` `groups`, in group order, with one empty cell between
   groups.
   - An app listed in two groups appears in the first one.
@@ -37,7 +44,9 @@ title comes from `config.json` `title` and defaults to `HOMELAB`.
   - All pools are included. If the rows do not fit, the panel shows a `+N more` count.
   - Sizes from 900 GB through 1 TB display as `1T`.
   - The title shows used and total TB.
-- Firewall: the `Blocked at the edge` and `Live firewall · flows` columns have no feed and show `No feed`.
+- Firewall: `Blocked at the edge` lists WAN drop rates by country; `Live firewall · flows` lists inter-network
+  flow rates and rule event rates. Rates display as events per minute. Each column fills the panel height with the
+  highest-rate rows first. Empty series show `No feed`; query failures show their error message.
 - LLM fabric: up to 9 router models, sorted by state, then output tok/s, then name.
   - It lists only models with real requests in the last 4 days. The router's own health-check caller does not count.
   - When that query fails, it lists every deployment instead.
@@ -72,7 +81,15 @@ title comes from `config.json` `title` and defaults to `HOMELAB`.
 - `llmUsed4d`: models with a real request in the last 4 days. Only these models get a row.
 - `llmTokRate`: output tok/s per model over 5 minutes.
 - `wanRxBytes` and `wanTxBytes`: receive and transmit byte rates from the WAN counters.
-- `vlanRxBytes` and `vlanTxBytes`: client receive and transmit byte rates, grouped by network and VLAN.
+- `vlanRxBytes` and `vlanTxBytes`: client receive and transmit byte rates, grouped by network, VLAN, switch and
+  access point.
+- `deviceInfo`: UniFi device name, model and type. Gateway types are `udm` and `ugw`, switches are `usw`, and access
+  points are `uap`.
+- `deviceRxBytes` and `deviceTxBytes`: measured device receive and transmit byte rates by device name.
+- `fwFlowEvents`: accepted and denied firewall event rates by incoming network, outgoing network and action. The
+  worker dimension is summed away.
+- `fwWanDrops`: denied WAN event rates by country code and country. The worker dimension is summed away.
+- `fwRuleEvents`: firewall rule event rates by rule and action. The worker dimension is summed away.
 
 The ribbon reads `/api/llm/recent`, outside Prometheus. Its contract is in [the runtime contract](runtime-contract.md).
 
@@ -94,6 +111,6 @@ The ribbon reads `/api/llm/recent`, outside Prometheus. Its contract is in [the 
     becomes `STALE since <time>`.
   - Successful empty responses clear the ribbon.
 - Missing data: cells and figures without a reading show `—`; an app without a score does not draw a score.
-- Query failures: panels show their visible query message. The firewall columns show `No feed` because they have no
-  source.
+- Query failures: panels show their visible query message. Firewall query failures set the firewall panel to error;
+  successful empty firewall responses leave it in no-feed.
 - NO DATA and Unavailable: not used on MC1.

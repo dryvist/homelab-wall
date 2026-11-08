@@ -3,7 +3,7 @@ import { config, mockFeeds } from './fixture';
 import { PAGES, MODES, pending, invalidMetric, wallUrl } from './panels-contract';
 
 const noFeedPanels: Record<string, string[]> = {
-  mc1: ['firewall'],
+  mc1: [],
   mc2: ['threat', 'blocked'],
   mc5: ['infra'],
 };
@@ -44,6 +44,10 @@ for (const pageSpec of PAGES) {
         const panel = panels.nth(index);
         const id = await panel.getAttribute('data-panel');
         expect(id).not.toBeNull();
+        if (wallUrl && pageSpec.id === 'mc1' && id === 'firewall') {
+          await expect(panel).toHaveAttribute('data-state', /^(ok|no-feed)$/);
+          continue;
+        }
         if (noFeed.has(id!)) {
           await expect(panel).toHaveAttribute('data-state', 'no-feed');
           await expect.poll(() => panel.evaluate((el) => getComputedStyle(el, '::after').content)).toBe('"No feed"');

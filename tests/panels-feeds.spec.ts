@@ -15,6 +15,47 @@ test('mc1 WAN and VLAN readouts render the fixture rates for every network', asy
   await expect(page.locator('#vlanrates div b')).toHaveText(fixtureVlans.map(({ network, vlan }) => `${network} · VLAN ${vlan}`));
 });
 
+test('mc1 topology labels measured devices, VLANs, and WAN rates', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises fixture-shaped MC1 network metrics only');
+  await mockFeeds(page);
+  await page.goto('/mc1/?gl=2d');
+
+  const labels = page.locator('#labels .vl');
+  await expect(labels.filter({ hasText: 'GW-A' })).toContainText('64.0 Mbps');
+  await expect(labels.filter({ hasText: 'SW-A' })).toContainText('24.0 Mbps');
+  await expect(labels.filter({ hasText: 'AP-A' })).toContainText('12.0 Mbps');
+  await expect(labels.filter({ hasText: 'NET-A' })).toContainText('NET-A · VLAN 10');
+  await expect(labels.filter({ hasText: 'INTERNET' })).toContainText('RX 24.0 + TX 12.0 Mbps');
+  await expect(labels).toHaveCount(12);
+});
+
+test('mc1 firewall columns render country drops, flow actions, and rule rates', async ({ page }) => {
+  test.skip(!!wallUrl, 'exercises fixture-shaped firewall metric responses only');
+  await mockFeeds(page);
+  await page.goto('/mc1/?gl=2d');
+  await expect(page.locator('#fw')).toHaveAttribute('data-state', 'ok');
+  await expect(page.locator('#fw .fwcol h3')).toHaveText(['Blocked at the edge', 'Live firewall · flows']);
+  await expect(page.locator('#fwdrops .fwrow')).toHaveCount(5);
+  await expect(page.locator('#fwdrops')).toContainText('events/min');
+  await expect(page.locator('#fwflows .fwrow')).toHaveCount(7);
+  await expect(page.locator('#fwflows')).toContainText('net-c → net-a · flow');
+  await expect(page.locator('#fwflows')).toContainText('deny');
+  await expect(page.locator('#fwflows')).toContainText('rule-a · rule');
+});
+
+test('mc1 empty firewall metrics show no-feed and a failed query shows its message', async ({ page }) => {
+  test.skip(!!wallUrl, 'forces empty and failed firewall metric responses');
+  await mockFeeds(page, { emptyQuery: (q) => [Q.fwWanDrops, Q.fwFlowEvents, Q.fwRuleEvents].includes(q) });
+  await page.goto('/mc1/?gl=2d');
+  await expect(page.locator('#fw')).toHaveAttribute('data-state', 'no-feed');
+  await expect.poll(() => page.locator('#fw').evaluate((el) => getComputedStyle(el, '::after').content)).toBe('"No feed"');
+
+  await mockFeeds(page, { failQuery: (q) => q === Q.fwFlowEvents });
+  await page.goto('/mc1/?gl=2d');
+  await expect(page.locator('#fw')).toHaveAttribute('data-state', 'error');
+  await expect(page.locator('#fw [data-panel-message]')).toHaveText('FIREWALL FLOW QUERY FAILED');
+});
+
 test('mc5 empty event and repository feeds render no invented events or releases', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises empty fixture-shaped GitHub responses only');
   await mockFeeds(page);
@@ -55,14 +96,15 @@ test('mc3 model tiles show per-request percentiles and read Idle when a model ha
   await expect(tiles.filter({ hasText: 'model-small' }).locator('.mcstats')).toContainText('p99 96 s');
 });
 
-test('mc1 empty storage and VLAN queries show no metrics instead of totals', async ({ page }) => {
+test('mc1 empty storage, VLAN, and firewall queries show no metrics instead of totals', async ({ page }) => {
   test.skip(!!wallUrl, 'returns empty storage and VLAN metric responses from the fixture');
   await mockFeeds(page, {
-    emptyQuery: (q) => [Q.fsSize, Q.fsAvail, Q.vlanRxBytes, Q.vlanTxBytes].includes(q),
+    emptyQuery: (q) => [Q.fsSize, Q.fsAvail, Q.vlanRxBytes, Q.vlanTxBytes, Q.fwWanDrops, Q.fwFlowEvents, Q.fwRuleEvents].includes(q),
   });
   await page.goto('/mc1/?gl=2d');
   await expect(page.locator('#storage')).toHaveAttribute('data-state', 'empty');
   await expect(page.locator('#strows')).toHaveText('—');
   await expect(page.locator('#vlans')).toHaveAttribute('data-state', 'empty');
   await expect(page.locator('#vlanrates')).toHaveText('—');
+  await expect(page.locator('#fw')).toHaveAttribute('data-state', 'no-feed');
 });

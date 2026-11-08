@@ -30,10 +30,10 @@ export const fixturePools = NODES.map((node, i) => {
   return { node, name: `pool-${suffix}`, device: `pool-${suffix}/ROOT/base`, size: (i + 2) * 4e12,
     available: (i + 2) * 1.5e12, pveUsed: (i + 1) * 2.5e12 };
 });
-export const fixtureVlans = [
-  { network: 'net-a', vlan: '10', rx: 1e6, tx: 0.5e6 },
-  { network: 'net-b', vlan: '20', rx: 2e6, tx: 1e6 },
-  { network: 'net-c', vlan: '30', rx: 3e6, tx: 1.5e6 },
+export const fixtureVlans: Array<{ network: string; vlan: string; rx: number; tx: number; sw_name?: string; ap_name?: string }> = [
+  { network: 'net-a', vlan: '10', sw_name: 'sw-a', rx: 1e6, tx: 0.5e6 },
+  { network: 'net-b', vlan: '20', sw_name: 'sw-a', rx: 2e6, tx: 1e6 },
+  { network: 'net-c', vlan: '30', ap_name: 'ap-a', rx: 3e6, tx: 1.5e6 },
   { network: 'net-d', vlan: '40', rx: 4e6, tx: 2e6 },
 ];
 
@@ -171,8 +171,37 @@ export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
   if (q === Q.pveStorageUsed) return vec(fixturePools.map((pool): [Record<string, string>, number] => [{ id: `storage/${pool.node}/${pool.name}` }, pool.pveUsed]));
   if (q === Q.wanRxBytes) return vec([[{ port: 'wan-a' }, 1e6], [{ port: 'wan-b' }, 2e6]]);
   if (q === Q.wanTxBytes) return vec([[{ port: 'wan-a' }, 0.5e6], [{ port: 'wan-b' }, 1e6]]);
-  if (q === Q.vlanRxBytes) return vec(fixtureVlans.map((vlan): [Record<string, string>, number] => [{ network: vlan.network, vlan: vlan.vlan }, vlan.rx]));
-  if (q === Q.vlanTxBytes) return vec(fixtureVlans.map((vlan): [Record<string, string>, number] => [{ network: vlan.network, vlan: vlan.vlan }, vlan.tx]));
+  if (q === Q.vlanRxBytes) return vec(fixtureVlans.map((vlan): [Record<string, string>, number] => [
+    { network: vlan.network, vlan: vlan.vlan, ...(vlan.sw_name ? { sw_name: vlan.sw_name } : {}), ...(vlan.ap_name ? { ap_name: vlan.ap_name } : {}) }, vlan.rx,
+  ]));
+  if (q === Q.vlanTxBytes) return vec(fixtureVlans.map((vlan): [Record<string, string>, number] => [
+    { network: vlan.network, vlan: vlan.vlan, ...(vlan.sw_name ? { sw_name: vlan.sw_name } : {}), ...(vlan.ap_name ? { ap_name: vlan.ap_name } : {}) }, vlan.tx,
+  ]));
+  if (q === Q.deviceInfo) return vec([
+    [{ name: 'gw-a', model: 'gateway-a', type: 'udm' }, 1],
+    [{ name: 'sw-a', model: 'switch-a', type: 'usw' }, 1],
+    [{ name: 'ap-a', model: 'access-point-a', type: 'uap' }, 1],
+  ]);
+  if (q === Q.deviceRxBytes) return vec([[{ name: 'gw-a' }, 5e6], [{ name: 'sw-a' }, 2e6], [{ name: 'ap-a' }, 1e6]]);
+  if (q === Q.deviceTxBytes) return vec([[{ name: 'gw-a' }, 3e6], [{ name: 'sw-a' }, 1e6], [{ name: 'ap-a' }, 0.5e6]]);
+  if (q === Q.fwFlowEvents) return vec([
+    [{ in_vlan: '10', out_vlan: '20', action: 'accept' }, 0.8],
+    [{ in_vlan: '20', out_vlan: '30', action: 'accept' }, 0.4],
+    [{ in_vlan: '30', out_vlan: '10', action: 'deny' }, 0.2],
+    [{ in_vlan: '10', out_vlan: '40', action: 'reject' }, 0.1],
+    [{ in_vlan: '40', out_vlan: '20', action: 'accept' }, 0.05],
+  ]);
+  if (q === Q.fwWanDrops) return vec([
+    [{ country_code: 'AA', country: 'Country A' }, 0.25],
+    [{ country_code: 'BB', country: 'Country B' }, 0.1],
+    [{ country_code: 'CC', country: 'Country C' }, 0.08],
+    [{ country_code: 'DD', country: 'Country D' }, 0.04],
+    [{ country_code: 'EE', country: 'Country E' }, 0.02],
+  ]);
+  if (q === Q.fwRuleEvents) return vec([
+    [{ rule: 'rule-a', action: 'deny' }, 0.15],
+    [{ rule: 'rule-b', action: 'accept' }, 0.05],
+  ]);
   if (q === Q.gpuModel) return vec([
     [{ accelerator: 'gpu-primary', instance: 'gpu-a.device:9400', modelName: 'GPU-A' }, 1],
     [{ accelerator: 'gpu-primary', instance: 'gpu-a:9400', modelName: 'GPU-A' }, 1],

@@ -99,43 +99,6 @@ export function formatStorageBytes(bytes) {
   return bytes >= 1e12 ? `${(bytes / 1e12).toFixed(1)}T` : `${Math.round(bytes / 1e9)}G`;
 }
 
-const normalizeNetwork = (name) => String(name ?? '').toLowerCase().replace(/[_-]/g, '');
-
 export function formatMbps(bytesPerSecond) {
   return Number.isFinite(bytesPerSecond) ? (bytesPerSecond * 8 / 1e6).toFixed(1) : '—';
-}
-
-export function buildTopologyHubs(groups, rxRows, txRows) {
-  const networks = new Map();
-  for (const [direction, rows] of [['rx', rxRows], ['tx', txRows]]) {
-    for (const row of rows || []) {
-      const name = row.labels.network;
-      if (typeof name !== 'string' || !name || !Number.isFinite(row.value)) continue;
-      const vlan = row.labels.vlan ?? '';
-      const id = `${name}|${vlan}`;
-      const network = networks.get(id) || { id, name, vlan, rxBytes: null, txBytes: null };
-      const key = direction === 'rx' ? 'rxBytes' : 'txBytes';
-      network[key] = (network[key] ?? 0) + row.value;
-      networks.set(id, network);
-    }
-  }
-
-  const groupByName = new Map();
-  for (const group of groups || []) {
-    const key = normalizeNetwork(group.name);
-    if (key && !groupByName.has(key)) groupByName.set(key, group);
-  }
-  const matched = new Set();
-  const hubs = [...networks.values()].sort((a, b) => a.id.localeCompare(b.id)).map((network) => {
-    const group = groupByName.get(normalizeNetwork(network.name));
-    if (group) matched.add(group);
-    return {
-      key: `network:${network.id}`, name: network.vlan ? `${network.name} · VLAN ${network.vlan}` : network.name, isNetwork: true, hasGroup: !!group,
-      apps: group?.apps || [], color: group?.c || null, rxBytes: network.rxBytes, txBytes: network.txBytes,
-    };
-  });
-  for (const group of groups || []) {
-    if (!matched.has(group)) hubs.push({ key: `group:${group.name}`, name: group.name, isNetwork: false, hasGroup: true, apps: group.apps, color: group.c, rxBytes: null, txBytes: null });
-  }
-  return hubs;
 }

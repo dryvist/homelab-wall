@@ -1,17 +1,18 @@
 // Mission Control 1: estate overview, driven by live Prometheus data.
-import * as THREE from 'three';
 import { query, range, settle, shortHost } from '/lib/prom.js';
 import { guardRefresh } from '/lib/refresh.js';
 import { Q } from '/lib/queries.js';
 import { listedModels } from '/lib/modelPerf.js';
 import {
-  clamp, hue, lerp, esc, observeCanvas, hardwareGL, loop, loadConfig, setState,
+  clamp, hue, lerp, esc, observeCanvas, loop, loadConfig, setState,
   SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct,
-  onDispose, onContextLoss, disposeThreeScene,
+  onDispose,
 } from '/lib/stage.js';
 import { lastGoodGet, lastGoodSet } from '/lib/lastGood.js';
 import { groupedHexLayout } from '/lib/hexlayout.js';
-import { buildStorageRows, buildTopologyHubs, formatMbps, formatStorageBytes, gpuByNode } from '/lib/mc1Metrics.js';
+import { buildStorageRows, formatMbps, formatStorageBytes, gpuByNode } from '/lib/mc1Metrics.js';
+import { buildFirewallRows, buildTopologyModel, namedFlowRows } from '/lib/mc1Topology.js';
+import { createTopologyView } from './topologyView.js';
 import { splitByClass } from '/lib/mc3.js';
 
 const $ = (id) => document.getElementById(id);
@@ -66,6 +67,12 @@ async function refresh() {
     wanTx: () => query(Q.wanTxBytes),
     vlanRx: () => query(Q.vlanRxBytes),
     vlanTx: () => query(Q.vlanTxBytes),
+    deviceInfo: () => query(Q.deviceInfo),
+    deviceRx: () => query(Q.deviceRxBytes),
+    deviceTx: () => query(Q.deviceTxBytes),
+    fwFlows: () => query(Q.fwFlowEvents),
+    fwDrops: () => query(Q.fwWanDrops),
+    fwRules: () => query(Q.fwRuleEvents),
     llmState: () => query(Q.llmState),
     llmUsed: () => query(Q.llmUsed4d),
     llmTok: () => query(Q.routerOutput),
@@ -160,7 +167,16 @@ async function refresh() {
 
   model.vlanRxFailed = r.vlanRx === null;
   model.vlanTxFailed = r.vlanTx === null;
-  setTopologyHubs(buildTopologyHubs(groups, r.vlanRx || [], r.vlanTx || []));
+  const flowRows = namedFlowRows(r.fwFlows || [], [...(r.vlanRx || []), ...(r.vlanTx || [])]);
+  model.topology = buildTopologyModel({
+    groups, vlanRxRows: r.vlanRx || [], vlanTxRows: r.vlanTx || [], deviceRows: r.deviceInfo || [],
+    deviceRxRows: r.deviceRx || [], deviceTxRows: r.deviceTx || [], wanRxRows: r.wanRx || [], wanTxRows: r.wanTx || [],
+    flowRows,
+  });
+  model.firewall = buildFirewallRows(r.fwDrops || [], flowRows, r.fwRules || []);
+  model.firewallFailed = r.fwDrops === null || r.fwFlows === null || r.fwRules === null;
+  model.firewallError = r.fwDrops === null ? 'WAN DROP QUERY FAILED'
+    : r.fwFlows === null ? 'FIREWALL FLOW QUERY FAILED' : r.fwRules === null ? 'FIREWALL RULE QUERY FAILED' : '';
 
   // Only models with a real request in the last 4d (Q.llmUsed4d), in the existing order; the summary
   // line counts the same models. A failed Q.llmUsed4d lists every deployment and marks the panel.
@@ -427,47 +443,27 @@ function renderAppSum() {
   hx.dataset.unknownCount = String(apps.filter((a) => a.s == null).length);
 }
 
-/* ---------------- topology (3D, or 2D on software GL) ---------------- */
-const labels = $('labels');
-const clusterHealth = (g) => {
-  const s = g.apps.map((n) => appIndex[n]?.s).filter((v) => v != null);
-  return { v: s.length ? s.reduce((a, b) => a + b, 0) / s.length : null, missing: g.apps.length - s.length };
+/* ---------------- topology and firewall panels ---------------- */
+const clusterHealth = (hub) => {
+  const scores = hub.apps.map((name) => appIndex[name]?.s).filter((value) => value != null);
+  return { score: scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : null, missing: hub.apps.length - scores.length };
 };
-let topologyHubs = buildTopologyHubs(groups, [], []);
-let labelEls = [];
-let rebuildWebGLTopology = null;
-function syncTopologyLabels() {
-  labels.replaceChildren();
-  labelEls = topologyHubs.map((hub, i) => {
-    const el = document.createElement('div'); el.className = 'vl'; el.style.color = hub.color || PALETTE[i % PALETTE.length]; labels.appendChild(el); return el;
-  });
-}
-function setTopologyHubs(next) {
-  const priorNetworks = topologyHubs.filter((hub) => hub.isNetwork).map((hub) => hub.name).join('\0');
-  const nextNetworks = next.filter((hub) => hub.isNetwork).map((hub) => hub.name).join('\0');
-  topologyHubs = next.map((hub, i) => ({ ...hub, color: hub.color || PALETTE[i % PALETTE.length] }));
-  if (priorNetworks !== nextNetworks) {
-    syncTopologyLabels();
-    rebuildWebGLTopology?.();
+function topologyLabelDetails(node) {
+  let rates = '';
+  if (node.type === 'vlan' || node.type === 'internet') rates = `RX ${formatMbps(node.rxBytes)} + TX ${formatMbps(node.txBytes)} Mbps`;
+  if (node.type === 'device' || node.type === 'gateway') rates = `${formatMbps(node.bytesPerSecond)} Mbps`;
+  if (node.hasGroup) {
+    const health = clusterHealth(node), score = health.score == null ? '—' : Math.round(health.score);
+    rates = [rates, `${node.apps.length} apps · health ${score}${health.missing ? ` · ${health.missing} no data` : ''}`].filter(Boolean).join(' · ');
   }
+  return rates;
 }
-syncTopologyLabels();
-function updateLabels() {
-  topologyHubs.forEach((hub, i) => {
-    const h = clusterHealth(hub);
-    const health = h.v == null ? '—' : Math.round(h.v);
-    const missing = h.missing ? ` · ${h.missing} no data` : '';
-    const appHealth = hub.hasGroup ? `${hub.apps.length} apps · health <span${h.v == null ? '' : ` style="color:${hue(scorePct(h.v))}"`}>${health}</span>${missing}` : '';
-    const rates = hub.isNetwork ? `RX ${formatMbps(hub.rxBytes)} + TX ${formatMbps(hub.txBytes)} Mbps` : '';
-    const details = [rates, appHealth].filter(Boolean).join(' · ');
-    const html = `${esc(hub.name.toUpperCase())}<small>${details}</small>`;
-    if (labelEls[i].innerHTML !== html) labelEls[i].innerHTML = html;
-  });
-}
+const topologyView = createTopologyView({ canvas: $('gl'), labels: $('labels'), reducedMotion: RM });
+onDispose(() => topologyView.dispose());
+
 function renderVlans() {
-  const networkHubs = topologyHubs.filter((hub) => hub.isNetwork);
-  const failed = model.vlanRxFailed || model.vlanTxFailed;
-  const rates = $('vlanrates');
+  const networkHubs = (model.topology?.nodes || []).filter((node) => node.type === 'vlan');
+  const failed = model.vlanRxFailed || model.vlanTxFailed, rates = $('vlanrates');
   rates.innerHTML = failed || !networkHubs.length ? '—' : networkHubs.map((hub) =>
     `<div><b>${esc(hub.name)}</b> RX ${formatMbps(hub.rxBytes)} + TX ${formatMbps(hub.txBytes)} Mbps</div>`).join('');
   const incomplete = networkHubs.some((hub) => hub.rxBytes == null || hub.txBytes == null);
@@ -475,136 +471,34 @@ function renderVlans() {
     failed ? 'VLAN RATE QUERY FAILED' : !networkHubs.length ? 'VLAN METRICS EMPTY' : incomplete ? 'VLAN METRICS INCOMPLETE' : '');
 }
 
-let drawTopo;
-let topoRO = null; // disconnected and replaced on every buildTopology() call, including a rebuild
-const forced = new URLSearchParams(location.search).get('gl');
-function buildTopology() {
-  const renderer = new THREE.WebGLRenderer({ canvas: $('gl'), antialias: true, alpha: true, preserveDrawingBuffer: true });
-  renderer.setPixelRatio(1);
-  const scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x04070c, 0.0065);
-  const cam = new THREE.PerspectiveCamera(48, 1, 1, 1000);
-  const cameraDistance = 300;
-  let radius = cameraDistance * Math.tan(cam.fov * Math.PI / 360) * (window.innerWidth / window.innerHeight) * 0.8;
-  const gc = document.createElement('canvas'); gc.width = gc.height = 64;
-  { const x = gc.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,255,255,.5)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); }
-  const GT = new THREE.CanvasTexture(gc);
-  const sprite = (col, size) => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: GT, color: col, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); s.scale.set(size, size, 1); return s; };
-  const grid = new THREE.GridHelper(400, 40, 0x0f3a55, 0x0a2233); grid.position.y = -38; scene.add(grid);
-  const stars = []; for (let i = 0; i < 1500; i++) stars.push((Math.random() - 0.5) * 800, Math.random() * 400 - 100, (Math.random() - 0.5) * 800);
-  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(stars, 3));
-  scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: 0x2a6c8a, size: 1.2 })));
-  const core = new THREE.Group(); scene.add(core);
-  const ico = new THREE.Mesh(new THREE.IcosahedronGeometry(9, 1), new THREE.MeshBasicMaterial({ color: 0x3ee6ff, wireframe: true, transparent: true, opacity: 0.8 })); core.add(ico);
-  core.add(sprite(0x3ee6ff, 46));
-  const rings = [0, 1, 2].map((i) => { const t = new THREE.Mesh(new THREE.TorusGeometry(15 + i * 5, 0.25, 6, 90), new THREE.MeshBasicMaterial({ color: 0x3ee6ff, transparent: true, opacity: 0.35 - i * 0.08 })); t.rotation.x = Math.PI / 2 + (i - 1) * 0.3; core.add(t); return t; });
-  const topologyLayer = new THREE.Group(); scene.add(topologyLayer);
-  let flows = [], hubs = [];
-  function updateTopologyLayer() {
-    for (const child of [...topologyLayer.children]) {
-      child.traverse((obj) => {
-        obj.geometry?.dispose?.();
-        for (const material of (Array.isArray(obj.material) ? obj.material : [obj.material])) material?.dispose?.();
-      });
-      topologyLayer.remove(child);
-    }
-    flows = []; hubs = [];
-    topologyHubs.forEach((g, i) => {
-      const a = i / topologyHubs.length * Math.PI * 2, rad = radius, col = new THREE.Color(g.color), n = Math.min(g.apps.length, 18);
-      const hub = new THREE.Group(); hub.position.set(Math.cos(a) * rad, (i % 3 - 1) * 10, Math.sin(a) * rad); topologyLayer.add(hub);
-      hub.add(sprite(col, 26)); hub.add(new THREE.Mesh(new THREE.OctahedronGeometry(3.2), new THREE.MeshBasicMaterial({ color: col, wireframe: true })));
-      const ring = new THREE.Mesh(new THREE.RingGeometry(13, 13.4, 64), new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide, transparent: true, opacity: 0.35 })); ring.rotation.x = Math.PI / 2; hub.add(ring);
-      const lp = [];
-      for (let k = 0; k < n; k++) {
-        const y = 1 - (k / Math.max(n - 1, 1)) * 2, rr = Math.sqrt(Math.max(0, 1 - y * y)), th = k * 2.399963;
-        const p = new THREE.Vector3(Math.cos(th) * rr * 11, y * 8, Math.sin(th) * rr * 11);
-        const m = new THREE.Mesh(new THREE.SphereGeometry(0.9, 8, 8), new THREE.MeshBasicMaterial({ color: col })); m.position.copy(p); hub.add(m);
-        const gs = sprite(col, 5); gs.position.copy(p); hub.add(gs); lp.push(0, 0, 0, p.x, p.y, p.z);
-      }
-      const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
-      hub.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.35 })));
-      const mid = hub.position.clone().multiplyScalar(0.5); mid.y += 18;
-      const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(), mid, hub.position.clone());
-      topologyLayer.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(40)), new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.28 })));
-      const N = 22, pos = new Float32Array(N * 3), pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      const material = new THREE.PointsMaterial({ map: GT, color: col, size: 4.2, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 });
-      topologyLayer.add(new THREE.Points(pg, material));
-      flows.push({ index: i, curve, pos, pg, material, ph: Array.from({ length: N }, (_, k) => ({ t: k / N, dir: 1 })) });
-      hubs.push({ hub, ring, el: labelEls[i] });
-    });
-  }
-  updateTopologyLayer();
-  // The canvas backing store and scene framing follow the viewport, not the topology panel.
-  topoRO?.disconnect();
-  topoRO = observeCanvas(document.documentElement, $('gl'), (w, h) => {
-    renderer.setSize(w, h, false); cam.aspect = w / (h || 1); cam.updateProjectionMatrix();
-    const nextRadius = cameraDistance * Math.tan(cam.fov * Math.PI / 360) * cam.aspect * 0.8;
-    if (Math.abs(nextRadius - radius) > 1) { radius = nextRadius; updateTopologyLayer(); }
-  });
-  const v3 = new THREE.Vector3();
-  const render = (now, dt) => {
-    const tt = now / 1000, ang = RM ? 0.6 : tt * 0.06;
-    cam.position.set(Math.cos(ang) * cameraDistance, 66 + Math.sin(tt * 0.2) * 8, Math.sin(ang) * cameraDistance); cam.lookAt(0, 4, 0);
-    ico.rotation.y += 0.004; ico.rotation.x += 0.002; rings.forEach((r, i) => { r.rotation.z += (i % 2 ? 1 : -1) * 0.004; });
-    flows.forEach((f) => {
-      const data = topologyHubs[f.index], bytes = Math.max(0, data.rxBytes ?? 0) + Math.max(0, data.txBytes ?? 0);
-      const mbps = bytes * 8 / 1e6, active = bytes > 0;
-      f.material.opacity = active ? Math.min(0.9, 0.12 + Math.log10(1 + mbps) * 0.1) : 0;
-      f.pg.setDrawRange(0, active ? f.ph.length : 0);
-      if (active) {
-        const speed = Math.min(0.3, 0.04 + Math.log10(1 + mbps) * 0.04);
-        f.ph.forEach((p, k) => { p.t = (p.t + dt * speed * p.dir + 1) % 1; const q = f.curve.getPoint(p.t); f.pos[k * 3] = q.x; f.pos[k * 3 + 1] = q.y; f.pos[k * 3 + 2] = q.z; });
-      }
-      f.pg.attributes.position.needsUpdate = true;
-    });
-    hubs.forEach((h, i) => {
-      h.hub.rotation.y += 0.003 + i * 0.0004; h.ring.scale.setScalar(1 + Math.sin(tt * 2 + i) * 0.06);
-      h.hub.getWorldPosition(v3); v3.project(cam);
-      h.el.style.left = ((v3.x + 1) / 2 * window.innerWidth) + 'px'; h.el.style.top = ((1 - v3.y) / 2 * window.innerHeight) + 'px'; h.el.style.opacity = v3.z < 1 ? 1 : 0;
-    });
-    renderer.render(scene, cam);
-  };
-  return { render, renderer, scene, updateTopologyLayer };
+function renderFirewallColumn(container, rows) {
+  const html = rows.map((row) => `<div class="fwrow"><span>${esc(row.name)}</span><em class="${row.action}">${esc(row.action)}</em><b>${(row.rate * 60).toFixed(1)} events/min</b></div>`);
+  container.innerHTML = html.join('') || '<div class="fw-empty">—</div>';
+  const first = container.querySelector('.fwrow'), rowHeight = first?.offsetHeight || 20;
+  const column = container.parentElement, title = column.querySelector('h3');
+  const capacity = Math.max(1, Math.floor((column.clientHeight - (title?.offsetHeight || 0) - 8) / rowHeight));
+  if (rows.length > capacity) container.innerHTML = html.slice(0, capacity - 1).join('') + `<div class="fwrow fwmore">+${rows.length - capacity + 1} more</div>`;
 }
-if (forced === '3d' || (forced !== '2d' && hardwareGL())) {
-  let topo3d = buildTopology();
-  drawTopo = (now, dt) => topo3d.render(now, dt);
-  rebuildWebGLTopology = () => topo3d.updateTopologyLayer();
-  onContextLoss($('gl'), () => {
-    disposeThreeScene(topo3d.renderer, topo3d.scene);
-    topo3d = buildTopology();
-  });
-  onDispose(() => { disposeThreeScene(topo3d.renderer, topo3d.scene); topoRO?.disconnect(); });
-} else {
-  // The 2D fallback uses the same viewport-sized surface and measured traffic as the 3D scene.
-  $('topostate').textContent = '2D MODE';
-  const cv = $('gl'), c = cv.getContext('2d');
-  topoRO?.disconnect();
-  topoRO = observeCanvas(document.documentElement, cv);
-  drawTopo = (now) => {
-    const w = document.documentElement.clientWidth, h = document.documentElement.clientHeight;
-    const sx = cv.width / w, sy = cv.height / h, cx = w / 2, cy = h / 2;
-    c.setTransform(sx, 0, 0, sy, 0, 0);
-    c.clearRect(0, 0, w, h);
-    topologyHubs.forEach((g, i) => {
-      const a = i / topologyHubs.length * Math.PI * 2, x = cx + Math.cos(a) * w * 0.4, y = cy + Math.sin(a) * h * 0.36;
-      c.strokeStyle = g.color; c.globalAlpha = 0.3; c.beginPath(); c.moveTo(cx, cy); c.lineTo(x, y); c.stroke(); c.globalAlpha = 1;
-      const bytes = Math.max(0, g.rxBytes ?? 0) + Math.max(0, g.txBytes ?? 0);
-      if (bytes > 0) {
-        const mbps = bytes * 8 / 1e6, speed = 0.2 + Math.log10(1 + mbps);
-        const p = (now / 2000 * speed + i / topologyHubs.length) % 1; c.fillStyle = g.color; c.beginPath(); c.arc(cx + (x - cx) * p, cy + (y - cy) * p, 3, 0, 7); c.fill();
-      }
-      c.beginPath(); c.arc(x, y, 18, 0, 7); c.strokeStyle = g.color; c.stroke();
-      labelEls[i].style.left = x + 'px'; labelEls[i].style.top = y + 'px';
-    });
-    c.strokeStyle = '#3ee6ff'; c.beginPath(); c.arc(cx, cy, 24, 0, 7); c.stroke();
-  };
+
+function renderFirewall() {
+  const data = model.firewall || { countries: [], flows: [], rules: [] };
+  renderFirewallColumn($('fwdrops'), data.countries);
+  const flowRows = [
+    ...data.flows.map((row) => ({ ...row, name: `${row.name} · flow` })),
+    ...data.rules.map((row) => ({ ...row, name: `${row.name} · rule` })),
+  ];
+  renderFirewallColumn($('fwflows'), flowRows);
+  const hasRows = data.countries.length + data.flows.length + data.rules.length > 0;
+  setState($('fw'), model.firewallFailed ? 'error' : hasRows ? 'ok' : 'no-feed',
+    model.firewallFailed ? model.firewallError : '');
 }
 
 /* ---------------- boot ---------------- */
 function renderStatic() {
   const scored = apps.some((app) => app.s != null);
   const unscored = apps.length - apps.filter((app) => app.s != null).length;
-  buildNodes(); renderQuorum(); renderHeader(); renderStorage(); renderLlm(); updateLabels();
+  buildNodes(); renderQuorum(); renderHeader(); renderStorage(); renderLlm();
+  topologyView.setModel(model.topology || { nodes: [], edges: [], positions: {} }, topologyLabelDetails);
   const nodeFailed = model.gpuFailed || model.nodeMetricsFailed;
   const mappedGpu = model.nodes.filter((n) => n.hasGpu);
   const gpuMissing = mappedGpu.filter((n) => !Number.isFinite(n.gpu)).length;
@@ -623,7 +517,7 @@ function renderStatic() {
   const storageState = model.storageFailed ? 'error' : model.storage.length ? 'ok' : 'empty';
   setState($('storage'), storageState,
     model.storageFailed ? 'STORAGE QUERY FAILED' : !model.storage.length ? 'STORAGE METRICS EMPTY' : model.storageIncomplete ? 'STORAGE METRICS INCOMPLETE' : '');
-  setState($('fw'), 'no-feed');
+  renderFirewall();
   const llmFailed = model.llmFailed || model.llmTokFailed || model.llmClassFailed;
   setState($('llm'), llmFailed ? 'error' : model.llm.length ? 'ok' : 'pending',
     model.llmClassFailed ? 'MODEL CLASS QUERY FAILED' : model.llmFailed ? 'ROUTER QUERY FAILED' : model.llmTokFailed ? 'TOKEN RATE QUERY FAILED' : model.llm.length ? '' : 'ROUTER METRICS EMPTY');
@@ -644,7 +538,7 @@ onDispose(() => clearInterval(clockId));
 // broken, the way an AI-panel query outage did to MC3.
 let lastNodes = 0;
 loop(30, (now, dt) => {
-  drawTopo(now, dt); drawHex(now);
+  topologyView.render(now, dt); drawHex(now);
   if (now - lastNodes > 100) { drawNodes(); lastNodes = now; }
 });
 const guardedRefresh = guardRefresh(refresh);
