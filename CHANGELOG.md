@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.26.0](https://github.com/dryvist/homelab-wall/compare/v0.25.1...v0.26.0) (2026-11-08)
+
+
+### Features
+
+* **wall:** show real network flows, edge drops and router readouts ([#185](https://github.com/dryvist/homelab-wall/issues/185)) ([8d58916](https://github.com/dryvist/homelab-wall/commit/8d589169e9b490c310e3505a7439ef33f4d7be71))
+
+
+### Bug Fixes
+
+* **mc1:** show every storage pool and back the VLAN rate list ([#183](https://github.com/dryvist/homelab-wall/issues/183)) ([c157ce1](https://github.com/dryvist/homelab-wall/commit/c157ce19a59de1958f94a45b05585e74ebf951b0))
+
 ## [0.25.1](https://github.com/dryvist/homelab-wall/compare/v0.25.0...v0.25.1) (2026-11-07)
 
 
