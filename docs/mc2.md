@@ -1,12 +1,3 @@
----
-type: Dashboard page
-title: MC2 Edge Threat Map
-description: UniFi WAN firewall drops by source country and deny rule.
-resource: /mc2/
-tags: [MC2, edge, Prometheus]
-timestamp: 2026-11-08T00:06:54Z
----
-
 # MC2 · Edge
 
 MC2 shows UniFi WAN firewall drops by source country. The title comes from `config.json` `title` and defaults to
