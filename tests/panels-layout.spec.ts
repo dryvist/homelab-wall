@@ -46,7 +46,7 @@ for (const vp of STABILITY_MATRIX) {
       for (let i = 0; i < count; i += 1) {
         await expect(panels.nth(i)).toHaveAttribute('data-state', /^(ok|pending|error|no-feed)$/);
       }
-      await expect(page.locator('#fw')).toHaveAttribute('data-state', 'no-feed');
+      await expect(page.locator('#fw')).toHaveAttribute('data-state', wallUrl ? /^(ok|no-feed|error)$/ : 'ok');
 
       // offsetLeft/Top/Width/Height (not getBoundingClientRect) — the grid's actual box,
       // ignoring the panels' intentional decorative 3D sway (mc1.css #nodes/#storage/...

@@ -30,8 +30,6 @@ for (const id of ['mc1', 'mc2', 'mc3', 'mc4', 'mc5', 'mc6', 'mc7', 'mc8', 'mc9']
 }
 
 for (const { id, selectors } of [
-  { id: 'mc1', selectors: ['#fw'] },
-  { id: 'mc2', selectors: ['#threat', '#blocked'] },
   { id: 'mc5', selectors: ['#infra'] },
 ]) {
   test(`${id} panels without a feed show the visible no-feed state`, async ({ page }) => {

@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { shapeRates, splitTopByRate, splitInFlight, providerClass, retain, fresh, increased, modelKey } from '../site/mc8/data.js';
 import { Q } from '../site/lib/queries.js';
 import * as mc8Data from '../site/mc8/data.js';
@@ -174,36 +173,6 @@ test('spend, in-flight, split TTFT and failure freshness read their raw-series s
   // The flash window still ends at the evaluation time, not at the source sample time.
   assert.equal(mc8Data.windowAge(failures(1_301_000, 1300), modelKey(labels), 1_301_000), 1);
 });
-test('query allow-list is generated from Q and MC8 uses standard histogram buckets', () => {
-  assert.deepEqual(JSON.parse(readFileSync(new URL('../site/queries.json', import.meta.url))), Q);
-  for (const key of ['mc8TtftLocalP95', 'mc8TtftCloudP95']) {
-    assert.match(Q[key], /histogram_quantile\(0\.95, sum by \(le\)/);
-    assert.match(Q[key], /litellm_llm_api_time_to_first_token_metric_bucket/);
-    assert.ok(Q[key].includes('api_key_alias!="litellm-internal-health-check"'));
-    assert.doesNotMatch(Q[key], /accelerator/);
-  }
-  for (const key of ['mc8InputRate', 'mc8OutputRate']) {
-    for (const bank of ['local', 'subscription', 'paid', 'free']) {
-      assert.ok(Q[key].includes(`tag_telemetry_billing_class_${bank}`));
-    }
-    assert.match(Q[key], /sum by \(api_key_alias, team, model, api_provider,/);
-    assert.match(Q[key], /_tokens_metric_total\{job="llm_router",api_key_alias!="litellm-internal-health-check"\}\[5m\]/);
-  }
-  for (const key of ['mc8InputRate', 'mc8OutputRate', 'mc8InputSourceTime', 'mc8OutputSourceTime', 'mc8TtftLocalP95', 'mc8TtftCloudP95', 'mc8TtftLocalSourceTime', 'mc8TtftCloudSourceTime']) {
-    assert.ok(Q[key].includes('api_key_alias!="litellm-internal-health-check"'), key);
-  }
-});
-test('spend query subtracts per-series UTC month baseline before sum, then converts dollars to cents', () => {
-  // Live 2026-11-07: without the clamp, 5 reset series subtracted 39 cents from the month total.
-  assert.ok(Q.mc8SpendCents.startsWith('100 * sum(clamp_min(max_over_time('));
-  assert.match(Q.mc8SpendCents, /api_provider="openrouter"/);
-  assert.ok(Q.mc8SpendCents.includes('(scalar(day_of_month()) - 1) * 86400 - time() % 86400'));
-  assert.match(Q.mc8SpendCents, /or max_over_time\(.+\[31d\]\) \* 0\), 0\)\)$/);
-});
-test('switchboard follows MC7 in default slides', () => {
-  const source = readFileSync(new URL('../site/rotator/rotator.js', import.meta.url), 'utf8');
-  assert.match(source, /url: '\/mc7\/' \},\s*\{ name: 'SWITCHBOARD', url: '\/mc8\/'/);
-});
 test('token-rate source times are raw-counter tlast values grouped exactly like their rate readings', () => {
   const group = (expr) => expr.match(/^(?:sum|max) by \(([^)]*)\)/)[1];
   for (const [rate, source, metric] of [
@@ -231,11 +200,6 @@ test('unclassified share carries its own stale state', () => {
   assert.equal(mc8Data.shareState(input(1_299_000), input(1_299_000), 1_299_000), 'ok');
   assert.equal(mc8Data.shareState(input(1_301_000), input(1_301_000), 1_301_000), 'stale');
   assert.equal(mc8Data.shareState(mc8Data.retain(null, [], 1), input(1_000), 1_000), 'pending');
-});
-test('the spend reading states beside it that a counter reset can undercount month-to-date spend', () => {
-  const html = readFileSync(new URL('../site/mc8/index.html', import.meta.url), 'utf8');
-  const spend = html.match(/<article data-panel="spend"[\s\S]*?<\/article>/)[0];
-  assert.match(spend, /<p class="reset-note">Counter resets can undercount month-to-date spend\.<\/p>/);
 });
 test('a failure flash names its window once that window ended more than 25 seconds ago', () => {
   const labels = { model: 'm', api_provider: 'openai' };

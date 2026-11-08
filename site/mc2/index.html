@@ -22,9 +22,13 @@
   <div class="row2">
     <section class="panel panel-frameless" id="threat" data-panel="threat" data-state="no-feed">
       <h2>Edge <span style="color:var(--red)">//</span> block telemetry<span data-panel-message></span></h2>
+      <div class="threat-content" id="threat-content"></div>
+      <small id="mapnote" class="map-note" aria-live="polite"></small>
     </section>
     <section class="panel panel-glass" id="blocked" data-panel="blocked" data-state="no-feed">
       <h2>Blocked <span style="color:var(--red)">//</span> live feed<span data-panel-message></span></h2>
+      <div class="blocked-list-head"><span>Code</span><span>Country</span><span>Events/min</span><span>1h</span></div>
+      <div id="blocked-rows" class="blocked-rows" aria-live="polite"></div>
     </section>
   </div>
 </div>
