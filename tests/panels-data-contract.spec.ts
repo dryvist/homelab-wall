@@ -60,8 +60,9 @@ for (const pageSpec of PAGES) {
           await expect(panel, `request faults: ${faults.join(' | ') || 'none'}`).toHaveAttribute('data-state', 'ok', firstState);
           // Poll, not a one-shot read: a panel can flip to data-state="ok" (set synchronously
           // by renderStatic) a frame before its own rAF-scheduled repaint (e.g. mc1's #appsum)
-          // has actually painted over its placeholder "—".
-          await expect.poll(() => panel.innerText()).not.toMatch(invalidMetric);
+          // has actually painted over its placeholder "—". A slow 3D first frame delays that repaint like the canvases below.
+          await expect.poll(() => panel.innerText(), { message: `panel ${id} still shows a placeholder`,
+            ...(slowFirstFrame ? { timeout: 45_000 } : {}) }).not.toMatch(invalidMetric);
         }
       }
 
