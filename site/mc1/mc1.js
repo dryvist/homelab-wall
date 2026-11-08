@@ -482,15 +482,16 @@ function renderFirewallColumn(container, rows) {
 
 function renderFirewall() {
   const data = model.firewall || { countries: [], flows: [], rules: [] };
+  const hasRows = data.countries.length + data.flows.length + data.rules.length > 0;
+  // State first: column capacity must be measured in the visible layout, not the no-feed one.
+  setState($('fw'), model.firewallFailed ? 'error' : hasRows ? 'ok' : 'no-feed',
+    model.firewallFailed ? model.firewallError : '');
   renderFirewallColumn($('fwdrops'), data.countries);
   const flowRows = [
     ...data.flows.map((row) => ({ ...row, name: `${row.name} · flow` })),
     ...data.rules.map((row) => ({ ...row, name: `${row.name} · rule` })),
   ];
   renderFirewallColumn($('fwflows'), flowRows);
-  const hasRows = data.countries.length + data.flows.length + data.rules.length > 0;
-  setState($('fw'), model.firewallFailed ? 'error' : hasRows ? 'ok' : 'no-feed',
-    model.firewallFailed ? model.firewallError : '');
 }
 
 /* ---------------- boot ---------------- */

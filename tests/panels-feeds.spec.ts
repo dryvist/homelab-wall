@@ -29,18 +29,23 @@ test('mc1 topology labels measured devices, VLANs, and WAN rates', async ({ page
   await expect(labels).toHaveCount(12);
 });
 
-test('mc1 firewall columns render country drops, flow actions, and rule rates', async ({ page }) => {
-  test.skip(!!wallUrl, 'exercises fixture-shaped firewall metric responses only');
-  await mockFeeds(page);
-  await page.goto('/mc1/?gl=2d');
-  await expect(page.locator('#fw')).toHaveAttribute('data-state', 'ok');
-  await expect(page.locator('#fw .fwcol h3')).toHaveText(['Blocked at the edge', 'Live firewall · flows']);
-  await expect(page.locator('#fwdrops .fwrow')).toHaveCount(5);
-  await expect(page.locator('#fwdrops')).toContainText('events/min');
-  await expect(page.locator('#fwflows .fwrow')).toHaveCount(7);
-  await expect(page.locator('#fwflows')).toContainText('net-c → net-a · flow');
-  await expect(page.locator('#fwflows')).toContainText('deny');
-  await expect(page.locator('#fwflows')).toContainText('rule-a · rule');
+test.describe('mc1 firewall rows at a size that fits every fixture row', () => {
+  // Shorter screens fold the last rows into "+N more"; this checks the rows themselves.
+  test.use({ viewport: { width: 1920, height: 1080 } });
+
+  test('mc1 firewall columns render country drops, flow actions, and rule rates', async ({ page }) => {
+    test.skip(!!wallUrl, 'exercises fixture-shaped firewall metric responses only');
+    await mockFeeds(page);
+    await page.goto('/mc1/?gl=2d');
+    await expect(page.locator('#fw')).toHaveAttribute('data-state', 'ok');
+    await expect(page.locator('#fw .fwcol h3')).toHaveText(['Blocked at the edge', 'Live firewall · flows']);
+    await expect(page.locator('#fwdrops .fwrow')).toHaveCount(5);
+    await expect(page.locator('#fwdrops')).toContainText('events/min');
+    await expect(page.locator('#fwflows .fwrow')).toHaveCount(7);
+    await expect(page.locator('#fwflows')).toContainText('net-c → net-a · flow');
+    await expect(page.locator('#fwflows')).toContainText('deny');
+    await expect(page.locator('#fwflows')).toContainText('rule-a · rule');
+  });
 });
 
 test('mc1 empty firewall metrics show no-feed and a failed query shows its message', async ({ page }) => {

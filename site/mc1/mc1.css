@@ -92,6 +92,7 @@ header{grid-column:1/-1;position:relative;z-index:2;min-width:0;min-height:0;ove
 /* firewall */
 #fw{grid-row:3;grid-column:2;display:flex;flex-direction:column}
 #fw .fwcols{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:10px;padding:7px 10px 9px}
+#fw[data-state="no-feed"] .fwcols{display:none}
 #fw .fwcol{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 #fw .fwcol h3{flex:none;margin:0 0 4px;color:var(--dim);font:600 9px/1.2 var(--disp);letter-spacing:.12em;text-transform:uppercase}
 #fw .fwlist{flex:1;min-height:0;overflow:hidden}
