@@ -1,18 +1,21 @@
 import { query } from '/lib/prom.js';
 import { Q } from '/lib/queries.js';
-import { esc, loop, onDispose, adaptiveDpr, loadConfig, signalReady } from '/lib/stage.js';
-import { BANKS, shapeRates, splitTopByRate, splitInFlight, retain, modelKey, fresh, shareState, withSourceTimes, increased, bounded, windowAge, windowLabel, refreshMs, REQUEST_TIMEOUT_MS, ZERO_WHEN_EMPTY, IDLE_WHEN_EMPTY, feedValue } from './data.js';
+import { loop, onDispose, loadConfig, signalReady } from '/lib/stage.js';
+import { shapeRates, splitInFlight, retain, modelKey, fresh, shareState, withSourceTimes, increased, bounded, windowAge, windowLabel, refreshMs, REQUEST_TIMEOUT_MS, ZERO_WHEN_EMPTY, IDLE_WHEN_EMPTY, feedValue } from './data.js';
+import { formatPair, groupCallerRows, pinCallers, pinRules, renderInsights } from './metrics.js';
+import { moreTerminal, callerMarkup, modelMarkup, fitRows, compactRoutes } from './layout.js';
+import { createWireDrawer } from './wires.js';
 
 const $ = (id) => document.getElementById(id);
 const board = $('switchboard'), canvas = $('wires'), ctx = canvas.getContext('2d');
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
+const wireDrawer = createWireDrawer(board, $('diagram'), canvas, $('hub'), ctx, motion);
 const number = (v) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
-const classPair = (local, cloud, unit = '') => {
-  const display = (value) => Number.isFinite(value) ? `${number(value)}${unit}` : '—';
-  return `local ${display(local)} · cloud ${display(cloud)}`;
-};
+const classPair = formatPair;
 const feeds = {};
 const keys = ['mc8InputRate', 'mc8OutputRate', 'mc8InputSourceTime', 'mc8OutputSourceTime', 'mc8InFlight', 'vllmRunning', 'llamaRunning', 'mc8SpendCents', 'mc8TtftLocalP95', 'mc8TtftCloudP95', 'mc8Failures', 'mc8Fallbacks',
+  'mc8RequestsPerMinute', 'mc8RequestsSourceTime', 'mc8RequestLatencyLocalP50', 'mc8RequestLatencyCloudP50', 'mc8RequestLatencyLocalP95', 'mc8RequestLatencyCloudP95', 'mc8RequestLatencyLocalSourceTime', 'mc8RequestLatencyCloudSourceTime',
+  'mc8Failures15m', 'mc8Fallbacks15m', 'mc8Failures15mSourceTime', 'mc8Fallbacks15mSourceTime', 'mc8TopModelsLocal', 'mc8TopModelsCloud', 'mc8TopModelsLocalSourceTime', 'mc8TopModelsCloudSourceTime',
   'mc8InFlightSourceTime', 'mc8VllmSourceTime', 'mc8LlamaSourceTime', 'mc8SpendSourceTime', 'mc8TtftLocalSourceTime', 'mc8TtftCloudSourceTime', 'mc8FailuresSourceTime', 'mc8FallbacksSourceTime'];
 const feedKeys = keys.filter((key) => !key.endsWith('SourceTime'));
 const IN_FLIGHT_KEYS = ['mc8InFlight', 'vllmRunning', 'llamaRunning'];
@@ -22,8 +25,22 @@ const sourceTimes = {
   vllmRunning: 'mc8VllmSourceTime', llamaRunning: 'mc8LlamaSourceTime', mc8SpendCents: 'mc8SpendSourceTime',
   mc8TtftLocalP95: 'mc8TtftLocalSourceTime', mc8TtftCloudP95: 'mc8TtftCloudSourceTime',
   mc8Failures: 'mc8FailuresSourceTime', mc8Fallbacks: 'mc8FallbacksSourceTime',
+  mc8RequestsPerMinute: 'mc8RequestsSourceTime',
+  mc8RequestLatencyLocalP50: 'mc8RequestLatencyLocalSourceTime', mc8RequestLatencyLocalP95: 'mc8RequestLatencyLocalSourceTime',
+  mc8RequestLatencyCloudP50: 'mc8RequestLatencyCloudSourceTime', mc8RequestLatencyCloudP95: 'mc8RequestLatencyCloudSourceTime',
+  mc8Failures15m: 'mc8Failures15mSourceTime', mc8Fallbacks15m: 'mc8Fallbacks15mSourceTime',
+  mc8TopModelsLocal: 'mc8TopModelsLocalSourceTime', mc8TopModelsCloud: 'mc8TopModelsCloudSourceTime',
 };
-let shaped = shapeRates([], []), displayed = { callers: [], models: [], routes: [], hidden: [] }, wires = [], selected = null;
+const idleSources = {
+  mc8RequestsPerMinute: 'mc8RequestsSourceTime',
+  mc8RequestLatencyLocalP50: 'mc8RequestLatencyLocalSourceTime', mc8RequestLatencyLocalP95: 'mc8RequestLatencyLocalSourceTime',
+  mc8RequestLatencyCloudP50: 'mc8RequestLatencyCloudSourceTime', mc8RequestLatencyCloudP95: 'mc8RequestLatencyCloudSourceTime',
+  mc8Failures15m: 'mc8Failures15mSourceTime', mc8Fallbacks15m: 'mc8Fallbacks15mSourceTime',
+  mc8TopModelsLocal: 'mc8TopModelsLocalSourceTime', mc8TopModelsCloud: 'mc8TopModelsCloudSourceTime',
+};
+const liveIdleKeys = new Set(['mc8RequestsPerMinute', 'mc8RequestLatencyLocalP50', 'mc8RequestLatencyLocalP95',
+  'mc8RequestLatencyCloudP50', 'mc8RequestLatencyCloudP95', 'mc8Failures15m', 'mc8Fallbacks15m', 'mc8TopModelsLocal', 'mc8TopModelsCloud']);
+let shaped = shapeRates([], []), displayed = { callers: [], models: [], routes: [], hidden: [] }, insightErrors = {}, pins = pinRules([]);
 
 function age(at) {
   if (at == null) return 'STALE: measurement time unavailable';
@@ -69,79 +86,10 @@ function updateUnclassified() {
   id.textContent = `unclassified cloud ${number(shaped.unclassifiedShare)}%${status}`;
 }
 
-function moreTerminal(kind, more) {
-  const name = kind === 'models' ? `+${more.localCount} local · +${more.cloudCount} cloud` : `+${more.count} more`;
-  return { id: `__more_${kind}__`, name, localRate: more.localRate,
-    cloudRate: more.cloudRate, more: true, bank: 'unknown', metricId: null };
-}
-
-function callerMarkup(split) {
-  const rows = [...split.visible, ...(split.more ? [moreTerminal('callers', split.more)] : [])];
-  return rows.length ? rows.map((caller) => terminal(caller, 'caller')).join('') : '<p class="no-feed">No caller rates yet</p>';
-}
-
-function modelMarkup(split) {
-  const groups = Object.entries(BANKS).map(([bank, style]) => {
-    const models = split.visible.filter((model) => model.bank === bank);
-    return models.length
-      ? `<section class="bank" style="--bank:${style.color}"><h3>${style.title}</h3>${models.map((model) => terminal(model, 'model')).join('')}</section>`
-      : '';
-  }).join('');
-  const more = split.more ? terminal(moreTerminal('models', split.more), 'model') : '';
-  return groups + more || '<p class="no-feed">No measured routes</p>';
-}
-
-// Render candidate splits and use the column's real scroll box to find the largest one that fits.
-function fitRows(container, rows, markup, mark = () => {}) {
-  if (!rows.length) {
-    const split = splitTopByRate(rows, 1);
-    container.innerHTML = markup(split);
-    return split;
-  }
-  let best = null;
-  let low = 1, high = rows.length;
-  while (low <= high) {
-    const limit = Math.floor((low + high) / 2);
-    const split = splitTopByRate(rows, limit);
-    container.innerHTML = markup(split);
-    mark(split);
-    if (container.scrollHeight <= container.clientHeight) {
-      best = split;
-      low = limit + 1;
-    } else {
-      high = limit - 1;
-    }
-  }
-  const split = best || splitTopByRate(rows, 1);
-  container.innerHTML = markup(split);
-  return split;
-}
-
-function compactRoutes(routes, callers, models) {
-  const callerIds = new Set(callers.map((caller) => caller.id));
-  const modelIds = new Set(models.map((model) => model.id));
-  const moreCaller = callers.find((caller) => caller.more)?.id;
-  const moreModel = models.find((model) => model.more)?.id;
-  const compacted = new Map();
-  for (const route of routes) {
-    const caller = callerIds.has(route.caller) ? route.caller : moreCaller;
-    const model = modelIds.has(route.model) ? route.model : moreModel;
-    if (!caller || !model) continue;
-    const id = JSON.stringify([caller, model, Number.isFinite(route.localRate) ? 'local' : 'cloud']);
-    const current = compacted.get(id);
-    if (current) {
-      current.rate += route.rate;
-      for (const bank of ['local', 'cloud']) {
-        if (Number.isFinite(route[`${bank}Rate`])) current[`${bank}Rate`] = (current[`${bank}Rate`] ?? 0) + route[`${bank}Rate`];
-      }
-    } else compacted.set(id, { id, caller, model, rate: route.rate, localRate: route.localRate, cloudRate: route.cloudRate });
-  }
-  return [...compacted.values()];
-}
-
 function render() {
   const ready = ['mc8InputRate', 'mc8OutputRate'].every((key) => feeds[key]?.rows.length);
-  shaped = ready ? shapeRates(feeds.mc8InputRate.rows, feeds.mc8OutputRate.rows) : shapeRates([], []);
+  shaped = ready ? shapeRates(groupCallerRows(feeds.mc8InputRate.rows, pins), groupCallerRows(feeds.mc8OutputRate.rows, pins)) : shapeRates([], []);
+  shaped.callers = pinCallers(shaped.callers, pins.names);
   for (const key of ['mc8Failures', 'mc8Fallbacks']) {
     for (const row of feeds[key]?.rows || []) {
       const metricId = modelKey(row.labels);
@@ -162,29 +110,17 @@ function render() {
   board.dataset.state = !ready ? 'pending' : stateText(['mc8InputRate', 'mc8OutputRate']).startsWith('STALE') ? 'stale' : 'ok';
   $('route-state').textContent = !ready ? 'Pending token rates' : `${classPair(shaped.localRate, shaped.cloudRate)} tokens/s`;
   const callers = $('callers'), models = $('models');
-  const callerSplit = fitRows(callers, shaped.callers, callerMarkup);
+  const callerSplit = fitRows(callers, shaped.callers, (split) => callerMarkup(split, displayed));
   const collapsed = (split) => shaped.models.filter((model) => !split.visible.includes(model));
-  const modelSplit = fitRows(models, shaped.models, modelMarkup, (split) => markModels(collapsed(split)));
+  const modelSplit = fitRows(models, shaped.models, (split) => modelMarkup(split, displayed), (split) => markModels(collapsed(split)));
   displayed.callers = [...callerSplit.visible, ...(callerSplit.more ? [moreTerminal('callers', callerSplit.more)] : [])];
   displayed.models = [...modelSplit.visible, ...(modelSplit.more ? [moreTerminal('models', modelSplit.more)] : [])];
   displayed.hidden = collapsed(modelSplit);
   displayed.routes = compactRoutes(shaped.routes, displayed.callers, displayed.models);
-  callers.innerHTML = callerMarkup(callerSplit);
-  models.innerHTML = modelMarkup(modelSplit);
+  callers.innerHTML = callerMarkup(callerSplit, displayed);
+  models.innerHTML = modelMarkup(modelSplit, displayed);
   updateStatus();
-  measure();
-}
-
-function terminal(node, kind) {
-  const destinations = displayed.routes.filter((r) => kind === 'caller' ? r.caller === node.id : r.model === node.id).map((r) => {
-    const other = (kind === 'caller' ? displayed.models : displayed.callers).find((n) => n.id === (kind === 'caller' ? r.model : r.caller));
-    const name = kind === 'caller' && other ? `${other.name} (${BANKS[other.bank]?.title || 'Unclassified'})` : other?.name;
-    return `${name}: ${classPair(r.localRate, r.cloudRate, ' tokens/s')}`;
-  }).join('; ');
-  const rate = kind === 'caller' || node.more
-    ? classPair(node.localRate, node.cloudRate, ' tokens/s')
-    : node.rate == null ? 'No token rate' : `${number(node.rate)} t/s`;
-  return `<div class="terminal${node.more ? ' more' : ''}" tabindex="0" data-kind="${kind}" data-id="${esc(node.id)}" title="${esc(destinations)}"><div><strong>${esc(node.name)}</strong>${node.team ? `<small>${esc(node.team)}</small>` : ''}${kind === 'model' ? '<small class="failure-marker"></small>' : ''}</div><span class="rate${kind === 'caller' || node.more ? ' split' : ''}">${rate}</span></div>`;
+  wireDrawer.update(feeds, displayed);
 }
 
 // A "+N more" row carries the markers of the models collapsed into it.
@@ -206,6 +142,7 @@ function markModels(hidden) {
 
 function updateStatus() {
   $('clock').textContent = new Date().toLocaleTimeString();
+  renderInsights(feeds, insightErrors);
   $('flow-status').textContent = stateText(['mc8InputRate', 'mc8OutputRate']);
   const state = stateText(['mc8Failures', 'mc8Fallbacks']);
   $('failure-status').textContent = state === 'Live' ? 'Failure flashes: increases in the last minute' : `Failure telemetry: ${state}`;
@@ -221,75 +158,6 @@ function updateStatus() {
   }
 }
 
-function measure() {
-  const box = $('diagram').getBoundingClientRect(), dpr = adaptiveDpr();
-  canvas.width = Math.round(box.width * dpr);
-  canvas.height = Math.round(box.height * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const positions = new Map([...document.querySelectorAll('.terminal')].map((node) => {
-    const rect = node.getBoundingClientRect();
-    return [node.dataset.kind + node.dataset.id, { x: (node.dataset.kind === 'caller' ? rect.right : rect.left) - box.left, y: rect.top + rect.height / 2 - box.top }];
-  }));
-  const hub = $('hub').getBoundingClientRect();
-  wires = displayed.routes.filter((r) => r.rate > 0).map((r) => ({ ...r,
-    from: positions.get('caller' + r.caller), to: positions.get('model' + r.model),
-    mid: { x: hub.left + hub.width / 2 - box.left, y: hub.top + hub.height / 2 - box.top },
-    color: displayed.models.find((m) => m.id === r.model)?.more ? '#9bacbf'
-      : BANKS[displayed.models.find((m) => m.id === r.model)?.bank]?.color || '#9bacbf',
-  }));
-  draw(performance.now());
-}
-
-function draw(now) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const maximum = Math.max(...wires.map((w) => w.rate), 1);
-  for (const wire of wires) {
-    const { from: a, to: b, mid: c } = wire;
-    if (!a || !b) continue;
-    const active = !selected || wire[selected.kind] === selected.id;
-    const model = displayed.models.find((m) => m.id === wire.model);
-    const behind = model?.more ? displayed.hidden : model ? [model] : [];
-    const failed = behind.some((m) => increased(feeds.mc8Failures, m.metricId));
-    const fallback = behind.some((m) => increased(feeds.mc8Fallbacks, m.metricId));
-    const flash = motion.matches || Math.floor(now / 450) % 2 === 0;
-    ctx.strokeStyle = wire.color;
-    ctx.globalAlpha = (active ? .65 : .06) * (board.dataset.state === 'stale' ? .35 : 1);
-    ctx.lineWidth = 1 + 11 * wire.rate / maximum;
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.bezierCurveTo((a.x + c.x) / 2, a.y, (a.x + c.x) / 2, c.y, c.x, c.y);
-    ctx.stroke();
-    if (!motion.matches && board.dataset.state === 'ok') {
-      ctx.save(); ctx.lineWidth = 1.5; ctx.globalAlpha = active ? .9 : .06;
-      ctx.setLineDash([4, 26]); ctx.lineDashOffset = -now / 45;
-      ctx.stroke(); ctx.restore();
-    }
-    // Failures are attributed to models only, never inferred for a caller.
-    ctx.strokeStyle = failed && flash ? '#ff7288' : fallback && flash ? '#ffb66b' : wire.color;
-    ctx.beginPath();
-    ctx.moveTo(c.x, c.y);
-    ctx.bezierCurveTo((b.x + c.x) / 2, c.y, (b.x + c.x) / 2, b.y, b.x, b.y);
-    ctx.stroke();
-    // Moving dashes indicate direction only; width and labels encode the measured rate.
-    if (!motion.matches && board.dataset.state === 'ok') {
-      ctx.globalAlpha = active ? .9 : .06;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 26]);
-      ctx.lineDashOffset = -now / 45;
-      ctx.stroke();
-    }
-  }
-  ctx.globalAlpha = 1;
-}
-
-for (const event of ['pointerover', 'focusin']) board.addEventListener(event, (e) => {
-  const node = e.target.closest('.terminal');
-  selected = node ? { kind: node.dataset.kind, id: node.dataset.id } : null;
-  draw(performance.now());
-});
-for (const event of ['pointerleave', 'focusout']) board.addEventListener(event, () => { selected = null; draw(performance.now()); });
-
 let refreshing = false;
 async function refresh() {
   if (refreshing) return;
@@ -297,12 +165,17 @@ async function refresh() {
   try {
     const results = await Promise.allSettled(keys.map((key) => bounded(query(Q[key], { timestamps: true }))));
     const rows = new Map(keys.map((key, i) => [key, results[i].status === 'fulfilled' ? results[i].value : null]));
+    insightErrors = Object.fromEntries(keys.map((key, i) => [key, results[i].status === 'rejected'
+      ? (results[i].reason?.message || 'Query failed') : rows.get(key) === null ? 'Request timed out' : null]).filter(([, message]) => message));
     const now = Date.now();
     const liveAt = Number(rows.get('mc8InFlightSourceTime')?.[0]?.value) * 1000;
     for (const key of feedKeys) {
       const result = rows.get(key);
-      const timed = result && sourceTimes[key] ? withSourceTimes(result, rows.get(sourceTimes[key])) : result;
-      const idleAt = IDLE_WHEN_EMPTY.has(key) ? Number(rows.get(sourceTimes[key])?.[0]?.value) * 1000 : null;
+      const clean = key.startsWith('mc8TopModels') && result ? result.filter((row) => row.value > 0) : result;
+      const timed = clean && sourceTimes[key] ? withSourceTimes(clean, rows.get(sourceTimes[key])) : clean;
+      const sourceRows = rows.get(idleSources[key] || (IDLE_WHEN_EMPTY.has(key) ? sourceTimes[key] : ''));
+      const times = (sourceRows || []).map((row) => Number(row.value) * 1000).filter((at) => Number.isFinite(at) && at > 0);
+      const idleAt = times.length ? Math.min(...times) : IDLE_WHEN_EMPTY.has(key) || liveIdleKeys.has(key) ? liveAt : null;
       feeds[key] = retain(feeds[key], timed, now, { emptyIsZero: ZERO_WHEN_EMPTY.has(key), liveAt, idleAt });
     }
     render();
@@ -315,7 +188,7 @@ onDispose(() => observer.disconnect());
 render();
 document.fonts.ready.then(render);
 signalReady();
-loop(30, (now) => { if (!motion.matches) draw(now); });
+loop(30, (now) => { if (!motion.matches) wireDrawer.draw(now); });
 const clock = setInterval(updateStatus, 1000);
 onDispose(() => clearInterval(clock));
 let configTimer = null;
@@ -324,6 +197,8 @@ onDispose(() => clearTimeout(configTimer));
 async function start() {
   const cfg = await bounded(loadConfig()).catch(() => ({}));
   if (cfg == null) { configTimer = setTimeout(start, REQUEST_TIMEOUT_MS); return; }
+  pins = pinRules(Array.isArray(cfg.mc8PinnedCallers) ? cfg.mc8PinnedCallers : []);
+  render();
   const poll = setInterval(refresh, refreshMs(cfg));
   onDispose(() => clearInterval(poll));
   await refresh();

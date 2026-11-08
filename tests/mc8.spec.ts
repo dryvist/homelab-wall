@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { highCardinalityRows, mockMc8, mc8Answer } from './mc8.fixture';
+import { highCardinalityRows, mockMc8, mc8Answer, tokenRows } from './mc8.fixture';
 import { Q } from '../site/lib/queries.js';
 
 test.beforeEach(() => { test.skip(!!process.env.WALL_URL, 'Fixture-only switchboard checks'); });
@@ -16,6 +16,13 @@ test('measured routes, provider banks and hero readings render without page faul
   await expect(page.locator('#in-flight')).toHaveText('local 3 · cloud 4');
   await expect(page.locator('#spend')).toHaveText(/123[.,]4¢/);
   await expect(page.locator('#ttft')).toHaveText('local 210 ms · cloud 420 ms');
+  await expect(page.locator('#requests-value')).toHaveText('local 3 req/min · cloud 5 req/min');
+  await expect(page.locator('#latency-value')).toContainText('p50  local 120 ms · cloud 240 ms');
+  await expect(page.locator('#latency-value')).toContainText('p95  local 360 ms · cloud 480 ms');
+  await expect(page.locator('#outcomes-value')).toContainText('Failures  local 1 · cloud 2');
+  await expect(page.locator('#outcomes-value')).toContainText('Fallbacks  local 0 · cloud 1');
+  await expect(page.locator('#top-models-value .top-model-group.local')).toContainText('local-model · 17 req');
+  await expect(page.locator('#top-models-value .top-model-group.cloud')).toContainText('subscription-model · 12 req');
   await expect(page.locator('#route-state')).toHaveText('local 90 · cloud 40 tokens/s');
   await expect(page.locator('#callers .terminal').first().locator('.rate')).toHaveText('local 90 tokens/s · cloud 15 tokens/s');
   expect(errors).toEqual([]);
@@ -102,13 +109,38 @@ test('empty data remains pending and draws no sample routes or numeric heroes', 
   await page.goto('/mc8/');
   await expect(page.locator('#flow-status')).toContainText('Pending');
   await expect(page.locator('.terminal')).toHaveCount(0);
-  await expect(page.locator('.reading')).toHaveText(['Pending', 'local — · cloud —', 'Pending', 'local — · cloud —']);
+  await expect(page.locator('.reading')).toHaveText(['Pending', '—', 'Pending', '—']);
+});
+
+test('pinned callers with no series stay in the caller list', async ({ page }) => {
+  await mockMc8(page, { empty: true, pinnedCallers: ['queued-caller'] });
+  await page.goto('/mc8/');
+  const caller = page.locator('#callers .terminal').filter({ hasText: 'queued-caller' });
+  await expect(caller).toBeVisible();
+  await expect(caller.locator('.rate')).toHaveText('no requests yet');
+});
+
+test('cloud-only caller and route figures omit the absent local side', async ({ page }) => {
+  const rows = tokenRows.filter((row) => row.labels.tag_telemetry_billing_class_local !== 'true');
+  await mockMc8(page, { rows });
+  await page.goto('/mc8/');
+  await expect(page.locator('#route-state')).toHaveText('cloud 40 tokens/s');
+  await expect(page.locator('#callers .terminal').first().locator('.rate')).toHaveText('cloud 25 tokens/s');
+  await expect(page.locator('#callers .rate')).not.toContainText('local');
+});
+
+test('local-only caller and route figures omit the absent cloud side', async ({ page }) => {
+  const rows = tokenRows.filter((row) => row.labels.tag_telemetry_billing_class_local === 'true');
+  await mockMc8(page, { rows });
+  await page.goto('/mc8/');
+  await expect(page.locator('#route-state')).toHaveText('local 90 tokens/s');
+  await expect(page.locator('#callers .terminal .rate')).toHaveText('local 90 tokens/s');
 });
 
 test('empty TTFT classes show missing values while their histogram sample times stay fresh', async ({ page }) => {
   await mockMc8(page, { idleTtft: true });
   await page.goto('/mc8/');
-  await expect(page.locator('#ttft')).toHaveText('local — · cloud —');
+  await expect(page.locator('#ttft')).toHaveText('—');
   await expect(page.locator('[data-panel]:has(#ttft) .status')).toHaveText('Router histogram · trailing 5 minutes');
   await expect(page.locator('#in-flight')).toHaveText('local 3 · cloud 4');
 });

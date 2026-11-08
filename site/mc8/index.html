@@ -21,7 +21,15 @@
     <div id="diagram">
       <canvas id="wires" aria-hidden="true"></canvas>
       <div id="callers" class="terminals"></div>
-      <div id="hub"><span class="hub-port"></span><h2>LiteLLM</h2><p>Router</p><span id="route-state">Pending token rates</span></div>
+      <div id="hub">
+        <span class="hub-port"></span><h2>LiteLLM</h2><p>Router</p><span id="route-state">Pending token rates</span>
+        <div class="hub-insights">
+          <section data-insight="requests" data-state="pending"><h3>Requests / minute</h3><p class="insight-value" id="requests-value">Pending</p><p class="insight-status">Pending: no measurements yet</p></section>
+          <section data-insight="outcomes" data-state="pending"><h3>Failures · fallbacks</h3><p class="insight-value" id="outcomes-value">Pending</p><p class="insight-status">Pending: no measurements yet</p></section>
+          <section data-insight="latency" data-state="pending"><h3>Request latency</h3><p class="insight-value" id="latency-value">Pending</p><p class="insight-status">Pending: no measurements yet</p></section>
+        </div>
+        <section id="top-models" data-insight="top-models" data-state="pending"><h3>Top models · requests / hour</h3><div id="top-models-value">Pending</div><p class="insight-status">Pending: no measurements yet</p></section>
+      </div>
       <div id="models" class="terminals"></div>
     </div>
     <footer><span id="flow-status">Pending: no token rates yet</span><span id="failure-status">Failure telemetry pending</span></footer>
