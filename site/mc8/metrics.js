@@ -117,9 +117,11 @@ export function renderInsights(feeds, errors = {}, now = Date.now()) {
   const latencyKeys = ['mc8RequestLatencyLocalP50', 'mc8RequestLatencyCloudP50', 'mc8RequestLatencyLocalP95', 'mc8RequestLatencyCloudP95'];
   const latencySources = ['mc8RequestLatencyLocalSourceTime', 'mc8RequestLatencyCloudSourceTime'];
   renderPanel('latency', [...latencyKeys, ...latencySources], latencyKeys, feeds, errors, now, 'Router histogram · trailing 5 minutes');
+  // The router latency histogram is in seconds.
+  const ms = (feed) => { const value = metricValue(feed); return value == null ? null : value * 1000; };
   const latency = (percentile) => formatPair(
-    metricValue(feeds[`mc8RequestLatencyLocalP${percentile}`]),
-    metricValue(feeds[`mc8RequestLatencyCloudP${percentile}`]), ' ms');
+    ms(feeds[`mc8RequestLatencyLocalP${percentile}`]),
+    ms(feeds[`mc8RequestLatencyCloudP${percentile}`]), ' ms');
   document.getElementById('latency-value').textContent = `p50  ${latency(50)}\np95  ${latency(95)}`;
 
   const outcomeKeys = ['mc8Failures15m', 'mc8Fallbacks15m'];
