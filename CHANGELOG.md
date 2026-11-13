@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.0](https://github.com/dryvist/homelab-wall/compare/v0.26.0...v0.27.0) (2026-11-13)
+
+
+### Features
+
+* **agents:** declare web skill group ([#188](https://github.com/dryvist/homelab-wall/issues/188)) ([bea1fec](https://github.com/dryvist/homelab-wall/commit/bea1fec7b9c633701b37aaa6c137ddf33c2e38c9))
+
 ## [0.26.0](https://github.com/dryvist/homelab-wall/compare/v0.25.1...v0.26.0) (2026-11-08)
 
 
