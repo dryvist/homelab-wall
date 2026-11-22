@@ -7,6 +7,7 @@ import { guardRefresh } from '/lib/refresh.js';
 import { Q } from '/lib/queries.js';
 import { listedModels, perfReader, perfCard } from '/lib/modelPerf.js';
 import { assignModelColors, billingClassValues, classPair, modelCounts, modelCountPair, shortDevice } from '/lib/mc3.js';
+import { hostValues, modelMemoryRows } from '/lib/macMemory.js';
 import {
   clamp, hue, esc, loop, loadConfig, setState, SCORE_OK_MIN, SCORE_DEGRADED_MIN, scorePct,
   onDispose, hardwareGL, adaptiveDpr,
@@ -60,6 +61,8 @@ const overrides = cfg.accelerators && typeof cfg.accelerators === 'object' ? cfg
 const model = {
   models: [], listFailed: false, stateFailed: false, tokensToday: { local: null, cloud: null }, reqPerMin: { local: null, cloud: null },
   modelCounts: null, active: { local: null, cloud: null }, gpuBusy: null, gpuFailed: false,
+  // Resident memory per local model on each Mac: one row per (host, model), empty when no series exists.
+  localMemory: [], localMemoryFailed: false,
 };
 // Fleet list: the AI-category services and their 0-10 scores (Q.aiAppScore), sorted by name.
 let aiApps = [];
@@ -94,6 +97,8 @@ async function refresh() {
     vllm: () => query(Q.vllmRunning),
     llama: () => query(Q.llamaRunning),
     inflight: () => query(Q.routerInFlight),
+    macRamTotal: () => query(Q.macRamTotal),
+    modelMemory: () => query(Q.macModelMemory),
   });
 
   appScoreFailed = r.score === null;
@@ -135,6 +140,9 @@ async function refresh() {
   model.tokensToday = billingClassValues(r.tokensToday);
   model.reqPerMin = billingClassValues(r.reqPerMin);
   model.modelCounts = modelCounts(model.models, r.localModels);
+  // A failed query is shown as failed, never as an empty list; a missing series is simply no rows.
+  model.localMemoryFailed = r.modelMemory === null;
+  model.localMemory = r.modelMemory === null ? [] : modelMemoryRows(r.modelMemory, hostValues(r.macRamTotal));
   model.gpuFailed = r.gpu === null;
   const busy = (r.gpu || []).map((x) => x.value).filter(Number.isFinite);
   model.gpuBusy = busy.length ? clamp(busy.reduce((x, y) => x + y, 0) / busy.length, 0, 100) : null;
@@ -210,6 +218,7 @@ const sceneAnchors = () => accel.map((d) => ({ id: d.id, kind: d.kind, busy: d.b
 function render() {
   renderApps();
   renderCore();
+  renderModelMemory();
   renderKpis();
   renderAnchors();
   reactor.dataset.modelColors = JSON.stringify(reactorList.map(({ n, color }) => ({ n, color })));
@@ -353,6 +362,17 @@ function renderCore() {
   }
   setState($('cores'), state, message);
   renderCoreExtra(list);
+}
+
+/* ---------------- local model memory: one bar per model on each Mac, in the fleet-health column ------- */
+// The bar is the model's resident memory as a share of its Mac's RAM total. Rows are per model and per host;
+// nothing is summed across hosts or across cloud and local models.
+function renderModelMemory() {
+  const rows = model.localMemory;
+  const message = model.localMemoryFailed ? 'MODEL MEMORY QUERY FAILED' : 'NO LOCAL MODEL MEMORY';
+  $('modelMem').innerHTML = rows.length
+    ? rows.map((row) => `<div class="mm"><span title="${esc(row.model)}">${esc(row.host)} <em>${esc(row.model.split('/').pop())}</em></span><div class="mmbar"><i style="width:${row.share == null ? 0 : row.share.toFixed(1)}%"></i></div><b class="num">${(row.bytes / 1e9).toFixed(1)} GB</b></div>`).join('')
+    : `<span class="mm-empty">${message}</span>`;
 }
 
 /* ---------------- fleet-health column fill: req/min, GPU/VRAM, sparklines, request feed ------- */

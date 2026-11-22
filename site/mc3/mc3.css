@@ -94,6 +94,14 @@ header{grid-column:1/-1;position:relative;z-index:2;display:flex;align-items:cen
 .spk{display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;font-size:clamp(9px,.85vmin,10px);color:var(--dim)}
 .spk canvas{width:100%;height:16px;display:block}
 .spk b{color:var(--ink);font-weight:600;white-space:nowrap}
+.mems{display:flex;flex-direction:column;gap:4px;flex:none;font-size:clamp(9px,.85vmin,10px);color:var(--dim)}
+.mm{display:grid;grid-template-columns:minmax(0,1fr) minmax(40px,64px) auto;align-items:center;gap:6px}
+.mm span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mm em{font-style:normal;color:var(--ink)}
+.mmbar{height:6px;background:#200a28;overflow:hidden}
+.mmbar i{display:block;height:100%;background:var(--cyan)}
+.mm b{color:var(--ink);font-weight:600;white-space:nowrap}
+.mm-empty{color:var(--dim)}
 .coreextra .feed{position:relative;flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:2px}
 .cfrow{display:grid;grid-template-columns:1fr auto auto;gap:6px;font-size:clamp(9px,.85vmin,10px);color:var(--dim);white-space:nowrap}
 .cfrow b{color:var(--ink);font-weight:600}
