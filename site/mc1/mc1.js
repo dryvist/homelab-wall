@@ -11,6 +11,7 @@ import {
 import { lastGoodGet, lastGoodSet } from '/lib/lastGood.js';
 import { groupedHexLayout } from '/lib/hexlayout.js';
 import { buildStorageRows, formatMbps, formatStorageBytes, gpuByNode } from '/lib/mc1Metrics.js';
+import { macReadings } from '/lib/macMemory.js';
 import { buildFirewallRows, buildTopologyModel, namedFlowRows } from '/lib/mc1Topology.js';
 import { createTopologyView } from './topologyView.js';
 import { splitByClass } from '/lib/mc3.js';
@@ -77,6 +78,11 @@ async function refresh() {
     llmUsed: () => query(Q.llmUsed4d),
     llmTok: () => query(Q.routerOutput),
     llmLocalModels: () => query(Q.llmLocalModels),
+    macRamUsed: () => query(Q.macRamUsed),
+    macRamTotal: () => query(Q.macRamTotal),
+    macSwapUsed: () => query(Q.macSwapUsed),
+    macSwapTotal: () => query(Q.macSwapTotal),
+    macPressure: () => query(Q.macPressure),
   });
 
   // settle() (lib/prom.js) yields null for a query that rejected (bad status, timeout, bad
@@ -105,6 +111,9 @@ async function refresh() {
   model.nodeMetricsFailed = [r.cpu, r.cores, r.mem, r.memTotal, r.load].some((rows) => rows === null);
   model.gpuFailed = r.gpuModel === null || r.guestNode === null || r.gpu === null;
   const gpuNodes = model.gpuFailed ? new Map() : gpuByNode(r.gpuModel, r.guestNode, r.gpu);
+  // Macs (cfg.extraNodes) report through macmon, not node_exporter, so their readings come from these series.
+  const macs = macReadings({ ramUsed: r.macRamUsed, ramTotal: r.macRamTotal, swapUsed: r.macSwapUsed, swapTotal: r.macSwapTotal, pressure: r.macPressure });
+  const previousNodes = model.nodes;
   model.nodes = nodeOrder.map((name) => {
     const prev = model.nodes.find((n) => n.name === name) || {};
     const gpu = gpuNodes.get(name);
@@ -136,11 +145,22 @@ async function refresh() {
     };
   });
   for (const x of cfg.extraNodes || []) {
-    if (!nodeOrder.includes(x.name) && !liveNow.has(x.name)) {
-      const gpu = gpuNodes.get(x.name);
-      model.nodes.push({ name: x.name, role: x.role, pending: true, gpu: model.gpuFailed || !Number.isFinite(gpu?.value) ? null : clamp(gpu.value, 0, 100),
-        hasGpu: !model.gpuFailed && !!gpu?.hasAccelerator, d: { cpu: 0, mem: 0, load: 0, gpu: null } });
+    if (nodeOrder.includes(x.name) || liveNow.has(x.name)) continue;
+    const gpu = gpuNodes.get(x.name);
+    const prev = previousNodes.find((n) => n.name === x.name) || {};
+    const common = { name: x.name, role: x.role, extra: true, gpu: model.gpuFailed || !Number.isFinite(gpu?.value) ? null : clamp(gpu.value, 0, 100),
+      hasGpu: !model.gpuFailed && !!gpu?.hasAccelerator, d: prev.d || { cpu: 0, mem: 0, load: 0, gpu: null, pressure: 0 } };
+    const live = macs.get(x.name);
+    if (live) {
+      lastGoodSet(`mac:${x.name}`, live);
+      model.nodes.push({ ...common, ...live, stale: false, pending: false, lastSeen: Date.now() });
+      continue;
     }
+    // A Mac whose series is absent keeps its last real reading, marked stale, as a Linux node does.
+    const last = lastGoodGet(`mac:${x.name}`);
+    const values = last?.value || {};
+    const hasReading = ['ram', 'pressure'].some((key) => Number.isFinite(values[key]));
+    model.nodes.push({ ...common, ...values, stale: hasReading, pending: !hasReading, lastSeen: last?.at ?? null });
   }
 
   model.storageFailed = r.fsSize === null || r.fsAvail === null;
@@ -250,13 +270,19 @@ function buildNodes() {
   const key = model.nodes.map((n) => n.name).join();
   if (key === nodeKey) return;
   nodeKey = key;
-  $('nodelist').innerHTML = model.nodes.map((n, i) => `<div class="node${n.pending ? ' mac' : ''}" id="node${i}"><div class="nm">${esc(n.name.toUpperCase())}<em id="nm${i}"></em></div>
+  $('nodelist').innerHTML = model.nodes.map((n, i) => `<div class="node${n.extra ? ' mac' : ''}" id="node${i}"><div class="nm">${esc(n.name.toUpperCase())}<em id="nm${i}"></em></div>
     ${[0, 1, 2, 3].map((g) => `<canvas class="g" id="g${i}${g}" width="184" height="184"></canvas>`).join('')}
     <canvas class="sp" id="sp${i}" width="780" height="52"></canvas></div>`).join('');
 }
 function ageLabel(atMs) {
   const s = Math.max(0, Math.floor((Date.now() - atMs) / 1000));
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m`;
+}
+// A Mac's subtitle: RAM in use of RAM total, then swap in use, in decimal GB like the header's RAM figure.
+const MAC_GB = 1e9;
+function macMeta(n) {
+  const gb = (bytes) => (Number.isFinite(bytes) ? (bytes / MAC_GB).toFixed(1) : '—');
+  return `${n.role ? n.role + ' · ' : ''}RAM ${gb(n.ram)}/${gb(n.ramTotal)} GB · SWAP ${gb(n.swap)} GB`;
 }
 function gauge(id, val, max, label, unit, col) {
   const el = $(id); if (!el) return;
@@ -294,13 +320,15 @@ function spark(id, h) {
 }
 function drawNodes() {
   model.nodes.forEach((n, i) => {
-    for (const k of ['cpu', 'mem', 'load']) n.d[k] = n[k] == null ? null : lerp(n.d[k] ?? 0, n[k], 0.15);
+    for (const k of ['cpu', 'mem', 'load', 'pressure']) n.d[k] = n[k] == null ? null : lerp(n.d[k] ?? 0, n[k], 0.15);
     n.d.gpu = n.gpu == null ? null : lerp(n.d.gpu ?? n.gpu, n.gpu, 0.15);
     const d = n.d;
     const loadMax = n.cores > 0 ? n.cores : 1;
     gauge(`g${i}0`, d.cpu, 100, 'CPU', '%', hue(100 - (d.cpu ?? 0)));
     gauge(`g${i}1`, d.mem, 100, 'MEM', '%', hue(100 - (d.mem ?? 0)));
-    gauge(`g${i}2`, d.load, loadMax, 'LOAD', '', hue(100 - (d.load ?? 0) / loadMax * 100));
+    // A Mac has no load-average series: its third gauge is memory pressure, on the same 0-100 scale as MEM.
+    if (n.extra) gauge(`g${i}2`, d.pressure, 100, 'PRESS', '%', hue(100 - (d.pressure ?? 0)));
+    else gauge(`g${i}2`, d.load, loadMax, 'LOAD', '', hue(100 - (d.load ?? 0) / loadMax * 100));
     const gpuLabel = model.gpuFailed || n.hasGpu ? 'GPU' : 'NO GPU';
     gauge(`g${i}3`, n.d.gpu, 100, gpuLabel, gpuLabel === 'GPU' ? '%' : '', gpuLabel === 'GPU' ? hue(100 - (n.d.gpu ?? 0)) : '#5d7d90');
     spark(`sp${i}`, n.hist || []);
@@ -309,7 +337,8 @@ function drawNodes() {
         ? (n.lastSeen == null ? 'STALE'
           : Date.now() - n.lastSeen < STALE_MS ? `STALE ${ageLabel(n.lastSeen)}`
           : `STALE since ${new Date(n.lastSeen).toTimeString().slice(0, 8)}`)
-        : `${n.role ? n.role + ' · ' : ''}${n.temp != null ? Math.round(n.temp) + '°C · ' : ''}${n.up != null ? 'up ' + Math.floor(n.up / 86400) + 'd' : ''}`;
+        : n.extra ? macMeta(n)
+          : `${n.role ? n.role + ' · ' : ''}${n.temp != null ? Math.round(n.temp) + '°C · ' : ''}${n.up != null ? 'up ' + Math.floor(n.up / 86400) + 'd' : ''}`;
     const el = $('nm' + i); if (el && el.textContent !== meta) el.textContent = meta;
     const card = $('node' + i); if (card) card.classList.toggle('stale', !!n.stale);
   });
@@ -504,7 +533,7 @@ function renderStatic() {
   const mappedGpu = model.nodes.filter((n) => n.hasGpu);
   const gpuMissing = mappedGpu.filter((n) => !Number.isFinite(n.gpu)).length;
   const gpuEmpty = mappedGpu.length > 0 && gpuMissing === mappedGpu.length;
-  const nodeIncomplete = model.nodes.some((n) => n.pending || ['cpu', 'mem', 'load'].some((key) => !Number.isFinite(n[key]))) || gpuMissing > 0;
+  const nodeIncomplete = model.nodes.some((n) => n.pending || (n.extra ? ['mem', 'pressure'] : ['cpu', 'mem', 'load']).some((key) => !Number.isFinite(n[key]))) || gpuMissing > 0;
   const nodeMessage = nodeFailed
     ? model.gpuFailed ? 'GPU QUERY FAILED' : 'NODE METRICS QUERY FAILED'
     : gpuEmpty ? 'GPU METRICS EMPTY' : nodeIncomplete ? 'NODE METRICS INCOMPLETE' : '';
