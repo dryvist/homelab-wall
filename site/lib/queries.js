@@ -98,9 +98,9 @@ export const Q = {
   macSwapUsed: 'max by (instance) (macmon_memory_swap_used_bytes)',
   macSwapTotal: 'max by (instance) (macmon_memory_swap_total_bytes)',
   macPressure: 'max by (instance) (macmon_memory_pressure_percent)',
-  // Resident memory of each local model's serving process, per Mac: the model id is the token after --model.
+  // Physical memory footprint of each local model's serving process, per Mac: the model id is the token after --model.
   // Processes with no --model match leave no model label and are dropped by the reader; no series means no rows.
-  macModelMemory: 'sum by (instance, model) (label_replace(process_resident_memory_bytes{process_cmdline=~".*mlx-lm-launch.*--model.*"}, "model", "$1", "process_cmdline", ".*--model ([^ ]+).*"))',
+  macModelMemory: 'sum by (instance, model) (label_replace(process_phys_footprint_bytes{process_cmdline=~".*mlx-lm-launch.*--model.*"}, "model", "$1", "process_cmdline", ".*--model ([^ ]+).*"))',
   // Each model's serving URL. mc3 matches the URL's host against the host of the device series above.
   llmApiBase: 'max by (litellm_model_name, api_base, api_provider) (litellm_deployment_state)',
   // Requests in flight per local inference server, and across the whole router.

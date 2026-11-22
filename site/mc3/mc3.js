@@ -61,7 +61,7 @@ const overrides = cfg.accelerators && typeof cfg.accelerators === 'object' ? cfg
 const model = {
   models: [], listFailed: false, stateFailed: false, tokensToday: { local: null, cloud: null }, reqPerMin: { local: null, cloud: null },
   modelCounts: null, active: { local: null, cloud: null }, gpuBusy: null, gpuFailed: false,
-  // Resident memory per local model on each Mac: one row per (host, model), empty when no series exists.
+  // Physical memory footprint per local model on each Mac: one row per (host, model), empty when no series exists.
   localMemory: [], localMemoryFailed: false,
 };
 // Fleet list: the AI-category services and their 0-10 scores (Q.aiAppScore), sorted by name.
@@ -365,7 +365,7 @@ function renderCore() {
 }
 
 /* ---------------- local model memory: one bar per model on each Mac, in the fleet-health column ------- */
-// The bar is the model's resident memory as a share of its Mac's RAM total. Rows are per model and per host;
+// The bar is the model's physical memory footprint as a share of its Mac's RAM total. Rows are per model and per host;
 // nothing is summed across hosts or across cloud and local models.
 function renderModelMemory() {
   const rows = model.localMemory;

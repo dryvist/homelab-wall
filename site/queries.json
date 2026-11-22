@@ -90,7 +90,7 @@
   "macSwapUsed": "max by (instance) (macmon_memory_swap_used_bytes)",
   "macSwapTotal": "max by (instance) (macmon_memory_swap_total_bytes)",
   "macPressure": "max by (instance) (macmon_memory_pressure_percent)",
-  "macModelMemory": "sum by (instance, model) (label_replace(process_resident_memory_bytes{process_cmdline=~\".*mlx-lm-launch.*--model.*\"}, \"model\", \"$1\", \"process_cmdline\", \".*--model ([^ ]+).*\"))",
+  "macModelMemory": "sum by (instance, model) (label_replace(process_phys_footprint_bytes{process_cmdline=~\".*mlx-lm-launch.*--model.*\"}, \"model\", \"$1\", \"process_cmdline\", \".*--model ([^ ]+).*\"))",
   "llmApiBase": "max by (litellm_model_name, api_base, api_provider) (litellm_deployment_state)",
   "vllmRunning": "sum by (instance) (vllm:num_requests_running)",
   "llamaRunning": "sum by (instance) (llamacpp:requests_processing)",

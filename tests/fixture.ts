@@ -87,7 +87,7 @@ function modelPerf(q: string): unknown[] | undefined {
 export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
   const perf = modelPerf(q);
   if (perf) return perf;
-  // Mac memory: macmon's host series and the per-model resident memory for the extra node (a Mac in
+  // Mac memory: macmon's host series and the per-model physical memory footprint for the extra node (a Mac in
   // this config). A query the fixture leaves out answers no rows, which is how an absent series is tested.
   const MAC = { instance: 'node-d:9100' };
   if (q === Q.macRamUsed) return vec([[MAC, 96e9]]);

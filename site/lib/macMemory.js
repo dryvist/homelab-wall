@@ -37,7 +37,7 @@ export function macReadings({ ramUsed, ramTotal, swapUsed, swapTotal, pressure }
   return out;
 }
 
-// Per-model resident memory: one row per (host, model), grouped by host and largest first. share is the
+// Per-model physical memory footprint: one row per (host, model), grouped by host and largest first. share is the
 // model's bytes as a percent of its host's RAM total, or null when that total is unknown.
 export function modelMemoryRows(rows, ramTotalByHost) {
   return (rows || [])

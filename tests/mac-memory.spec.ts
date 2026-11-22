@@ -3,7 +3,7 @@ import { mockFeeds } from './fixture';
 import { wallUrl } from './panels-contract';
 
 // Mac memory on the estate (mc1) and AI core (mc3) pages, from the macmon host series and the per-model
-// resident memory. The fixture serves one Mac (the extra node) with real series; these cases prove a live
+// physical memory footprint. The fixture serves one Mac (the extra node) with real series; these cases prove a live
 // Mac replaces its pending card, an absent series leaves it pending without an error, and each local model
 // gets one bar on its host.
 
@@ -41,7 +41,7 @@ test('the AI core draws one memory bar per local model on each Mac', async ({ pa
 
 test('with no model memory series the AI core says so and draws no bars', async ({ page }) => {
   test.skip(!!wallUrl, 'exercises the fixture series only');
-  await mockFeeds(page, { emptyQuery: (q) => q.includes('process_resident_memory_bytes') });
+  await mockFeeds(page, { emptyQuery: (q) => q.includes('process_phys_footprint_bytes') });
   await page.goto('/mc3/?gl=2d');
   await expect(page.locator('#modelMem')).toContainText('NO LOCAL MODEL MEMORY');
   await expect(page.locator('#modelMem .mm')).toHaveCount(0);
