@@ -87,6 +87,18 @@ function modelPerf(q: string): unknown[] | undefined {
 export function answer(q: string, opts: AnswerOpts = {}): unknown[] {
   const perf = modelPerf(q);
   if (perf) return perf;
+  // Mac memory: macmon's host series and the per-model physical memory footprint for the extra node (a Mac in
+  // this config). A query the fixture leaves out answers no rows, which is how an absent series is tested.
+  const MAC = { instance: 'node-d:9100' };
+  if (q === Q.macRamUsed) return vec([[MAC, 96e9]]);
+  if (q === Q.macRamTotal) return vec([[MAC, 128e9]]);
+  if (q === Q.macSwapUsed) return vec([[MAC, 3.5e9]]);
+  if (q === Q.macSwapTotal) return vec([[MAC, 16e9]]);
+  if (q === Q.macPressure) return vec([[MAC, 42]]);
+  if (q === Q.macModelMemory) return vec([
+    [{ ...MAC, model: 'model-large' }, 58e9],
+    [{ ...MAC, model: 'model-coder' }, 21e9],
+  ]);
   if (q.includes('AI · .+')) {
     const flat = config.groups.flatMap((g) => g.apps);
     return vec(AI_APPS.map((n): [Record<string, string>, number] => [{ name: n }, sampleAppScore(flat.indexOf(n))]));

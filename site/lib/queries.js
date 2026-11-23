@@ -92,6 +92,16 @@ export const Q = {
   gpuModel: 'group by (accelerator, modelName, instance) (DCGM_FI_DEV_GPU_UTIL)',
   guestNode: 'group by (name, node) (pve_guest_info)',
   macChip: 'group by (accelerator, chip, instance) (macmon_gpu_usage_ratio)',
+  // Mac host memory from macmon, one row per Mac. A Mac with no series has no row, so its card holds or shows pending.
+  macRamUsed: 'max by (instance) (macmon_memory_ram_used_bytes)',
+  macRamTotal: 'max by (instance) (macmon_memory_ram_total_bytes)',
+  macSwapUsed: 'max by (instance) (macmon_memory_swap_used_bytes)',
+  macSwapTotal: 'max by (instance) (macmon_memory_swap_total_bytes)',
+  macPressure: 'max by (instance) (macmon_memory_pressure_percent)',
+  // Physical memory footprint of each local model's serving process, per Mac: the model id is the token after --model.
+  // Processes with no --model match leave no model label and are dropped by the reader; no series means no rows.
+  // Process series carry the Mac's short name in `host`, not `instance`; copy it so shortHost() joins them to macmon.
+  macModelMemory: 'label_replace(sum by (host, model) (process_phys_footprint_bytes{model!~"|unknown"}) or sum by (host, model) (label_replace(process_phys_footprint_bytes{process_cmdline=~".*mlx-lm-launch.*--model.*"}, "model", "$1", "process_cmdline", ".*--model ([^ ]+).*")), "instance", "$1", "host", "(.+)")',
   // Each model's serving URL. mc3 matches the URL's host against the host of the device series above.
   llmApiBase: 'max by (litellm_model_name, api_base, api_provider) (litellm_deployment_state)',
   // Requests in flight per local inference server, and across the whole router.
