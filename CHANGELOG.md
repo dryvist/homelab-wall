@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.0](https://github.com/dryvist/homelab-wall/compare/v0.27.0...v0.28.0) (2026-11-23)
+
+
+### Features
+
+* **wall:** show Mac memory and per-model memory ([#190](https://github.com/dryvist/homelab-wall/issues/190)) ([13ce4ef](https://github.com/dryvist/homelab-wall/commit/13ce4eff120b2f5274e37d058d7e9ab80481426b))
+
 ## [0.27.0](https://github.com/dryvist/homelab-wall/compare/v0.26.0...v0.27.0) (2026-11-13)
 
 
