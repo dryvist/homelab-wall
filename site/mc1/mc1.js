@@ -332,17 +332,26 @@ function drawNodes() {
     const gpuLabel = model.gpuFailed || n.hasGpu ? 'GPU' : 'NO GPU';
     gauge(`g${i}3`, n.d.gpu, 100, gpuLabel, gpuLabel === 'GPU' ? '%' : '', gpuLabel === 'GPU' ? hue(100 - (n.d.gpu ?? 0)) : '#5d7d90');
     spark(`sp${i}`, n.hist || []);
-    const meta = n.pending ? `${n.role || 'NODE'} · METRICS PENDING`
-      : n.stale
-        ? (n.lastSeen == null ? 'STALE'
-          : Date.now() - n.lastSeen < STALE_MS ? `STALE ${ageLabel(n.lastSeen)}`
-          : `STALE since ${new Date(n.lastSeen).toTimeString().slice(0, 8)}`)
-        : n.extra ? macMeta(n)
-          : `${n.role ? n.role + ' · ' : ''}${n.temp != null ? Math.round(n.temp) + '°C · ' : ''}${n.up != null ? 'up ' + Math.floor(n.up / 86400) + 'd' : ''}`;
+  });
+  renderNodeMeta();
+  renderQuorum();
+}
+function nodeMeta(n) {
+  return n.pending ? `${n.role || 'NODE'} · METRICS PENDING`
+    : n.stale
+      ? (n.lastSeen == null ? 'STALE'
+        : Date.now() - n.lastSeen < STALE_MS ? `STALE ${ageLabel(n.lastSeen)}`
+        : `STALE since ${new Date(n.lastSeen).toTimeString().slice(0, 8)}`)
+      : n.extra ? macMeta(n)
+        : `${n.role ? n.role + ' · ' : ''}${n.temp != null ? Math.round(n.temp) + '°C · ' : ''}${n.up != null ? 'up ' + Math.floor(n.up / 86400) + 'd' : ''}`;
+}
+// Subtitles and stale marks: written on every data refresh too, so a frame-starved page still shows its readings.
+function renderNodeMeta() {
+  model.nodes.forEach((n, i) => {
+    const meta = nodeMeta(n);
     const el = $('nm' + i); if (el && el.textContent !== meta) el.textContent = meta;
     const card = $('node' + i); if (card) card.classList.toggle('stale', !!n.stale);
   });
-  renderQuorum();
 }
 function renderQuorum() {
   const up = model.nodes.filter((n) => !n.pending && !n.stale).length;
@@ -527,7 +536,7 @@ function renderFirewall() {
 function renderStatic() {
   const scored = apps.some((app) => app.s != null);
   const unscored = apps.length - apps.filter((app) => app.s != null).length;
-  buildNodes(); renderQuorum(); renderHeader(); renderStorage(); renderLlm();
+  buildNodes(); renderNodeMeta(); renderQuorum(); renderHeader(); renderStorage(); renderLlm();
   topologyView.setModel(model.topology || { nodes: [], edges: [], positions: {} }, topologyLabelDetails);
   const nodeFailed = model.gpuFailed || model.nodeMetricsFailed;
   const mappedGpu = model.nodes.filter((n) => n.hasGpu);
